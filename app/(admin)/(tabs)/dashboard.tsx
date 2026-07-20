@@ -1,34 +1,31 @@
 // app/(admin)/(tabs)/dashboard.tsx
-// Live stats: total users, orders, revenue, active dashers.
-// Clean admin dashboard matching the numbered aesthetic.
+// DormDash — Admin dashboard (mid-tone "slate" Route identity).
+// FUNCTIONALITY PRESERVED: same three live listeners (users, orders, stores),
+// same stats math (revenue = delivered fees, GMV, avg delivery mins,
+// completion rate). Currency now formatJMD. One improvement: the quick
+// actions actually navigate now (they were dead TouchableOpacities).
 
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Pressable } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { router } from 'expo-router';
 import { collection, onSnapshot } from 'firebase/firestore';
 import { db } from '../../../services/firebase';
 import { useAuth } from '../../../hooks/useAuth';
 import { logoutUser } from '../../../services/auth';
-import { SPACING, formatJMD } from '../../../constants';
+import { formatJMD } from '../../../constants';
+import { S } from '../../../constants/themeMid';
 
 export default function AdminDashboard() {
   const { user } = useAuth();
+  const insets = useSafeAreaInsets();
   const [stats, setStats] = useState({
-    totalUsers: 0,
-    totalStudents: 0,
-    totalDashers: 0,
-    totalOrders: 0,
-    pendingOrders: 0,
-    activeOrders: 0,
-    deliveredOrders: 0,
-    cancelledOrders: 0,
-    revenue: 0,
-    gmv: 0,
-    avgDeliveryMins: 0,
-    ordersToday: 0,
-    ordersThisWeek: 0,
-    totalStores: 0,
-    activeStores: 0,
+    totalUsers: 0, totalStudents: 0, totalDashers: 0,
+    totalOrders: 0, pendingOrders: 0, activeOrders: 0,
+    deliveredOrders: 0, cancelledOrders: 0,
+    revenue: 0, gmv: 0, avgDeliveryMins: 0,
+    ordersToday: 0, ordersThisWeek: 0,
+    totalStores: 0, activeStores: 0,
   });
 
   useEffect(() => {
@@ -44,37 +41,27 @@ export default function AdminDashboard() {
 
     const unsubOrders = onSnapshot(collection(db, 'orders'), (snap) => {
       const orders = snap.docs.map(d => d.data());
-    
       const delivered = orders.filter(o => o.status === 'delivered');
       const now = Date.now();
       const dayStart = new Date().setHours(0, 0, 0, 0);
       const weekAgo = now - 7 * 24 * 60 * 60 * 1000;
-    
-      // Real money: fees earned on completed deliveries
+
       const revenue = delivered.reduce((sum, o) => sum + (Number(o.deliveryFee) || 0), 0);
-      // GMV: total order value flowing through the platform (investors love this)
       const gmv = delivered.reduce((sum, o) => sum + (Number(o.totalAmount) || 0), 0);
-    
-      // Real average delivery time, from placed to delivered
+
       const withTimes = delivered.filter(o => o.deliveredAt && o.createdAt);
       const avgDeliveryMins = withTimes.length > 0
-        ? Math.round(
-            withTimes.reduce((sum, o) => sum + (o.deliveredAt - o.createdAt), 0) /
-            withTimes.length / 60000
-          )
+        ? Math.round(withTimes.reduce((sum, o) => sum + (o.deliveredAt - o.createdAt), 0) / withTimes.length / 60000)
         : 0;
-    
+
       setStats(prev => ({
         ...prev,
         totalOrders: orders.length,
         pendingOrders: orders.filter(o => o.status === 'pending').length,
-        activeOrders: orders.filter(o =>
-          ['accepted', 'picking_up', 'on_the_way'].includes(o.status)).length,
+        activeOrders: orders.filter(o => ['accepted', 'picking_up', 'on_the_way'].includes(o.status)).length,
         deliveredOrders: delivered.length,
         cancelledOrders: orders.filter(o => o.status === 'cancelled').length,
-        revenue,
-        gmv,
-        avgDeliveryMins,
+        revenue, gmv, avgDeliveryMins,
         ordersToday: orders.filter(o => o.createdAt >= dayStart).length,
         ordersThisWeek: orders.filter(o => o.createdAt >= weekAgo).length,
       }));
@@ -93,471 +80,220 @@ export default function AdminDashboard() {
   }, []);
 
   const handleLogout = async () => { await logoutUser(); };
-  
+
   const finishedOrders = stats.deliveredOrders + stats.cancelledOrders;
   const completionRate = finishedOrders > 0
     ? Math.round((stats.deliveredOrders / finishedOrders) * 100)
     : 0;
 
   return (
-    <SafeAreaView style={styles.safe}>
-      <ScrollView 
-        contentContainerStyle={styles.scroll} 
+    <View style={styles.root}>
+      <ScrollView
+        contentContainerStyle={[styles.scroll, { paddingTop: insets.top + S.space.md, paddingBottom: 120 + insets.bottom }]}
         showsVerticalScrollIndicator={false}
       >
         {/* Header */}
         <View style={styles.header}>
           <View>
-            <Text style={styles.welcomeText}>Welcome back,</Text>
-            <Text style={styles.nameText}>{user?.name?.split(' ')[0] || 'Admin'}</Text>
+            <Text style={styles.eyebrow}>Control room</Text>
+            <Text style={styles.name}>{user?.name?.split(' ')[0] || 'Admin'}</Text>
           </View>
-          <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
+          <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout}>
             <Text style={styles.logoutText}>Exit</Text>
           </TouchableOpacity>
         </View>
 
-        {/* Live Status */}
+        {/* Live bar */}
         <View style={styles.liveBar}>
           <View style={styles.liveDot} />
-          <Text style={styles.liveText}>Live · Real-time updates</Text>
-          <View style={styles.liveBadge}>
-            <Text style={styles.liveBadgeText}>active</Text>
-          </View>
+          <Text style={styles.liveText}>Live · real-time updates</Text>
         </View>
 
-        {/* Hero Stats */}
+        {/* Hero cards */}
         <View style={styles.heroGrid}>
-  <View style={[styles.heroCard, { backgroundColor: '#1A1A1A' }]}>
-    <Text style={styles.heroNumber}>01</Text>
-    <Text style={styles.heroValue}>{stats.totalOrders}</Text>
-    <Text style={styles.heroLabel}>total orders</Text>
-    <View style={styles.heroTrend}>
-      <Text style={styles.heroTrendText}>{stats.ordersToday} today</Text>
-    </View>
-  </View>
-  <View style={[styles.heroCard, { backgroundColor: '#1A1A1A' }]}>
-    <Text style={styles.heroNumber}>02</Text>
-    <Text style={styles.heroValue}>{formatJMD(stats.revenue)}</Text>
-    <Text style={styles.heroLabel}>delivery revenue</Text>
-    <View style={styles.heroTrend}>
-      <Text style={styles.heroTrendText}>{formatJMD(stats.gmv)} GMV</Text>
-    </View>
-  </View>
-</View>
-
-        {/* Stats Grid */}
-        <Text style={styles.sectionTitle}>metrics</Text>
-        <View style={styles.statsGrid}>
-          <View style={styles.statCard}>
-            <View style={styles.statHeader}>
-              <Text style={styles.statNumber}>03</Text>
-            </View>
-            <Text style={styles.statValue}>{stats.totalUsers}</Text>
-            <Text style={styles.statLabel}>total users</Text>
-            <View style={styles.statDetail}>
-              <Text style={styles.statDetailText}>{stats.totalStudents} students</Text>
-              <Text style={styles.statDetailDot}>·</Text>
-              <Text style={styles.statDetailText}>{stats.totalDashers} dashers</Text>
+          <View style={styles.heroCard}>
+            <Text style={styles.cardNumber}>01</Text>
+            <Text style={styles.heroValue}>{stats.totalOrders}</Text>
+            <Text style={styles.cardLabel}>total orders</Text>
+            <View style={styles.heroTrend}>
+              <Text style={styles.heroTrendText}>{stats.ordersToday} today · {stats.ordersThisWeek} this week</Text>
             </View>
           </View>
-
-          <View style={styles.statCard}>
-            <View style={styles.statHeader}>
-              <Text style={styles.statNumber}>04</Text>
+          <View style={styles.heroCard}>
+            <Text style={styles.cardNumber}>02</Text>
+            <View style={styles.moneyPlate}>
+              <Text style={styles.moneyText}>{formatJMD(stats.revenue)}</Text>
             </View>
-            <Text style={styles.statValue}>{stats.totalOrders}</Text>
-            <Text style={styles.statLabel}>total orders</Text>
-            <View style={styles.statDetail}>
-              <Text style={styles.statDetailText}>{stats.pendingOrders} pending</Text>
-            </View>
-          </View>
-
-          <View style={styles.statCard}>
-            <View style={styles.statHeader}>
-              <Text style={styles.statNumber}>05</Text>
-            </View>
-            <Text style={styles.statValue}>{stats.totalStores}</Text>
-            <Text style={styles.statLabel}>total stores</Text>
-            <View style={styles.statDetail}>
-              <Text style={styles.statDetailText}>{stats.activeStores} open now</Text>
-            </View>
-          </View>
-
-          <View style={styles.statCard}>
-            <View style={styles.statHeader}>
-              <Text style={styles.statNumber}>06</Text>
-            </View>
-            <Text style={styles.statValue}>{completionRate}%</Text>
-            <Text style={styles.statLabel}>completion rate</Text>
-            <View style={styles.statDetail}>
-              <Text style={styles.statDetailText}>delivery rate</Text>
+            <Text style={styles.cardLabel}>delivery revenue</Text>
+            <View style={styles.heroTrend}>
+              <Text style={styles.heroTrendText}>{formatJMD(stats.gmv)} GMV</Text>
             </View>
           </View>
         </View>
 
-        {/* Platform Health */}
+        {/* Metrics grid */}
+        <Text style={styles.sectionTitle}>metrics</Text>
+        <View style={styles.grid}>
+          <View style={styles.statCard}>
+            <Text style={styles.cardNumber}>03</Text>
+            <Text style={styles.statValue}>{stats.totalUsers}</Text>
+            <Text style={styles.cardLabel}>total users</Text>
+            <Text style={styles.statDetail}>{stats.totalStudents} students · {stats.totalDashers} dashers</Text>
+          </View>
+          <View style={styles.statCard}>
+            <Text style={styles.cardNumber}>04</Text>
+            <Text style={styles.statValue}>{stats.activeOrders}</Text>
+            <Text style={styles.cardLabel}>active now</Text>
+            <Text style={styles.statDetail}>{stats.pendingOrders} pending</Text>
+          </View>
+          <View style={styles.statCard}>
+            <Text style={styles.cardNumber}>05</Text>
+            <Text style={styles.statValue}>{stats.totalStores}</Text>
+            <Text style={styles.cardLabel}>stores</Text>
+            <Text style={styles.statDetail}>{stats.activeStores} open now</Text>
+          </View>
+          <View style={styles.statCard}>
+            <Text style={styles.cardNumber}>06</Text>
+            <Text style={styles.statValue}>{completionRate}%</Text>
+            <Text style={styles.cardLabel}>completion</Text>
+            <Text style={styles.statDetail}>{stats.cancelledOrders} cancelled</Text>
+          </View>
+        </View>
+
+        {/* Platform health */}
         <Text style={styles.sectionTitle}>platform health</Text>
-        <View style={styles.progressCard}>
-          <View style={styles.progressHeader}>
-            <Text style={styles.progressLabel}>order fulfillment</Text>
-            <Text style={styles.progressNumber}>07</Text>
+        <View style={styles.healthCard}>
+          <View style={styles.healthHead}>
+            <Text style={styles.cardLabel}>order fulfilment</Text>
+            <Text style={styles.cardNumber}>07</Text>
           </View>
           <View style={styles.progressBar}>
             <View style={[styles.progressFill, { width: `${completionRate}%` }]} />
           </View>
-          <View style={styles.progressStats}>
+          <View style={styles.healthStats}>
             <View>
-              <Text style={styles.progressStatLabel}>completed</Text>
-              <Text style={styles.progressStatValue}>{stats.deliveredOrders}</Text>
+              <Text style={styles.healthLabel}>completed</Text>
+              <Text style={styles.healthValue}>{stats.deliveredOrders}</Text>
             </View>
             <View>
-              <Text style={styles.progressStatLabel}>pending</Text>
-              <Text style={styles.progressStatValue}>{stats.pendingOrders}</Text>
+              <Text style={styles.healthLabel}>pending</Text>
+              <Text style={styles.healthValue}>{stats.pendingOrders}</Text>
             </View>
             <View>
-              <Text style={styles.progressStatLabel}>avg time</Text>
-              <Text style={styles.progressStatValue}>
-                {stats.avgDeliveryMins > 0 ? `${stats.avgDeliveryMins}m` : '—'}
-              </Text>
+              <Text style={styles.healthLabel}>avg time</Text>
+              <Text style={styles.healthValue}>{stats.avgDeliveryMins > 0 ? `${stats.avgDeliveryMins}m` : '—'}</Text>
             </View>
           </View>
         </View>
 
-        {/* Quick Actions */}
+        {/* Quick actions — now actually navigate */}
         <Text style={styles.sectionTitle}>quick actions</Text>
-        
-        <TouchableOpacity style={styles.actionRow}>
-          <View style={styles.actionNumber}>
-            <Text style={styles.actionNumberText}>08</Text>
-          </View>
-          <View style={styles.actionContent}>
-            <Text style={styles.actionTitle}>Manage Stores</Text>
-            <Text style={styles.actionDescription}>Add, edit, or remove stores</Text>
-          </View>
-          <Text style={styles.actionArrow}>→</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity style={styles.actionRow}>
-          <View style={styles.actionNumber}>
-            <Text style={styles.actionNumberText}>09</Text>
-          </View>
-          <View style={styles.actionContent}>
-            <Text style={styles.actionTitle}>Manage Users</Text>
-            <Text style={styles.actionDescription}>View student and dasher accounts</Text>
+        <Pressable
+          style={({ pressed }) => [styles.actionRow, pressed && { transform: [{ scale: 0.99 }] }]}
+          onPress={() => router.push('/(admin)/(tabs)/stores' as any)}
+        >
+          <View style={styles.actionNumber}><Text style={styles.actionNumberText}>08</Text></View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.actionTitle}>Manage stores</Text>
+            <Text style={styles.actionDesc}>Add, edit, or remove stores</Text>
           </View>
           <Text style={styles.actionArrow}>→</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity style={styles.actionRow}>
-          <View style={styles.actionNumber}>
-            <Text style={styles.actionNumberText}>10</Text>
-          </View>
-          <View style={styles.actionContent}>
-            <Text style={styles.actionTitle}>Order Management</Text>
-            <Text style={styles.actionDescription}>Track and manage all deliveries</Text>
+        </Pressable>
+        <Pressable
+          style={({ pressed }) => [styles.actionRow, pressed && { transform: [{ scale: 0.99 }] }]}
+          onPress={() => router.push('/(admin)/(tabs)/users' as any)}
+        >
+          <View style={styles.actionNumber}><Text style={styles.actionNumberText}>09</Text></View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.actionTitle}>Manage users</Text>
+            <Text style={styles.actionDesc}>Student and dasher accounts</Text>
           </View>
           <Text style={styles.actionArrow}>→</Text>
-        </TouchableOpacity>
-
+        </Pressable>
       </ScrollView>
-    </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: {
-    flex: 1,
-    backgroundColor: '#0A0A0A',
-  },
+  root: { flex: 1, backgroundColor: S.color.bg },
+  scroll: { paddingHorizontal: S.space.lg },
 
-  scroll: {
-    paddingHorizontal: SPACING.lg,
-    paddingBottom: SPACING.xxl,
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: S.space.md },
+  eyebrow: { ...S.type.label, color: S.color.tealBright, marginBottom: 4 },
+  name: { ...S.type.display, color: S.color.cream },
+  logoutBtn: {
+    paddingHorizontal: S.space.md, paddingVertical: 8,
+    borderRadius: S.radius.pill,
+    borderWidth: 1, borderColor: S.color.lineOnBgStrong,
   },
+  logoutText: { color: S.color.creamSoft, fontSize: 12, fontWeight: '800', letterSpacing: 0.5 },
 
-  // Header
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: SPACING.xl,
-    paddingTop: SPACING.md,
-  },
-  welcomeText: {
-    fontSize: 13,
-    color: '#666666',
-    fontWeight: '500',
-    letterSpacing: 0.3,
-  },
-  nameText: {
-    fontSize: 26,
-    fontWeight: '700',
-    color: '#FFFFFF',
-    letterSpacing: -0.5,
-    marginTop: 2,
-  },
-  logoutButton: {
-    backgroundColor: '#1A1A1A',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#2A2A2A',
-  },
-  logoutText: {
-    color: '#FF4444',
-    fontSize: 13,
-    fontWeight: '500',
-  },
-
-  // Live Bar
   liveBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#1A1A1A',
-    paddingHorizontal: SPACING.md,
-    paddingVertical: 10,
-    borderRadius: 8,
-    marginBottom: SPACING.xl,
-    borderWidth: 1,
-    borderColor: '#2A2A2A',
-    gap: 10,
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    marginBottom: S.space.md,
   },
-  liveDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: '#00FF88',
-  },
-  liveText: {
-    fontSize: 12,
-    color: '#888888',
-    fontWeight: '500',
-    flex: 1,
-  },
-  liveBadge: {
-    backgroundColor: '#00FF8822',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 4,
-  },
-  liveBadgeText: {
-    fontSize: 10,
-    color: '#00FF88',
-    fontWeight: '600',
-    textTransform: 'uppercase',
-  },
+  liveDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: S.color.tealBright },
+  liveText: { color: S.color.creamFaint, fontSize: 11, fontWeight: '700', letterSpacing: 0.4 },
 
-  // Hero Stats
-  heroGrid: {
-    flexDirection: 'row',
-    gap: 14,
-    marginBottom: SPACING.xl,
-  },
+  // Cards
+  heroGrid: { flexDirection: 'row', gap: S.space.sm, marginBottom: S.space.md },
   heroCard: {
-    flex: 1,
-    borderRadius: 12,
-    padding: SPACING.lg,
-    borderWidth: 1,
-    borderColor: '#2A2A2A',
+    flex: 1, backgroundColor: S.color.card, borderRadius: S.radius.lg,
+    padding: S.space.md, gap: 6, ...S.shadow.card,
   },
-  heroNumber: {
-    fontSize: 11,
-    fontWeight: '500',
-    color: '#3B82F6',
-    marginBottom: 12,
-    letterSpacing: 0.5,
-  },
-  heroValue: {
-    fontSize: 28,
-    fontWeight: '700',
-    color: '#FFFFFF',
-    letterSpacing: -0.5,
-    marginBottom: 4,
-  },
-  heroLabel: {
-    fontSize: 11,
-    color: '#666666',
-    fontWeight: '500',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginBottom: 8,
-  },
+  cardNumber: { ...S.type.number, color: S.color.teal },
+  heroValue: { fontSize: 30, fontWeight: '900', color: S.color.ink, letterSpacing: -0.8 },
+  cardLabel: { ...S.type.label, color: S.color.inkSoft },
   heroTrend: {
-    backgroundColor: '#00FF8822',
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 4,
+    backgroundColor: S.color.cardMuted, borderRadius: S.radius.sm,
+    paddingHorizontal: 8, paddingVertical: 4, alignSelf: 'flex-start',
+  },
+  heroTrendText: { fontSize: 10, fontWeight: '700', color: S.color.inkSoft },
+
+  moneyPlate: {
     alignSelf: 'flex-start',
+    backgroundColor: S.color.ceruleanTint,
+    paddingHorizontal: 10, paddingVertical: 4,
+    borderRadius: S.radius.sm,
+    borderWidth: 1.5, borderColor: S.color.cerulean,
   },
-  heroTrendText: {
-    fontSize: 10,
-    color: '#00FF88',
-    fontWeight: '600',
-  },
+  moneyText: { fontSize: 20, fontWeight: '900', color: S.color.cerulean, letterSpacing: -0.5 },
 
-  // Section Title
-  sectionTitle: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: '#666666',
-    letterSpacing: 1,
-    textTransform: 'uppercase',
-    marginBottom: SPACING.md,
-  },
+  sectionTitle: { ...S.type.label, color: S.color.creamSoft, marginTop: S.space.md, marginBottom: S.space.sm },
 
-  // Stats Grid
-  statsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 12,
-    marginBottom: SPACING.xl,
-  },
+  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: S.space.sm },
   statCard: {
-    flex: 1,
-    minWidth: '47%',
-    backgroundColor: '#1A1A1A',
-    borderRadius: 12,
-    padding: SPACING.md,
-    borderWidth: 1,
-    borderColor: '#2A2A2A',
+    width: '48%', flexGrow: 1,
+    backgroundColor: S.color.card, borderRadius: S.radius.lg,
+    padding: S.space.md, gap: 4, ...S.shadow.card,
   },
-  statHeader: {
-    marginBottom: 12,
-  },
-  statNumber: {
-    fontSize: 10,
-    fontWeight: '500',
-    color: '#3B82F6',
-    letterSpacing: 0.5,
-  },
-  statValue: {
-    fontSize: 22,
-    fontWeight: '700',
-    color: '#FFFFFF',
-    letterSpacing: -0.5,
-    marginBottom: 4,
-  },
-  statLabel: {
-    fontSize: 10,
-    color: '#666666',
-    fontWeight: '500',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginBottom: 6,
-  },
-  statDetail: {
-    flexDirection: 'row',
-    gap: 6,
-  },
-  statDetailText: {
-    fontSize: 10,
-    color: '#888888',
-  },
-  statDetailDot: {
-    fontSize: 10,
-    color: '#444444',
-  },
+  statValue: { fontSize: 24, fontWeight: '900', color: S.color.ink, letterSpacing: -0.6 },
+  statDetail: { fontSize: 10, fontWeight: '600', color: S.color.inkFaint },
 
-  // Progress Card
-  progressCard: {
-    backgroundColor: '#1A1A1A',
-    borderRadius: 12,
-    padding: SPACING.lg,
-    borderWidth: 1,
-    borderColor: '#2A2A2A',
-    marginBottom: SPACING.xl,
+  healthCard: {
+    backgroundColor: S.color.card, borderRadius: S.radius.lg,
+    padding: S.space.md, gap: S.space.sm, ...S.shadow.card,
   },
-  progressHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: SPACING.md,
-  },
-  progressLabel: {
-    fontSize: 11,
-    color: '#888888',
-    fontWeight: '500',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  progressNumber: {
-    fontSize: 10,
-    fontWeight: '500',
-    color: '#3B82F6',
-    letterSpacing: 0.5,
-  },
-  progressBar: {
-    height: 4,
-    backgroundColor: '#2A2A2A',
-    borderRadius: 2,
-    overflow: 'hidden',
-    marginBottom: SPACING.lg,
-  },
-  progressFill: {
-    height: '100%',
-    borderRadius: 2,
-    backgroundColor: '#3B82F6',
-  },
-  progressStats: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-  },
-  progressStatLabel: {
-    fontSize: 10,
-    color: '#666666',
-    marginBottom: 4,
-    textTransform: 'uppercase',
-    letterSpacing: 0.3,
-  },
-  progressStatValue: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#FFFFFF',
-  },
+  healthHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  progressBar: { height: 8, borderRadius: 4, backgroundColor: S.color.cardMuted, overflow: 'hidden' },
+  progressFill: { height: 8, borderRadius: 4, backgroundColor: S.color.teal },
+  healthStats: { flexDirection: 'row', justifyContent: 'space-between' },
+  healthLabel: { ...S.type.label, fontSize: 9, color: S.color.inkFaint },
+  healthValue: { fontSize: 16, fontWeight: '900', color: S.color.ink, marginTop: 2 },
 
-  // Action Rows
   actionRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#1A1A1A',
-    borderRadius: 12,
-    padding: SPACING.md,
-    marginBottom: SPACING.sm,
-    borderWidth: 1,
-    borderColor: '#2A2A2A',
-    gap: 14,
+    flexDirection: 'row', alignItems: 'center', gap: S.space.md,
+    backgroundColor: S.color.card, borderRadius: S.radius.lg,
+    padding: S.space.md, marginBottom: S.space.sm, ...S.shadow.card,
   },
   actionNumber: {
-    width: 40,
-    height: 40,
-    borderRadius: 8,
-    backgroundColor: '#2A2A2A',
-    justifyContent: 'center',
-    alignItems: 'center',
+    width: 36, height: 36, borderRadius: 12,
+    backgroundColor: S.color.tealTint,
+    justifyContent: 'center', alignItems: 'center',
   },
-  actionNumberText: {
-    fontSize: 11,
-    fontWeight: '500',
-    color: '#3B82F6',
-    letterSpacing: 0.5,
-  },
-  actionContent: {
-    flex: 1,
-  },
-  actionTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#FFFFFF',
-    marginBottom: 2,
-  },
-  actionDescription: {
-    fontSize: 11,
-    color: '#666666',
-  },
-  actionArrow: {
-    fontSize: 16,
-    color: '#444444',
-    fontWeight: '400',
-  },
+  actionNumberText: { ...S.type.number, color: S.color.teal },
+  actionTitle: { fontSize: 15, fontWeight: '800', color: S.color.ink },
+  actionDesc: { fontSize: 11, fontWeight: '600', color: S.color.inkFaint, marginTop: 2 },
+  actionArrow: { fontSize: 18, fontWeight: '800', color: S.color.cerulean },
 });

@@ -1,0 +1,65 @@
+// constants/themeDark.ts
+// DormDash design system — "Route" identity, INVERTED for dashers.
+// Same family as constants/theme.ts but flipped: deep teal-ink canvas,
+// cream type, brighter cerulean/teal accents tuned for dark surfaces.
+// Dasher screens import D; student screens keep importing T from theme.ts.
+
+export const D = {
+  color: {
+    // Canvas (the flip: ink becomes the surface)
+    bg: '#0E282F',            // app background — deep teal-ink
+    card: '#16343C',          // elevated cards
+    cardHigh: '#1D404A',      // pressed / higher elevation
+
+    // Type (the flip: cream becomes the text)
+    cream: '#FAF5EC',         // primary text
+    creamSoft: '#B9C9C6',     // secondary text
+    creamFaint: '#7E9793',    // placeholders, captions
+
+    // Action — brightened for contrast on dark
+    cerulean: '#33ADD1',
+    ceruleanDeep: '#0E8FB5',
+    ceruleanTint: 'rgba(51, 173, 209, 0.14)',
+
+    // Support
+    teal: '#2FC4AE',
+    tealDeep: '#0FA893',
+    tealTint: 'rgba(47, 196, 174, 0.14)',
+
+    // Lines & feedback
+    line: 'rgba(250, 245, 236, 0.10)',
+    lineStrong: 'rgba(250, 245, 236, 0.22)',
+    danger: '#E36B6B',
+    dangerTint: 'rgba(227, 107, 107, 0.14)',
+    warning: '#E5B04C',
+    warningTint: 'rgba(229, 176, 76, 0.14)',
+  },
+
+  space: { xs: 6, sm: 10, md: 16, lg: 24, xl: 32, xxl: 48 },
+  radius: { sm: 10, md: 16, lg: 24, xl: 32, pill: 999 },
+
+  type: {
+    display: { fontSize: 40, fontWeight: '900' as const, letterSpacing: -1.4 },
+    title:   { fontSize: 26, fontWeight: '800' as const, letterSpacing: -0.6 },
+    body:    { fontSize: 15, fontWeight: '500' as const, letterSpacing: 0 },
+    label:   { fontSize: 11, fontWeight: '700' as const, letterSpacing: 1.4, textTransform: 'uppercase' as const },
+    button:  { fontSize: 16, fontWeight: '700' as const, letterSpacing: 0.2 },
+  },
+
+  shadow: {
+    card: {
+      shadowColor: '#000000',
+      shadowOffset: { width: 0, height: 10 },
+      shadowOpacity: 0.35,
+      shadowRadius: 20,
+      elevation: 8,
+    },
+    button: {
+      shadowColor: '#33ADD1',
+      shadowOffset: { width: 0, height: 8 },
+      shadowOpacity: 0.35,
+      shadowRadius: 16,
+      elevation: 6,
+    },
+  },
+};

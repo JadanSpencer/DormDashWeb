@@ -10,20 +10,23 @@
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#000000"
+      "backgroundColor": "#0A1F3D"
     },
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.dormdash.app",
       "config": {
-        "googleMapsApiKey": "AIzaSyCM62hlNfAtFKr-kZB1s_1ZjYv2e-NuDjE"
+        "googleMapsApiKey": "AIzaSyDkYy3RFJnYDY92EwjoZgn6J17U7VcR90Q"
+      },
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
       "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#FF6B35"
+        "backgroundColor": "#0A1F3D"
       },
       "package": "com.dormdash.app",
       "versionCode": 2,
@@ -46,14 +49,15 @@
       [
         "expo-location",
         {
-          "locationAlwaysAndWhenInUsePermission": "DormDash needs your location to connect you with nearby dashers."
+          "locationAlwaysAndWhenInUsePermission": "DormDash needs your location to connect you with nearby dashers.",
+          "locationWhenInUsePermission": "DormDash needs your location to connect you with nearby dashers."
         }
       ],
       [
         "expo-notifications",
         {
-          "icon": "./assets/icon.png",
-          "color": "#00B4D8",
+          "icon": "./assets/notification-icon.png",
+          "color": "#0E8FB5",
           "defaultChannel": "default"
         }
       ],

@@ -1,35 +1,44 @@
 // app/(student)/(tabs)/orders.tsx
-// Student orders screen with active order tracking and history.
-// Professional design with cerulean/yellow palette.
+// DormDash — Orders (Route identity).
+// Functionality unchanged: active order listener, past orders listener, cancel
+// with race-safe try/catch. Timeline redesigned as horizontal rail. All-cream
+// palette, no more yellow. Extra bottom padding for the floating tab bar.
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import {
-  View, Text, StyleSheet, FlatList,
-  TouchableOpacity, Alert, ActivityIndicator,
+  View, Text, StyleSheet, FlatList, Pressable,
+  Alert, ActivityIndicator, Animated, Easing,
 } from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   collection, query, where, onSnapshot,
   updateDoc, doc,
 } from 'firebase/firestore';
+import { router } from 'expo-router';
 import { db } from '../../../services/firebase';
 import { useAuth } from '../../../hooks/useAuth';
 import { Order, OrderStatus } from '../../../types';
-import { COLORS, SPACING, RADIUS, formatJMD } from '../../../constants';
+import { formatJMD } from '../../../constants';
+import { T, useReducedMotion } from '../../../constants/theme';
 
-const STATUS_CONFIG: Record<OrderStatus, { label: string; color: string; description: string }> = {
-  pending:    { label: 'Pending',    color: '#FFD166', description: 'Waiting for a dasher to accept' },
-  accepted:   { label: 'Accepted',   color: '#FFC107', description: 'A dasher is heading to the store' },
-  picking_up: { label: 'Picking Up', color: '#FFE066', description: 'Dasher is at the store' },
-  on_the_way: { label: 'On the Way', color: '#FFD166', description: 'Your order is on its way!' },
-  delivered:  { label: 'Delivered',  color: '#00D9A3', description: 'Enjoy your order!' },
-  cancelled:  { label: 'Cancelled',  color: '#FF4757', description: 'This order was cancelled' },
+
+// Compact money for tight stat cards — full formatJMD breaks layout at scale
+const formatJMDCompact = (v: number) => {
+  if (v >= 1_000_000) return `J$${(v / 1_000_000).toFixed(v >= 10_000_000 ? 0 : 2)}M`;
+  if (v >= 10_000) return `J$${(v / 1_000).toFixed(v >= 100_000 ? 0 : 1)}K`;
+  return formatJMD(v);
+};
+
+const STATUS_CONFIG: Record<OrderStatus, { label: string; description: string; color: string }> = {
+  pending:    { label: 'Pending',    description: 'Waiting for a dasher to accept', color: T.color.warning },
+  accepted:   { label: 'Accepted',   description: 'A dasher is heading to the store', color: T.color.cerulean },
+  picking_up: { label: 'Picking up', description: 'Dasher is at the store',           color: T.color.cerulean },
+  on_the_way: { label: 'On the way', description: 'Your order is on its way!',        color: T.color.teal },
+  delivered:  { label: 'Delivered',  description: 'Enjoy your order!',                 color: T.color.teal },
+  cancelled:  { label: 'Cancelled',  description: 'This order was cancelled',         color: T.color.danger },
 };
 
 const STATUS_STEPS: OrderStatus[] = ['pending', 'accepted', 'picking_up', 'on_the_way', 'delivered'];
-
-const formatTime = (ts: number) =>
-  new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
 const formatDate = (ts: number) => {
   const d = new Date(ts);
@@ -41,506 +50,369 @@ const formatDate = (ts: number) => {
   return d.toLocaleDateString([], { month: 'short', day: 'numeric' });
 };
 
-// Format currency for compact display (1.2K, 3.4M, etc.)
-const formatCurrency = (amount: number): string => {
-  if (amount >= 1000000) {
-    return `J$${(amount / 1000000).toFixed(1)}M`;
-  }
-  if (amount >= 1000) {
-    return `J$${(amount / 1000).toFixed(1)}K`;
-  }
-  return `${formatJMD(amount)}`;
-};
+const formatTime = (ts: number) =>
+  new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
-// Status Timeline Component
-function StatusTimeline({ status }: { status: OrderStatus }) {
+// ─── STATUS RAIL ─────────────────────────────────────────────────────
+// Horizontal timeline. Completed dots teal, active dot cerulean with a
+// soft pulse ring. Cancelled orders hide the rail entirely.
+const StatusRail: React.FC<{ status: OrderStatus; reduced: boolean }> = ({ status, reduced }) => {
   const currentIndex = STATUS_STEPS.indexOf(status);
+  const pulse = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (reduced) return;
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulse, { toValue: 1, duration: 1200, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+        Animated.timing(pulse, { toValue: 0, duration: 1200, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+      ])
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [reduced]);
+
   if (status === 'cancelled') return null;
 
-  return (
-    <View style={timelineStyles.container}>
-      {STATUS_STEPS.map((step, i) => {
-        const cfg = STATUS_CONFIG[step];
-        const isCompleted = i <= currentIndex;
-        const isActive = i === currentIndex;
+  const pulseScale = pulse.interpolate({ inputRange: [0, 1], outputRange: [1, 1.5] });
+  const pulseOpacity = pulse.interpolate({ inputRange: [0, 1], outputRange: [0.4, 0] });
 
+  return (
+    <View style={rail.container}>
+      {STATUS_STEPS.map((step, i) => {
+        const isCompleted = i < currentIndex;
+        const isActive = i === currentIndex;
         return (
-          <View key={step} style={timelineStyles.step}>
+          <View key={step} style={rail.step}>
             {i > 0 && (
-              <View
-                style={[
-                  timelineStyles.line,
-                  { backgroundColor: i <= currentIndex ? '#FFD166' : '#E2E8F0' },
-                ]}
-              />
+              <View style={[rail.line, i <= currentIndex && rail.lineDone]} />
             )}
-            <View
-              style={[
-                timelineStyles.node,
-                isCompleted && timelineStyles.nodeCompleted,
-                isActive && timelineStyles.nodeActive,
-              ]}
-            >
-              {isActive && (
-                <View style={timelineStyles.nodePulse} />
+            <View style={rail.dotWrap}>
+              {isActive && !reduced && (
+                <Animated.View
+                  style={[
+                    rail.pulse,
+                    { transform: [{ scale: pulseScale }], opacity: pulseOpacity },
+                  ]}
+                />
               )}
+              <View style={[
+                rail.dot,
+                isCompleted && rail.dotDone,
+                isActive && rail.dotActive,
+              ]} />
             </View>
-            <Text
-              style={[
-                timelineStyles.label,
-                isCompleted && timelineStyles.labelCompleted,
-                isActive && timelineStyles.labelActive,
-              ]}
-            >
-              {cfg.label}
+            <Text style={[
+              rail.label,
+              isCompleted && rail.labelDone,
+              isActive && rail.labelActive,
+            ]} numberOfLines={1}>
+              {STATUS_CONFIG[step].label}
             </Text>
           </View>
         );
       })}
     </View>
   );
-}
+};
 
-const timelineStyles = StyleSheet.create({
+const rail = StyleSheet.create({
   container: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    paddingVertical: SPACING.md,
-    marginTop: SPACING.xs,
+    paddingVertical: T.space.md,
   },
   step: { flex: 1, alignItems: 'center', position: 'relative' },
   line: {
     position: 'absolute',
-    top: 10,
-    left: 0,
-    width: '50%',
-    height: 2,
+    top: 12, left: 0, width: '50%', height: 2,
+    backgroundColor: T.color.line,
     zIndex: 0,
   },
-  node: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    borderWidth: 2,
-    borderColor: '#CBD5E1',
-    backgroundColor: '#FFFFFF',
+  lineDone: { backgroundColor: T.color.teal },
+  dotWrap: {
+    width: 24, height: 24,
+    justifyContent: 'center', alignItems: 'center',
     zIndex: 1,
   },
-  nodeCompleted: {
-    borderColor: '#00D9A3',
-    backgroundColor: '#00D9A3',
+  pulse: {
+    position: 'absolute',
+    width: 24, height: 24, borderRadius: 12,
+    backgroundColor: T.color.cerulean,
   },
-  nodeActive: {
-    borderColor: '#FFD166',
-    backgroundColor: '#FFD166',
-    width: 24,
-    height: 24,
-    borderRadius: 12,
+  dot: {
+    width: 14, height: 14, borderRadius: 7,
+    backgroundColor: T.color.card,
+    borderWidth: 2, borderColor: T.color.lineStrong,
   },
-  nodePulse: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: '#FFFFFF',
-    alignSelf: 'center',
-    marginTop: 6,
+  dotDone: { backgroundColor: T.color.teal, borderColor: T.color.teal },
+  dotActive: {
+    backgroundColor: T.color.cerulean,
+    borderColor: T.color.cerulean,
+    width: 16, height: 16, borderRadius: 8,
   },
   label: {
-    fontSize: 9,
-    fontWeight: '500',
-    textAlign: 'center',
-    marginTop: 8,
-    color: '#94A3B8',
+    fontSize: 9, fontWeight: '700',
+    color: T.color.inkFaint,
+    marginTop: 8, textAlign: 'center',
+    letterSpacing: 0.3,
+    textTransform: 'uppercase',
   },
-  labelCompleted: {
-    color: '#64748B',
-  },
-  labelActive: {
-    color: '#FFD166',
-    fontWeight: '600',
-  },
+  labelDone: { color: T.color.inkSoft },
+  labelActive: { color: T.color.cerulean, fontWeight: '800' },
 });
 
-// Active Order Card
-function ActiveOrderCard({ order, onCancel }: { order: Order; onCancel: () => void }) {
+// ─── ACTIVE ORDER CARD ──────────────────────────────────────────────
+const ActiveOrderCard: React.FC<{ order: Order; onCancel: () => void; reduced: boolean }> = ({ order, onCancel, reduced }) => {
   const cfg = STATUS_CONFIG[order.status];
+  const glow = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (reduced) return;
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(glow, { toValue: 1, duration: 1500, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+        Animated.timing(glow, { toValue: 0, duration: 1500, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+      ])
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [reduced]);
+
+  const liveScale = glow.interpolate({ inputRange: [0, 1], outputRange: [1, 1.3] });
+  const liveOpacity = glow.interpolate({ inputRange: [0, 1], outputRange: [0.6, 0] });
 
   return (
-    <View style={activeStyles.card}>
-      <View style={activeStyles.header}>
-        <View style={activeStyles.liveBadge}>
-          <View style={activeStyles.liveDot} />
-          <Text style={activeStyles.liveText}>LIVE</Text>
+    <Pressable
+      onPress={() => router.push(`/(student)/order/${order.id}` as any)}
+      style={({ pressed }) => [
+        active.card,
+        pressed && { transform: [{ scale: 0.99 }] },
+      ]}
+    >
+      <View style={active.head}>
+        <View style={active.live}>
+          <View style={active.liveWrap}>
+            {!reduced && (
+              <Animated.View
+                style={[active.livePulse, { transform: [{ scale: liveScale }], opacity: liveOpacity }]}
+              />
+            )}
+            <View style={active.liveDot} />
+          </View>
+          <Text style={active.liveText}>LIVE</Text>
         </View>
-        <Text style={activeStyles.orderId}>#{order.id.slice(-6).toUpperCase()}</Text>
+        <Text style={active.id}>#{order.id.slice(-6).toUpperCase()}</Text>
       </View>
 
-      <Text style={activeStyles.storeName}>{order.storeName}</Text>
-      <Text style={activeStyles.amount}>{formatJMD(order.totalAmount)}</Text>
+      <Text style={active.store}>{order.storeName}</Text>
 
-      <Text style={activeStyles.items} numberOfLines={2}>
+      {/* Hollowed amount */}
+      <View style={active.amountPlate}>
+        <Text style={active.amountText}>{formatJMD(order.totalAmount)}</Text>
+      </View>
+
+      <Text style={active.items} numberOfLines={2}>
         {order.items.map(i => i.menuItem.name).join(' · ')}
       </Text>
 
-      <View style={activeStyles.addressContainer}>
-        <Text style={activeStyles.addressLabel}>Delivery to:</Text>
-        <Text style={activeStyles.addressText}>{order.deliveryAddress.label}</Text>
+      <View style={active.addressRow}>
+        <Text style={active.addressLabel}>Delivery to</Text>
+        <Text style={active.address} numberOfLines={1}>{order.deliveryAddress.label}</Text>
       </View>
 
       {order.dasherName && (
-        <View style={activeStyles.dasherContainer}>
-          <View style={activeStyles.dasherAvatar}>
-            <Text style={activeStyles.dasherInitial}>{order.dasherName[0]}</Text>
+        <View style={active.dasher}>
+          <View style={active.dasherAvatar}>
+            <Text style={active.dasherInitial}>{order.dasherName[0]}</Text>
           </View>
-          <View style={activeStyles.dasherInfo}>
-            <Text style={activeStyles.dasherLabel}>Your Dasher</Text>
-            <Text style={activeStyles.dasherName}>{order.dasherName}</Text>
+          <View style={{ flex: 1 }}>
+            <Text style={active.dasherLabel}>Your dasher</Text>
+            <Text style={active.dasherName}>{order.dasherName}</Text>
           </View>
-          <View style={[activeStyles.statusPill, { backgroundColor: cfg.color + '20' }]}>
-            <Text style={[activeStyles.statusText, { color: cfg.color }]}>{cfg.label}</Text>
+          <View style={[active.statusPill, { backgroundColor: cfg.color + '18' }]}>
+            <Text style={[active.statusPillText, { color: cfg.color }]}>{cfg.label}</Text>
           </View>
         </View>
       )}
 
-      <View style={activeStyles.descriptionBox}>
-        <Text style={activeStyles.description}>{cfg.description}</Text>
+      <View style={active.descBox}>
+        <Text style={active.desc}>{cfg.description}</Text>
       </View>
 
-      <StatusTimeline status={order.status} />
+      <StatusRail status={order.status} reduced={reduced} />
 
       {order.status === 'pending' && (
-        <TouchableOpacity style={activeStyles.cancelButton} onPress={onCancel}>
-          <Text style={activeStyles.cancelText}>Cancel Order</Text>
-        </TouchableOpacity>
+        <Pressable
+          onPress={(e) => { e.stopPropagation?.(); onCancel(); }}
+          style={({ pressed }) => [
+            active.cancelBtn,
+            pressed && { transform: [{ scale: 0.97 }] },
+          ]}
+        >
+          <Text style={active.cancelText}>Cancel order</Text>
+        </Pressable>
       )}
-    </View>
+    </Pressable>
   );
-}
+};
 
-const activeStyles = StyleSheet.create({
+const active = StyleSheet.create({
   card: {
-    backgroundColor: '#FFFFFF',
-    marginHorizontal: SPACING.lg,
-    marginBottom: SPACING.lg,
-    borderRadius: 24,
-    padding: SPACING.lg,
+    backgroundColor: T.color.card,
+    marginHorizontal: T.space.lg,
+    marginBottom: T.space.lg,
+    borderRadius: T.radius.xl,
+    padding: T.space.lg,
     borderWidth: 1,
-    borderColor: 'rgba(0, 180, 216, 0.15)',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.08,
-    shadowRadius: 12,
-    elevation: 4,
+    borderColor: T.color.line,
+    ...T.shadow.card,
+    shadowOpacity: 0.06,
   },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: SPACING.md,
+  head: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: T.space.md },
+  live: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    backgroundColor: T.color.tealTint,
+    paddingHorizontal: 12, paddingVertical: 5,
+    borderRadius: T.radius.pill,
   },
-  liveBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: 'rgba(0, 217, 163, 0.12)',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 20,
+  liveWrap: { width: 8, height: 8, justifyContent: 'center', alignItems: 'center' },
+  livePulse: { position: 'absolute', width: 8, height: 8, borderRadius: 4, backgroundColor: T.color.teal },
+  liveDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: T.color.teal },
+  liveText: { fontSize: 10, fontWeight: '900', color: T.color.teal, letterSpacing: 1.2 },
+  id: { fontSize: 11, color: T.color.inkFaint, fontFamily: 'monospace', fontWeight: '700' },
+
+  store: { ...T.type.title, fontSize: 22, color: T.color.ink, marginBottom: T.space.sm },
+
+  amountPlate: {
+    alignSelf: 'flex-start',
+    marginBottom: T.space.md,
   },
-  liveDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: '#00D9A3',
+  amountText: {
+    fontSize: 24, fontWeight: '900', color: T.color.cerulean, letterSpacing: -0.6,
   },
-  liveText: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: '#00D9A3',
-    letterSpacing: 1,
+
+  items: { ...T.type.body, fontSize: 13, color: T.color.inkSoft, marginBottom: T.space.md, lineHeight: 18 },
+
+  addressRow: {
+    backgroundColor: T.color.creamDeep,
+    borderRadius: T.radius.md,
+    padding: T.space.md,
+    marginBottom: T.space.md,
+    gap: 2,
   },
-  orderId: {
-    fontSize: 11,
-    color: '#94A3B8',
-    fontFamily: 'monospace',
-  },
-  storeName: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#023E8A',
-    marginBottom: 4,
-  },
-  amount: {
-    fontSize: 28,
-    fontWeight: '800',
-    color: '#00B4D8',
-    marginBottom: SPACING.sm,
-  },
-  items: {
-    fontSize: 13,
-    color: '#64748B',
-    lineHeight: 18,
-    marginBottom: SPACING.md,
-  },
-  addressContainer: {
-    backgroundColor: '#F8FAFC',
-    borderRadius: 12,
-    padding: SPACING.sm,
-    marginBottom: SPACING.md,
-  },
-  addressLabel: {
-    fontSize: 10,
-    fontWeight: '600',
-    color: '#94A3B8',
-    marginBottom: 2,
-  },
-  addressText: {
-    fontSize: 13,
-    color: '#023E8A',
-  },
-  dasherContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#F8FAFC',
-    borderRadius: 16,
-    padding: SPACING.sm,
-    marginBottom: SPACING.md,
-    gap: 12,
+  addressLabel: { ...T.type.label, color: T.color.inkFaint, fontSize: 10 },
+  address: { ...T.type.body, fontSize: 14, fontWeight: '700', color: T.color.ink },
+
+  dasher: {
+    flexDirection: 'row', alignItems: 'center', gap: T.space.sm,
+    backgroundColor: T.color.tealTint,
+    borderRadius: T.radius.md,
+    padding: T.space.sm,
+    marginBottom: T.space.md,
   },
   dasherAvatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(0, 180, 216, 0.1)',
+    width: 36, height: 36, borderRadius: 18,
+    backgroundColor: T.color.teal,
+    justifyContent: 'center', alignItems: 'center',
+  },
+  dasherInitial: { color: T.color.card, fontSize: 15, fontWeight: '900' },
+  dasherLabel: { ...T.type.label, color: T.color.inkFaint, fontSize: 9 },
+  dasherName: { ...T.type.body, fontSize: 14, fontWeight: '800', color: T.color.ink },
+  statusPill: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: T.radius.pill },
+  statusPillText: { fontSize: 10, fontWeight: '800', letterSpacing: 0.5, textTransform: 'uppercase' },
+
+  descBox: {
+    backgroundColor: T.color.ceruleanTint,
+    borderRadius: T.radius.md,
+    padding: T.space.sm,
+    borderLeftWidth: 3,
+    borderLeftColor: T.color.cerulean,
+  },
+  desc: { ...T.type.body, fontSize: 13, color: T.color.ink, fontWeight: '600', lineHeight: 18 },
+
+  cancelBtn: {
+    backgroundColor: T.color.dangerTint,
+    borderRadius: T.radius.pill,
+    paddingVertical: 12,
     alignItems: 'center',
-    justifyContent: 'center',
+    marginTop: T.space.sm,
+    borderWidth: 1, borderColor: 'rgba(201, 79, 79, 0.3)',
   },
-  dasherInitial: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#00B4D8',
-  },
-  dasherInfo: {
-    flex: 1,
-  },
-  dasherLabel: {
-    fontSize: 10,
-    fontWeight: '600',
-    color: '#94A3B8',
-    letterSpacing: 0.5,
-  },
-  dasherName: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#023E8A',
-  },
-  statusPill: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 20,
-  },
-  statusText: {
-    fontSize: 11,
-    fontWeight: '600',
-  },
-  descriptionBox: {
-    backgroundColor: '#F8FAFC',
-    borderRadius: 12,
-    padding: SPACING.sm,
-    marginBottom: SPACING.sm,
-  },
-  description: {
-    fontSize: 12,
-    color: '#64748B',
-    textAlign: 'center',
-  },
-  cancelButton: {
-    backgroundColor: 'rgba(255, 71, 87, 0.12)',
-    borderRadius: 40,
-    height: 48,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: SPACING.md,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 71, 87, 0.3)',
-  },
-  cancelText: {
-    color: '#FF8A92',
-    fontSize: 14,
-    fontWeight: '600',
-  },
+  cancelText: { color: T.color.danger, fontWeight: '800', fontSize: 14, letterSpacing: 0.3 },
 });
 
-// History Order Card
-function HistoryOrderCard({ order }: { order: Order }) {
+// ─── HISTORY CARD ───────────────────────────────────────────────────
+const HistoryCard: React.FC<{ order: Order }> = ({ order }) => {
   const cfg = STATUS_CONFIG[order.status];
-  const [expanded, setExpanded] = useState(false);
-
+  const isDelivered = order.status === 'delivered';
   return (
-    <TouchableOpacity
-      style={historyStyles.card}
-      onPress={() => setExpanded(!expanded)}
-      activeOpacity={0.85}
+    <Pressable
+      onPress={() => router.push(`/(student)/order/${order.id}` as any)}
+      style={({ pressed }) => [hist.card, pressed && { transform: [{ scale: 0.98 }] }]}
     >
-      <View style={historyStyles.row}>
-        <View style={historyStyles.left}>
-          <Text style={historyStyles.store}>{order.storeName}</Text>
-          <Text style={historyStyles.date}>
-            {formatDate(order.createdAt)} · {formatTime(order.createdAt)}
-          </Text>
-        </View>
-        <View style={historyStyles.right}>
-          <Text style={historyStyles.amount}>{formatJMD(order.totalAmount)}</Text>
-          <View style={[historyStyles.badge, { backgroundColor: cfg.color + '15' }]}>
-            <Text style={[historyStyles.badgeText, { color: cfg.color }]}>{cfg.label}</Text>
-          </View>
-        </View>
+      <View style={hist.icon}>
+        <Text style={[hist.iconText, !isDelivered && { color: T.color.danger }]}>
+          {isDelivered ? '✓' : '×'}
+        </Text>
       </View>
-
-      {expanded && (
-        <View style={historyStyles.expanded}>
-          <View style={historyStyles.divider} />
-          <Text style={historyStyles.sectionTitle}>Items</Text>
-          {order.items.map((item, i) => (
-            <View key={i} style={historyStyles.itemRow}>
-              <Text style={historyStyles.itemName}>
-                {item.quantity}× {item.menuItem.name}
-              </Text>
-              <Text style={historyStyles.itemPrice}>
-                {formatJMD(item.menuItem.price * item.quantity)}
-              </Text>
-            </View>
-          ))}
-          <View style={historyStyles.divider} />
-          <View style={historyStyles.detailRow}>
-            <Text style={historyStyles.detailLabel}>Delivery Address</Text>
-            <Text style={historyStyles.detailText}>{order.deliveryAddress.label}</Text>
-          </View>
-          {order.dasherName && (
-            <View style={historyStyles.detailRow}>
-              <Text style={historyStyles.detailLabel}>Delivered By</Text>
-              <Text style={historyStyles.detailText}>{order.dasherName}</Text>
-            </View>
-          )}
-          {order.deliveredAt && (
-            <View style={historyStyles.detailRow}>
-              <Text style={historyStyles.detailLabel}>Delivered At</Text>
-              <Text style={historyStyles.detailText}>{formatTime(order.deliveredAt)}</Text>
-            </View>
-          )}
+      <View style={hist.content}>
+        <View style={hist.top}>
+          <Text style={hist.store} numberOfLines={1}>{order.storeName}</Text>
+          <Text style={hist.amount}>{formatJMD(order.totalAmount)}</Text>
         </View>
-      )}
-
-      <Text style={historyStyles.chevron}>{expanded ? '▲' : '▼'}</Text>
-    </TouchableOpacity>
+        <View style={hist.meta}>
+          <Text style={hist.date}>{formatDate(order.createdAt)}</Text>
+          <View style={hist.metaDot} />
+          <Text style={hist.time}>{formatTime(order.createdAt)}</Text>
+          <View style={hist.metaDot} />
+          <View style={[hist.statusChip, { backgroundColor: cfg.color + '18' }]}>
+            <Text style={[hist.statusText, { color: cfg.color }]}>{cfg.label}</Text>
+          </View>
+        </View>
+        <Text style={hist.items} numberOfLines={1}>
+          {order.items.length} {order.items.length === 1 ? 'item' : 'items'} · {order.items.map(i => i.menuItem.name).join(', ')}
+        </Text>
+      </View>
+    </Pressable>
   );
-}
+};
 
-const historyStyles = StyleSheet.create({
+const hist = StyleSheet.create({
   card: {
-    backgroundColor: '#FFFFFF',
-    marginHorizontal: SPACING.lg,
-    marginBottom: SPACING.sm,
-    borderRadius: 20,
-    padding: SPACING.md,
-    borderWidth: 1,
-    borderColor: 'rgba(0, 180, 216, 0.1)',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 4,
-    elevation: 2,
+    flexDirection: 'row', alignItems: 'flex-start', gap: T.space.md,
+    backgroundColor: T.color.card,
+    marginHorizontal: T.space.lg,
+    marginBottom: T.space.sm,
+    borderRadius: T.radius.lg,
+    padding: T.space.md,
+    borderWidth: 1, borderColor: T.color.line,
   },
-  row: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+  icon: {
+    width: 40, height: 40, borderRadius: 12,
+    backgroundColor: T.color.tealTint,
+    justifyContent: 'center', alignItems: 'center',
   },
-  left: {
-    flex: 1,
-  },
-  right: {
-    alignItems: 'flex-end',
-  },
-  store: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#023E8A',
-    marginBottom: 4,
-  },
-  date: {
-    fontSize: 11,
-    color: '#94A3B8',
-  },
-  amount: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#00B4D8',
-    marginBottom: 6,
-  },
-  badge: {
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 12,
-  },
-  badgeText: {
-    fontSize: 10,
-    fontWeight: '600',
-  },
-  expanded: {
-    marginTop: SPACING.md,
-  },
-  divider: {
-    height: 1,
-    backgroundColor: '#F1F5F9',
-    marginVertical: SPACING.sm,
-  },
-  sectionTitle: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: '#94A3B8',
-    marginBottom: 8,
-    letterSpacing: 0.5,
-  },
-  itemRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingVertical: 4,
-  },
-  itemName: {
-    fontSize: 12,
-    color: '#64748B',
-    flex: 1,
-  },
-  itemPrice: {
-    fontSize: 12,
-    color: '#023E8A',
-    fontWeight: '600',
-  },
-  detailRow: {
-    marginBottom: 8,
-  },
-  detailLabel: {
-    fontSize: 10,
-    fontWeight: '600',
-    color: '#94A3B8',
-    marginBottom: 2,
-  },
-  detailText: {
-    fontSize: 12,
-    color: '#023E8A',
-  },
-  chevron: {
-    textAlign: 'center',
-    color: '#CBD5E1',
-    fontSize: 10,
-    marginTop: SPACING.sm,
-  },
+  iconText: { fontSize: 18, fontWeight: '900', color: T.color.teal },
+  content: { flex: 1, gap: 4 },
+  top: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' },
+  store: { flex: 1, ...T.type.body, fontSize: 14, fontWeight: '800', color: T.color.ink, marginRight: T.space.sm },
+  amount: { ...T.type.body, fontSize: 15, fontWeight: '900', color: T.color.cerulean },
+  meta: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 },
+  date: { fontSize: 11, color: T.color.inkSoft, fontWeight: '700' },
+  time: { fontSize: 11, color: T.color.inkFaint, fontWeight: '600' },
+  metaDot: { width: 2, height: 2, borderRadius: 1, backgroundColor: T.color.lineStrong },
+  statusChip: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: T.radius.pill },
+  statusText: { fontSize: 9, fontWeight: '800', letterSpacing: 0.4, textTransform: 'uppercase' },
+  items: { ...T.type.body, fontSize: 12, color: T.color.inkFaint, marginTop: 2 },
 });
 
-// Main Screen
+// ─── MAIN ────────────────────────────────────────────────────────────
 export default function StudentOrders() {
   const { user } = useAuth();
   const insets = useSafeAreaInsets();
+  const reduced = useReducedMotion();
+
   const [activeOrder, setActiveOrder] = useState<Order | null>(null);
   const [pastOrders, setPastOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
@@ -553,8 +425,11 @@ export default function StudentOrders() {
       where('status', 'in', ['pending', 'accepted', 'picking_up', 'on_the_way'])
     );
     return onSnapshot(q, snap => {
-      const docs = snap.docs.map(d => ({ id: d.id, ...d.data() } as Order));
-      setActiveOrder(docs.length > 0 ? docs[0] : null);
+      if (!snap.empty) {
+        setActiveOrder({ id: snap.docs[0].id, ...snap.docs[0].data() } as Order);
+      } else {
+        setActiveOrder(null);
+      }
     });
   }, [user]);
 
@@ -589,7 +464,6 @@ export default function StudentOrders() {
                 cancelledAt: Date.now(),
               });
             } catch (e) {
-              //Rules denied it - a dasher accepted in the same instant
               Alert.alert(
                 'Too Late to Cancel',
                 'A dasher just accepted your order and is on the way. Sit tight!'
@@ -607,229 +481,156 @@ export default function StudentOrders() {
     .reduce((sum, o) => sum + o.totalAmount, 0);
 
   return (
-    <SafeAreaView style={styles.safe}>
-      <View style={styles.waveDecoration} pointerEvents="none">
-        <View style={styles.waveCircle1} />
-        <View style={styles.waveCircle2} />
-        <View style={styles.waveCircle3} />
+    <View style={styles.root}>
+      <View style={styles.canvas} pointerEvents="none">
+        <View style={styles.blobTeal} />
+        <View style={styles.blobCerulean} />
       </View>
 
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: insets.top + T.space.md }]}>
+        <Text style={styles.eyebrow}>Your activity</Text>
         <Text style={styles.title}>Orders</Text>
       </View>
 
       {loading ? (
-        <View style={styles.loadingBox}>
-          <ActivityIndicator size="large" color="#00B4D8" />
+        <View style={styles.loading}>
+          <ActivityIndicator size="large" color={T.color.cerulean} />
         </View>
       ) : (
         <FlatList
           data={pastOrders}
           keyExtractor={item => item.id}
-          contentContainerStyle={{ paddingBottom: 40 + insets.bottom }}
+          contentContainerStyle={{ paddingBottom: 120 + insets.bottom }}
           showsVerticalScrollIndicator={false}
           ListHeaderComponent={
             <>
-              <View style={styles.statsRow}>
+              {/* Stats */}
+              <View style={styles.stats}>
                 <View style={styles.statCard}>
                   <Text style={styles.statValue}>{deliveredCount}</Text>
                   <Text style={styles.statLabel}>Delivered</Text>
                 </View>
                 <View style={styles.statCard}>
-                  <Text style={styles.statValue}>{formatCurrency(totalSpent)}</Text>
-                  <Text style={styles.statLabel}>Total Spent</Text>
+                  <View style={styles.statHollow}>
+                    <Text style={styles.statValueHollow} numberOfLines={1} adjustsFontSizeToFit>{formatJMDCompact(totalSpent)}</Text>
+                  </View>
+                  <Text style={styles.statLabel}>Total spent</Text>
                 </View>
                 <View style={styles.statCard}>
-                  <Text style={styles.statValue}>{activeOrder ? 1 : 0}</Text>
+                  <Text style={[styles.statValue, activeOrder && { color: T.color.teal }]}>
+                    {activeOrder ? 1 : 0}
+                  </Text>
                   <Text style={styles.statLabel}>Active</Text>
                 </View>
               </View>
 
               {activeOrder ? (
-                <ActiveOrderCard order={activeOrder} onCancel={handleCancel} />
+                <ActiveOrderCard order={activeOrder} onCancel={handleCancel} reduced={reduced} />
               ) : (
                 <View style={styles.noActiveCard}>
-                  <View style={styles.noActiveIcon} />
-                  <Text style={styles.noActiveTitle}>No Active Order</Text>
-                  <Text style={styles.noActiveSub}>Browse stores to place a new order</Text>
+                  <View style={styles.noActiveTile}><View style={styles.noActiveInner} /></View>
+                  <Text style={styles.noActiveTitle}>No active order</Text>
+                  <Text style={styles.noActiveSub}>Head to Home to place a new one.</Text>
                 </View>
               )}
 
               {pastOrders.length > 0 && (
-                <Text style={styles.historyLabel}>Past Orders</Text>
+                <Text style={styles.historyLabel}>Past orders</Text>
               )}
             </>
           }
           ListEmptyComponent={
             !activeOrder ? (
-              <View style={styles.emptyState}>
-                <View style={styles.emptyIcon} />
+              <View style={styles.empty}>
                 <Text style={styles.emptyTitle}>No orders yet</Text>
-                <Text style={styles.emptySub}>Your order history will appear here</Text>
+                <Text style={styles.emptySub}>Your order history will appear here.</Text>
               </View>
             ) : null
           }
-          renderItem={({ item }) => <HistoryOrderCard order={item} />}
+          renderItem={({ item }) => <HistoryCard order={item} />}
         />
       )}
-    </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: {
-    flex: 1,
-    backgroundColor: '#F0F9FF', // Soft cerulean tint
+  root: { flex: 1, backgroundColor: T.color.cream },
+
+  canvas: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, overflow: 'hidden', zIndex: -1 },
+  blobTeal: {
+    position: 'absolute', width: 260, height: 260, borderRadius: 130,
+    backgroundColor: T.color.teal, opacity: 0.06,
+    top: -80, right: -80,
   },
-  waveDecoration: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    overflow: 'hidden',
-    zIndex: -1,
+  blobCerulean: {
+    position: 'absolute', width: 240, height: 240, borderRadius: 120,
+    backgroundColor: T.color.cerulean, opacity: 0.05,
+    top: 260, left: -100,
   },
-  waveCircle1: {
-    position: 'absolute',
-    width: 260,
-    height: 260,
-    borderRadius: 130,
-    backgroundColor: '#00B4D8',
-    top: -80,
-    right: -60,
-    opacity: 0.08,
-  },
-  waveCircle2: {
-    position: 'absolute',
-    width: 200,
-    height: 200,
-    borderRadius: 100,
-    backgroundColor: '#FFD166',
-    bottom: 50,
-    left: -80,
-    opacity: 0.06,
-  },
-  waveCircle3: {
-    position: 'absolute',
-    width: 150,
-    height: 150,
-    borderRadius: 75,
-    backgroundColor: '#0096C7',
-    top: '30%',
-    right: -50,
-    opacity: 0.05,
-  },
+
   header: {
-    paddingHorizontal: SPACING.lg,
-    paddingTop: SPACING.md,
-    paddingBottom: SPACING.md,
+    paddingHorizontal: T.space.lg,
+    paddingBottom: T.space.md,
   },
-  title: {
-    fontSize: 28,
-    fontWeight: '700',
-    color: '#023E8A',
-    letterSpacing: -0.5,
-  },
-  loadingBox: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  statsRow: {
-    flexDirection: 'row',
-    paddingHorizontal: SPACING.lg,
-    gap: 12,
-    marginBottom: SPACING.lg,
+  eyebrow: { ...T.type.label, color: T.color.teal, marginBottom: 4 },
+  title: { ...T.type.display, color: T.color.ink },
+
+  loading: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+
+  // Stats
+  stats: {
+    flexDirection: 'row', gap: T.space.sm,
+    paddingHorizontal: T.space.lg,
+    marginBottom: T.space.md,
   },
   statCard: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: SPACING.md,
+    backgroundColor: T.color.card,
+    borderRadius: T.radius.lg,
+    padding: T.space.md,
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(0, 180, 216, 0.15)',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 4,
-    elevation: 2,
+    borderWidth: 1, borderColor: T.color.line,
+    gap: 6,
   },
-  statValue: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: '#00B4D8',
-  },
-  statLabel: {
-    fontSize: 10,
-    fontWeight: '600',
-    color: '#94A3B8',
-    marginTop: 4,
-    letterSpacing: 0.5,
-  },
+  statValue: { fontSize: 20, fontWeight: '900', color: T.color.cerulean, letterSpacing: -0.4 },
+  statHollow: {},
+  statValueHollow: { fontSize: 15, fontWeight: '900', color: T.color.cerulean, letterSpacing: -0.3 },
+  statLabel: { ...T.type.label, fontSize: 10, color: T.color.inkFaint },
+
+  // No active
   noActiveCard: {
-    backgroundColor: '#FFFFFF',
-    marginHorizontal: SPACING.lg,
-    marginBottom: SPACING.lg,
-    borderRadius: 20,
-    padding: SPACING.xl,
+    backgroundColor: T.color.card,
+    marginHorizontal: T.space.lg,
+    marginBottom: T.space.lg,
+    borderRadius: T.radius.xl,
+    padding: T.space.xl,
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(0, 180, 216, 0.15)',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 4,
-    elevation: 2,
+    borderWidth: 1, borderColor: T.color.line,
+    gap: T.space.sm,
   },
-  noActiveIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: 'rgba(0, 180, 216, 0.1)',
-    marginBottom: SPACING.md,
+  noActiveTile: {
+    width: 56, height: 56, borderRadius: 18,
+    backgroundColor: T.color.ceruleanTint,
+    justifyContent: 'center', alignItems: 'center',
+    marginBottom: T.space.sm,
   },
-  noActiveTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#023E8A',
-    marginBottom: 4,
-  },
-  noActiveSub: {
-    fontSize: 13,
-    color: '#64748B',
-    textAlign: 'center',
-  },
+  noActiveInner: { width: 20, height: 20, borderRadius: 6, backgroundColor: T.color.cerulean, opacity: 0.4 },
+  noActiveTitle: { ...T.type.title, fontSize: 18, color: T.color.ink },
+  noActiveSub: { ...T.type.body, fontSize: 13, color: T.color.inkSoft, textAlign: 'center' },
+
   historyLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#94A3B8',
-    letterSpacing: 1,
-    textTransform: 'uppercase',
-    paddingHorizontal: SPACING.lg,
-    paddingTop: SPACING.md,
-    paddingBottom: SPACING.sm,
+    ...T.type.label,
+    color: T.color.teal,
+    paddingHorizontal: T.space.lg,
+    paddingTop: T.space.md,
+    paddingBottom: T.space.sm,
   },
-  emptyState: {
-    alignItems: 'center',
-    paddingTop: 60,
+
+  empty: {
+    alignItems: 'center', paddingTop: 40,
+    paddingHorizontal: T.space.xl, gap: T.space.sm,
   },
-  emptyIcon: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: 'rgba(0, 180, 216, 0.08)',
-    marginBottom: SPACING.md,
-  },
-  emptyTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#023E8A',
-    marginBottom: 4,
-  },
-  emptySub: {
-    fontSize: 13,
-    color: '#94A3B8',
-  },
+  emptyTitle: { ...T.type.title, fontSize: 18, color: T.color.ink },
+  emptySub: { ...T.type.body, fontSize: 13, color: T.color.inkSoft, textAlign: 'center' },
 });

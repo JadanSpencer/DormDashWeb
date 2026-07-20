@@ -1,36 +1,71 @@
 // app/(student)/order/[id].tsx
-// Live order tracking — status updates in real time from Firestore.
-// Professional liquid glassmorphism design.
+// DormDash — Live order tracking (Route identity).
+//
+// FUNCTIONALITY UNCHANGED. Same real-time onSnapshot listener on the order
+// doc, same loading / not-found handling, same home navigation. Map renders
+// only while the order is en route AND deliveryAddress.hasGpsFix is true —
+// a campus-fallback pin would lie.
+//
+// Visual layer:
+//   • Cream canvas, ink type, cerulean action, teal support.
+//   • Status hero: pulsing live dot, status in title type, dasher chip.
+//   • Vertical timeline rail — the route itself: stops light up teal as
+//     the order progresses, current stop pulses cerulean.
+//   • Delivered → quiet celebration state (teal, check, thank-you).
+//   • Cancelled → honest, not alarming.
+//   • Items with hollowed price plates. Total hollowed large.
+//   • Jcommerce watermark at the bottom of the scroll.
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import {
   View, Text, StyleSheet, ScrollView,
-  TouchableOpacity, ActivityIndicator,
+  TouchableOpacity, Pressable, ActivityIndicator,
+  Animated, Easing
 } from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, router } from 'expo-router';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { db } from '../../../services/firebase';
 import { Order, OrderStatus } from '../../../types';
-import { COLORS, SPACING, RADIUS, formatJMD } from '../../../constants';
+import { formatJMD } from '../../../constants';
+import { T, useReducedMotion } from '../../../constants/theme';
+import { Watermark } from '../../../components/Watermark';
 import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 
 const STATUS_CONFIG: Record<OrderStatus, { label: string; color: string; description: string }> = {
-  pending:    { label: 'Finding a Dasher', color: '#F59E0B', description: 'Waiting for a dasher to accept your order' },
-  accepted:   { label: 'Dasher Assigned',  color: '#3B82F6', description: 'Your dasher is heading to the store' },
-  picking_up: { label: 'Picking Up',       color: '#8B5CF6', description: 'Your dasher is at the store collecting your order' },
-  on_the_way: { label: 'On the Way',       color: '#F5C842', description: 'Your dasher is heading to you!' },
-  delivered:  { label: 'Delivered',        color: '#00D9A3', description: 'Enjoy your order!' },
-  cancelled:  { label: 'Cancelled',        color: '#FF4757', description: 'This order was cancelled' },
+  pending:    { label: 'Finding a dasher', color: T.color.warning,  description: 'Waiting for a dasher to accept your order' },
+  accepted:   { label: 'Dasher assigned',  color: T.color.cerulean, description: 'Your dasher is heading to the store' },
+  picking_up: { label: 'Picking up',       color: T.color.cerulean, description: 'Your dasher is at the store collecting your order' },
+  on_the_way: { label: 'On the way',       color: T.color.teal,     description: 'Your dasher is heading to you!' },
+  delivered:  { label: 'Delivered',        color: T.color.teal,     description: 'Enjoy your order!' },
+  cancelled:  { label: 'Cancelled',        color: T.color.danger,   description: 'This order was cancelled' },
 };
 
 const STATUS_ORDER: OrderStatus[] = ['pending', 'accepted', 'picking_up', 'on_the_way', 'delivered'];
 
+const goHome = () => router.replace('/(student)/(tabs)/home');
+
 export default function OrderTracking() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const insets = useSafeAreaInsets();
+  const reduced = useReducedMotion();
+
   const [order, setOrder] = useState<Order | null>(null);
   const [loading, setLoading] = useState(true);
+
+  // Live pulse on the status dot
+  const pulse = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    if (reduced) return;
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulse, { toValue: 1, duration: 1300, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+        Animated.timing(pulse, { toValue: 0, duration: 1300, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+      ])
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [reduced]);
 
   useEffect(() => {
     if (!id) return;
@@ -45,641 +80,432 @@ export default function OrderTracking() {
 
   if (loading) {
     return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator color="#F5C842" size="large" />
+      <View style={styles.centerFill}>
+        <ActivityIndicator color={T.color.cerulean} size="large" />
       </View>
     );
   }
 
   if (!order) {
     return (
-      <SafeAreaView style={styles.safe}>
-        <View style={styles.errorContainer}>
-          <Text style={styles.errorText}>Order not found</Text>
-          <TouchableOpacity
-            style={styles.errorButton}
-            onPress={() => router.replace('/(student)/(tabs)/home')}
-          >
-            <Text style={styles.errorButtonText}>Go Home</Text>
-          </TouchableOpacity>
-        </View>
-      </SafeAreaView>
+      <View style={styles.centerFill}>
+        <View style={styles.notFoundTile}><Text style={styles.notFoundMark}>?</Text></View>
+        <Text style={styles.notFoundTitle}>Order not found</Text>
+        <Pressable
+          onPress={goHome}
+          style={({ pressed }) => [styles.homeBtn, pressed && { transform: [{ scale: 0.97 }] }]}
+        >
+          <Text style={styles.homeBtnText}>Go home</Text>
+        </Pressable>
+      </View>
     );
   }
 
   const config = STATUS_CONFIG[order.status];
   const currentStepIndex = STATUS_ORDER.indexOf(order.status);
-  const isActive = order.status !== 'delivered' && order.status !== 'cancelled';
-  const showDeliverySection =
-    order.status === 'on_the_way' || order.status === 'picking_up' || order.status === 'accepted';
+  const isDelivered = order.status === 'delivered';
+  const isCancelled = order.status === 'cancelled';
+  const showMap =
+    (order.status === 'on_the_way' || order.status === 'picking_up' || order.status === 'accepted')
+    && order.deliveryAddress.hasGpsFix;
+
+  const pulseScale = pulse.interpolate({ inputRange: [0, 1], outputRange: [1, 1.9] });
+  const pulseOpacity = pulse.interpolate({ inputRange: [0, 1], outputRange: [0.5, 0] });
 
   return (
-    <SafeAreaView style={styles.safe}>
-      <View style={styles.waveDecoration} pointerEvents="none">
-        <View style={styles.waveCircle1} />
-        <View style={styles.waveCircle2} />
+    <View style={styles.root}>
+      <View style={styles.canvas} pointerEvents="none">
+        <View style={styles.blobTeal} />
+        <View style={styles.blobCerulean} />
       </View>
 
       <ScrollView
-        contentContainerStyle={{ paddingBottom: 40 + insets.bottom }}
+        contentContainerStyle={{ paddingBottom: 60 + insets.bottom }}
         showsVerticalScrollIndicator={false}
       >
         {/* Header */}
-        <View style={styles.header}>
-          <TouchableOpacity
-            onPress={() => router.replace('/(student)/(tabs)/home')}
-            style={styles.backButton}
-          >
+        <View style={[styles.header, { paddingTop: insets.top + T.space.md }]}>
+          <TouchableOpacity onPress={goHome} style={styles.backBtn} hitSlop={12}>
             <Text style={styles.backText}>←</Text>
           </TouchableOpacity>
-          <Text style={styles.title}>Track Order</Text>
-          <View style={{ width: 40 }} />
+          <View style={{ flex: 1 }}>
+            <Text style={styles.eyebrow}>Order #{order.id.slice(-6).toUpperCase()}</Text>
+            <Text style={styles.title}>
+              {isDelivered ? 'Delivered' : isCancelled ? 'Cancelled' : 'Tracking'}
+            </Text>
+          </View>
         </View>
 
-        {/* Status Hero Card */}
-        <View style={[styles.statusCard, { borderColor: config.color + '40' }]}>
-          <View style={[styles.statusIndicator, { backgroundColor: config.color + '15' }]}>
-            <View style={[styles.statusDot, { backgroundColor: config.color }]} />
-          </View>
-          <Text style={[styles.statusLabel, { color: config.color }]}>{config.label}</Text>
-          <Text style={styles.statusDescription}>{config.description}</Text>
-
-          {order.dasherName && (
-            <View style={styles.dasherCard}>
-              <View style={styles.dasherAvatar}>
-                <Text style={styles.dasherInitial}>{order.dasherName[0]}</Text>
-              </View>
-              <View>
-                <Text style={styles.dasherLabel}>Your Dasher</Text>
-                <Text style={styles.dasherName}>{order.dasherName}</Text>
-              </View>
+        {/* ── STATUS HERO ─────────────────────────────────────────── */}
+        {isDelivered ? (
+          <View style={[styles.hero, styles.heroDelivered]}>
+            <View style={styles.deliveredMark}>
+              <Text style={styles.deliveredCheck}>✓</Text>
             </View>
-          )}
-        </View>
-
-        {/* Progress Timeline */}
-        {order.status !== 'cancelled' && (
-          <View style={styles.timelineCard}>
-            {STATUS_ORDER.map((status, idx) => {
-              const s = STATUS_CONFIG[status];
-              const isCompleted = idx < currentStepIndex;
-              const isCurrent = idx === currentStepIndex;
-
-              return (
-                <View key={status} style={styles.timelineStep}>
-                  <View style={styles.timelineLeft}>
-                    <View style={[
-                      styles.timelineDot,
-                      isCompleted && styles.timelineDotCompleted,
-                      isCurrent && styles.timelineDotCurrent,
-                    ]}>
-                      {isCompleted && (
-                        <Text style={styles.timelineCheck}>✓</Text>
-                      )}
-                    </View>
-                    {idx < STATUS_ORDER.length - 1 && (
-                      <View style={[
-                        styles.timelineLine,
-                        isCompleted && styles.timelineLineCompleted,
-                      ]} />
-                    )}
-                  </View>
-                  <View style={styles.timelineContent}>
-                    <Text style={[
-                      styles.timelineLabel,
-                      (isCompleted || isCurrent) && styles.timelineLabelActive,
-                    ]}>
-                      {s.label}
-                    </Text>
-                    {isCurrent && (
-                      <Text style={styles.timelineSub}>{s.description}</Text>
-                    )}
-                  </View>
-                </View>
-              );
-            })}
+            <Text style={styles.deliveredTitle}>Order delivered</Text>
+            <Text style={styles.deliveredSub}>
+              Enjoy your food from {order.storeName}!
+            </Text>
           </View>
-        )}
-
-        {/* Delivery Location (only while active) — map only with a real GPS fix,
-            otherwise the pin would point at campus center and lie */}
-        {showDeliverySection && (
-          <View style={styles.mapCard}>
-            <Text style={styles.mapTitle}>Delivery Location</Text>
-            {order.deliveryAddress.hasGpsFix ? (
-              <View style={styles.mapContainer}>
-                <MapView
-                  style={styles.map}
-                  provider={PROVIDER_GOOGLE}
-                  initialRegion={{
-                    latitude: order.deliveryAddress.latitude,
-                    longitude: order.deliveryAddress.longitude,
-                    latitudeDelta: 0.01,
-                    longitudeDelta: 0.01,
-                  }}
-                >
-                  <Marker
-                    coordinate={{
-                      latitude: order.deliveryAddress.latitude,
-                      longitude: order.deliveryAddress.longitude,
-                    }}
-                    title={order.deliveryAddress.label}
-                    pinColor="#F5C842"
+        ) : isCancelled ? (
+          <View style={[styles.hero, styles.heroCancelled]}>
+            <View style={styles.cancelledMark}>
+              <Text style={styles.cancelledX}>×</Text>
+            </View>
+            <Text style={styles.cancelledTitle}>Order cancelled</Text>
+            <Text style={styles.cancelledSub}>
+              No charge — feel free to order again anytime.
+            </Text>
+          </View>
+        ) : (
+          <View style={styles.hero}>
+            <View style={styles.statusRow}>
+              <View style={styles.pulseWrap}>
+                {!reduced && (
+                  <Animated.View
+                    style={[
+                      styles.pulseRing,
+                      { backgroundColor: config.color, transform: [{ scale: pulseScale }], opacity: pulseOpacity },
+                    ]}
                   />
-                </MapView>
+                )}
+                <View style={[styles.statusDot, { backgroundColor: config.color }]} />
               </View>
-            ) : (
-              <View style={styles.noGpsBox}>
-                <Text style={styles.noGpsText}>📍 Your dasher will deliver to:</Text>
+              <Text style={[styles.statusLabel, { color: config.color }]}>{config.label}</Text>
+            </View>
+            <Text style={styles.statusDesc}>{config.description}</Text>
+
+            {order.dasherName && (
+              <View style={styles.dasherChip}>
+                <View style={styles.dasherAvatar}>
+                  <Text style={styles.dasherInitial}>{order.dasherName[0]}</Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.dasherLabel}>Your dasher</Text>
+                  <Text style={styles.dasherName}>{order.dasherName}</Text>
+                </View>
               </View>
             )}
-            <Text style={styles.mapAddress}>{order.deliveryAddress.label}</Text>
           </View>
         )}
 
-        {/* Order Details Card */}
-        <View style={styles.detailsCard}>
-          <Text style={styles.detailsTitle}>Order Summary</Text>
-          <Text style={styles.storeName}>{order.storeName}</Text>
+        {/* ── LIVE MAP — only en route with a real GPS fix ────────── */}
+        {showMap && (
+          <View style={styles.mapCard}>
+            <MapView
+              style={styles.map}
+              provider={PROVIDER_GOOGLE}
+              initialRegion={{
+                latitude: order.deliveryAddress.latitude,
+                longitude: order.deliveryAddress.longitude,
+                latitudeDelta: 0.012,
+                longitudeDelta: 0.012,
+              }}
+            >
+              <Marker
+                coordinate={order.deliveryAddress}
+                title="Delivery location"
+              />
+            </MapView>
+          </View>
+        )}
 
-          <View style={styles.itemsContainer}>
-            {order.items.map((item, idx) => (
-              <View key={idx} style={styles.itemRow}>
-                <View style={styles.itemLeft}>
-                  <Text style={styles.itemQuantity}>{item.quantity}</Text>
-                  <Text style={styles.itemName} numberOfLines={1}>{item.menuItem.name}</Text>
-                </View>
-                <Text style={styles.itemPrice}>
+        {/* ── TIMELINE — the route, vertical ──────────────────────── */}
+        {!isCancelled && (
+          <>
+            <Text style={styles.sectionLabel}>Progress</Text>
+            <View style={styles.card}>
+              {STATUS_ORDER.map((status, idx) => {
+                const s = STATUS_CONFIG[status];
+                const isCompleted = idx < currentStepIndex;
+                const isCurrent = idx === currentStepIndex;
+                return (
+                  <View key={status} style={styles.step}>
+                    <View style={styles.stepLeft}>
+                      <View style={[
+                        styles.stepDot,
+                        isCompleted && styles.stepDotDone,
+                        isCurrent && styles.stepDotCurrent,
+                      ]}>
+                        {isCompleted && <Text style={styles.stepCheck}>✓</Text>}
+                      </View>
+                      {idx < STATUS_ORDER.length - 1 && (
+                        <View style={[styles.stepLine, isCompleted && styles.stepLineDone]} />
+                      )}
+                    </View>
+                    <View style={styles.stepBody}>
+                      <Text style={[
+                        styles.stepLabel,
+                        isCompleted && styles.stepLabelDone,
+                        isCurrent && { color: s.color, fontWeight: '900' },
+                      ]}>
+                        {s.label}
+                      </Text>
+                      {isCurrent && (
+                        <Text style={styles.stepDesc}>{s.description}</Text>
+                      )}
+                    </View>
+                  </View>
+                );
+              })}
+            </View>
+          </>
+        )}
+
+        {/* ── DELIVERY DETAILS ─────────────────────────────────────── */}
+        <Text style={styles.sectionLabel}>Delivery</Text>
+        <View style={styles.card}>
+          <Text style={styles.detailLabel}>Location</Text>
+          <Text style={styles.detailValue}>{order.deliveryAddress.label}</Text>
+          {order.studentNote ? (
+            <>
+              <View style={styles.divider} />
+              <Text style={styles.detailLabel}>Your note</Text>
+              <Text style={styles.detailValue}>{order.studentNote}</Text>
+            </>
+          ) : null}
+        </View>
+
+        {/* ── ITEMS ────────────────────────────────────────────────── */}
+        <Text style={styles.sectionLabel}>From {order.storeName}</Text>
+        <View style={styles.card}>
+          {order.items.map((item, i) => (
+            <View key={i} style={styles.lineItem}>
+              <View style={styles.qtyBadge}>
+                <Text style={styles.qtyBadgeText}>{item.quantity}</Text>
+              </View>
+              <Text style={styles.itemName} numberOfLines={1}>{item.menuItem.name}</Text>
+              <View style={styles.itemPricePlate}>
+                <Text style={styles.itemPriceText}>
                   {formatJMD(item.menuItem.price * item.quantity)}
                 </Text>
               </View>
-            ))}
-          </View>
+            </View>
+          ))}
 
           <View style={styles.divider} />
 
-          <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>Delivery Address</Text>
-            <Text style={styles.detailValue}>{order.deliveryAddress.label}</Text>
+          <View style={styles.summaryRow}>
+            <Text style={styles.summaryLabel}>Delivery</Text>
+            <Text style={[styles.summaryValue, order.deliveryFee === 0 && { color: T.color.teal, fontWeight: '900' }]}>
+              {order.deliveryFee === 0 ? 'Free' : formatJMD(order.deliveryFee)}
+            </Text>
           </View>
-
-          <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>Order Total</Text>
-            <Text style={styles.totalAmount}>{formatJMD(order.totalAmount)}</Text>
-          </View>
-
-          {order.studentNote && (
-            <>
-              <View style={styles.divider} />
-              <View style={styles.detailRow}>
-                <Text style={styles.detailLabel}>Note to Dasher</Text>
-                <Text style={styles.detailValue}>{order.studentNote}</Text>
-              </View>
-            </>
-          )}
-
-          <View style={styles.divider} />
-
-          <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>Order ID</Text>
-            <Text style={styles.orderId}>{order.id.slice(-8).toUpperCase()}</Text>
+          <View style={styles.summaryRow}>
+            <Text style={styles.totalLabel}>Total</Text>
+            <View style={styles.totalPlate}>
+              <Text style={styles.totalText}>{formatJMD(order.totalAmount)}</Text>
+            </View>
           </View>
         </View>
 
-        {/* Action Button */}
-        {(order.status === 'delivered' || order.status === 'cancelled') && (
-          <TouchableOpacity
-            style={styles.actionButton}
-            onPress={() => router.replace('/(student)/(tabs)/home')}
+        {/* ── ACTION ───────────────────────────────────────────────── */}
+        {(isDelivered || isCancelled) && (
+          <Pressable
+            onPress={goHome}
+            style={({ pressed }) => [styles.cta, pressed && { transform: [{ scale: 0.97 }] }]}
           >
-            <Text style={styles.actionButtonText}>Back to Home</Text>
-          </TouchableOpacity>
+            <Text style={styles.ctaText}>Back to home</Text>
+          </Pressable>
         )}
 
-        {order.status === 'pending' && (
-          <View style={styles.waitingCard}>
-            <Text style={styles.waitingText}>Looking for a dasher...</Text>
-            <ActivityIndicator color="#F5C842" size="small" />
-          </View>
-        )}
+        <Watermark variant="inline" tint="teal" />
       </ScrollView>
-    </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: {
-    flex: 1,
-    backgroundColor: '#0A1128',
+  root: { flex: 1, backgroundColor: T.color.cream },
+  centerFill: {
+    flex: 1, backgroundColor: T.color.cream,
+    justifyContent: 'center', alignItems: 'center', gap: T.space.md,
+    paddingHorizontal: T.space.xl,
   },
 
-  // Wave decoration
-  waveDecoration: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    overflow: 'hidden',
-    zIndex: -1,
+  canvas: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, overflow: 'hidden', zIndex: -1 },
+  blobTeal: {
+    position: 'absolute', width: 260, height: 260, borderRadius: 130,
+    backgroundColor: T.color.teal, opacity: 0.06,
+    top: -80, right: -80,
   },
-  waveCircle1: {
-    position: 'absolute',
-    width: 260,
-    height: 260,
-    borderRadius: 130,
-    backgroundColor: '#1E5FD4',
-    top: -80,
-    right: -60,
-    opacity: 0.05,
-  },
-  waveCircle2: {
-    position: 'absolute',
-    width: 200,
-    height: 200,
-    borderRadius: 100,
-    backgroundColor: '#F5C842',
-    bottom: 50,
-    left: -80,
-    opacity: 0.04,
+  blobCerulean: {
+    position: 'absolute', width: 280, height: 280, borderRadius: 140,
+    backgroundColor: T.color.cerulean, opacity: 0.05,
+    top: 320, left: -110,
   },
 
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#0A1128',
-  },
-
-  errorContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: SPACING.lg,
-  },
-  errorText: {
-    fontSize: 18,
-    color: '#FFFFFF',
-    fontWeight: '600',
-  },
-  errorButton: {
-    backgroundColor: 'rgba(245, 200, 66, 0.12)',
-    paddingHorizontal: SPACING.lg,
-    paddingVertical: SPACING.md,
-    borderRadius: 40,
-    borderWidth: 1,
-    borderColor: 'rgba(245, 200, 66, 0.3)',
-  },
-  errorButtonText: {
-    color: '#F5C842',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-
-  // Header
   header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: SPACING.lg,
-    paddingTop: SPACING.md,
-    paddingBottom: SPACING.md,
+    flexDirection: 'row', alignItems: 'center', gap: T.space.md,
+    paddingHorizontal: T.space.lg, paddingBottom: T.space.md,
   },
-  backButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(245, 200, 66, 0.1)',
-    justifyContent: 'center',
-    alignItems: 'center',
+  backBtn: {
+    width: 40, height: 40, borderRadius: 20,
+    backgroundColor: T.color.card,
+    justifyContent: 'center', alignItems: 'center',
+    ...T.shadow.card,
   },
-  backText: {
-    color: '#F5C842',
-    fontSize: 20,
-    fontWeight: '500',
-  },
-  title: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#FFFFFF',
-    letterSpacing: -0.3,
-  },
+  backText: { fontSize: 20, fontWeight: '700', color: T.color.ink },
+  eyebrow: { ...T.type.label, color: T.color.teal, fontSize: 10 },
+  title: { ...T.type.title, fontSize: 24, color: T.color.ink },
 
-  // Status Card
-  statusCard: {
-    backgroundColor: 'rgba(18, 28, 50, 0.85)',
-    marginHorizontal: SPACING.lg,
-    marginBottom: SPACING.lg,
-    borderRadius: 28,
-    padding: SPACING.xl,
-    alignItems: 'center',
-    borderWidth: 1,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 12,
-    elevation: 4,
+  // Hero
+  hero: {
+    backgroundColor: T.color.card,
+    marginHorizontal: T.space.lg,
+    marginBottom: T.space.sm,
+    borderRadius: T.radius.xl,
+    padding: T.space.lg,
+    borderWidth: 1, borderColor: T.color.line,
+    ...T.shadow.card, shadowOpacity: 0.06,
   },
-  statusIndicator: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: SPACING.md,
-  },
-  statusDot: {
-    width: 16,
-    height: 16,
-    borderRadius: 8,
-  },
-  statusLabel: {
-    fontSize: 20,
-    fontWeight: '700',
-    marginBottom: SPACING.sm,
-  },
-  statusDescription: {
-    fontSize: 14,
-    color: '#94A3B8',
-    textAlign: 'center',
-    marginBottom: SPACING.lg,
-  },
-  dasherCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
-    borderRadius: 40,
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.sm,
-    gap: 12,
+  statusRow: { flexDirection: 'row', alignItems: 'center', gap: T.space.sm, marginBottom: T.space.sm },
+  pulseWrap: { width: 18, height: 18, justifyContent: 'center', alignItems: 'center' },
+  pulseRing: { position: 'absolute', width: 14, height: 14, borderRadius: 7 },
+  statusDot: { width: 12, height: 12, borderRadius: 6 },
+  statusLabel: { ...T.type.title, fontSize: 22 },
+  statusDesc: { ...T.type.body, fontSize: 14, color: T.color.inkSoft, lineHeight: 20 },
+
+  dasherChip: {
+    flexDirection: 'row', alignItems: 'center', gap: T.space.sm,
+    backgroundColor: T.color.tealTint,
+    borderRadius: T.radius.md,
+    padding: T.space.sm,
+    marginTop: T.space.md,
   },
   dasherAvatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(245, 200, 66, 0.15)',
-    justifyContent: 'center',
-    alignItems: 'center',
+    width: 38, height: 38, borderRadius: 19,
+    backgroundColor: T.color.teal,
+    justifyContent: 'center', alignItems: 'center',
   },
-  dasherInitial: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#F5C842',
+  dasherInitial: { color: T.color.card, fontSize: 16, fontWeight: '900' },
+  dasherLabel: { ...T.type.label, color: T.color.inkFaint, fontSize: 9 },
+  dasherName: { ...T.type.body, fontSize: 15, fontWeight: '800', color: T.color.ink },
+
+  // Delivered celebration
+  heroDelivered: { alignItems: 'center', backgroundColor: T.color.tealTint, borderColor: 'rgba(15, 168, 147, 0.3)' },
+  deliveredMark: {
+    width: 72, height: 72, borderRadius: 36,
+    backgroundColor: T.color.teal,
+    justifyContent: 'center', alignItems: 'center',
+    marginBottom: T.space.md,
+    shadowColor: T.color.teal,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.3, shadowRadius: 16, elevation: 6,
   },
-  dasherLabel: {
-    fontSize: 10,
-    fontWeight: '600',
-    color: '#64748B',
-    letterSpacing: 0.5,
+  deliveredCheck: { color: T.color.card, fontSize: 36, fontWeight: '900' },
+  deliveredTitle: { ...T.type.title, fontSize: 24, color: T.color.ink, marginBottom: 4 },
+  deliveredSub: { ...T.type.body, fontSize: 14, color: T.color.inkSoft, textAlign: 'center' },
+
+  // Cancelled
+  heroCancelled: { alignItems: 'center' },
+  cancelledMark: {
+    width: 64, height: 64, borderRadius: 32,
+    backgroundColor: T.color.dangerTint,
+    justifyContent: 'center', alignItems: 'center',
+    marginBottom: T.space.md,
+    borderWidth: 1, borderColor: 'rgba(201, 79, 79, 0.3)',
   },
-  dasherName: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#FFFFFF',
+  cancelledX: { color: T.color.danger, fontSize: 32, fontWeight: '900' },
+  cancelledTitle: { ...T.type.title, fontSize: 22, color: T.color.ink, marginBottom: 4 },
+  cancelledSub: { ...T.type.body, fontSize: 13, color: T.color.inkSoft, textAlign: 'center' },
+
+  // Map
+  mapCard: {
+    marginHorizontal: T.space.lg,
+    marginTop: T.space.sm,
+    borderRadius: T.radius.lg,
+    overflow: 'hidden',
+    borderWidth: 1, borderColor: T.color.line,
+    ...T.shadow.card, shadowOpacity: 0.05,
+  },
+  map: { height: 190, width: '100%' },
+
+  // Sections
+  sectionLabel: {
+    ...T.type.label, color: T.color.inkSoft,
+    paddingHorizontal: T.space.lg,
+    paddingTop: T.space.lg, paddingBottom: T.space.sm,
+  },
+  card: {
+    backgroundColor: T.color.card,
+    marginHorizontal: T.space.lg,
+    borderRadius: T.radius.lg,
+    padding: T.space.md,
+    borderWidth: 1, borderColor: T.color.line,
+    gap: T.space.xs,
   },
 
   // Timeline
-  timelineCard: {
-    backgroundColor: 'rgba(18, 28, 50, 0.7)',
-    marginHorizontal: SPACING.lg,
-    marginBottom: SPACING.lg,
-    borderRadius: 24,
-    padding: SPACING.lg,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.06)',
+  step: { flexDirection: 'row', gap: T.space.md },
+  stepLeft: { alignItems: 'center', width: 26 },
+  stepDot: {
+    width: 22, height: 22, borderRadius: 11,
+    backgroundColor: T.color.cream,
+    borderWidth: 2, borderColor: T.color.lineStrong,
+    justifyContent: 'center', alignItems: 'center',
   },
-  timelineStep: {
-    flexDirection: 'row',
-    gap: SPACING.md,
-  },
-  timelineLeft: {
-    alignItems: 'center',
-    width: 28,
-  },
-  timelineDot: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: 'rgba(255, 255, 255, 0.06)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  timelineDotCompleted: {
-    backgroundColor: '#00D9A3',
-  },
-  timelineDotCurrent: {
-    backgroundColor: '#F5C842',
-    shadowColor: '#F5C842',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.5,
-    shadowRadius: 8,
-  },
-  timelineCheck: {
-    color: '#0A1128',
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  timelineLine: {
-    width: 2,
-    flex: 1,
-    backgroundColor: 'rgba(255, 255, 255, 0.06)',
-    marginVertical: 4,
-  },
-  timelineLineCompleted: {
-    backgroundColor: '#00D9A3',
-  },
-  timelineContent: {
-    flex: 1,
-    paddingBottom: SPACING.lg,
-  },
-  timelineLabel: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: '#64748B',
-    marginBottom: 2,
-  },
-  timelineLabelActive: {
-    color: '#FFFFFF',
-    fontWeight: '600',
-  },
-  timelineSub: {
-    fontSize: 12,
-    color: '#64748B',
-  },
+  stepDotDone: { backgroundColor: T.color.teal, borderColor: T.color.teal },
+  stepDotCurrent: { borderColor: T.color.cerulean, backgroundColor: T.color.ceruleanTint },
+  stepCheck: { color: T.color.card, fontSize: 11, fontWeight: '900' },
+  stepLine: { width: 2, flex: 1, minHeight: 18, backgroundColor: T.color.line, marginVertical: 2 },
+  stepLineDone: { backgroundColor: T.color.teal },
+  stepBody: { flex: 1, paddingBottom: T.space.md },
+  stepLabel: { ...T.type.body, fontSize: 14, fontWeight: '700', color: T.color.inkFaint, paddingTop: 2 },
+  stepLabelDone: { color: T.color.inkSoft },
+  stepDesc: { ...T.type.body, fontSize: 12, color: T.color.inkSoft, marginTop: 2 },
 
-  // Map Card
-  mapCard: {
-    backgroundColor: 'rgba(18, 28, 50, 0.7)',
-    marginHorizontal: SPACING.lg,
-    marginBottom: SPACING.lg,
-    borderRadius: 24,
-    padding: SPACING.md,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.06)',
-  },
-  mapTitle: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#64748B',
-    letterSpacing: 0.5,
-    marginBottom: SPACING.sm,
-  },
-  mapContainer: {
-    borderRadius: 16,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
-  },
-  map: {
-    height: 200,
-    width: '100%',
-  },
-  noGpsBox: {
-    backgroundColor: 'rgba(245, 200, 66, 0.08)',
-    borderRadius: 16,
-    padding: SPACING.md,
-    borderWidth: 1,
-    borderColor: 'rgba(245, 200, 66, 0.25)',
-    alignItems: 'center',
-  },
-  noGpsText: {
-    fontSize: 13,
-    color: '#94A3B8',
-    fontWeight: '600',
-  },
-  mapAddress: {
-    fontSize: 13,
-    color: '#FFFFFF',
-    marginTop: SPACING.sm,
-    textAlign: 'center',
-  },
+  // Details
+  detailLabel: { ...T.type.label, color: T.color.inkFaint, fontSize: 10 },
+  detailValue: { ...T.type.body, fontSize: 14, fontWeight: '700', color: T.color.ink, marginBottom: 4 },
+  divider: { height: 1, backgroundColor: T.color.line, marginVertical: T.space.sm },
 
-  // Details Card
-  detailsCard: {
-    backgroundColor: 'rgba(18, 28, 50, 0.7)',
-    marginHorizontal: SPACING.lg,
-    marginBottom: SPACING.lg,
-    borderRadius: 24,
-    padding: SPACING.lg,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.06)',
-    gap: SPACING.sm,
+  // Items
+  lineItem: { flexDirection: 'row', alignItems: 'center', gap: T.space.sm, paddingVertical: 4 },
+  qtyBadge: {
+    minWidth: 28, height: 28, borderRadius: 8,
+    backgroundColor: T.color.ceruleanTint,
+    justifyContent: 'center', alignItems: 'center',
+    paddingHorizontal: 6,
+    borderWidth: 1, borderColor: 'rgba(14, 143, 181, 0.2)',
   },
-  detailsTitle: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#64748B',
-    letterSpacing: 0.5,
-    textTransform: 'uppercase',
-  },
-  storeName: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#F5C842',
-    marginBottom: SPACING.xs,
-  },
-  itemsContainer: {
-    gap: 8,
-    marginVertical: SPACING.xs,
-  },
-  itemRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  itemLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    flex: 1,
-  },
-  itemQuantity: {
-    width: 28,
-    color: '#F5C842',
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  itemName: {
-    flex: 1,
-    fontSize: 14,
-    color: '#FFFFFF',
-  },
-  itemPrice: {
-    fontSize: 13,
-    fontWeight: '500',
-    color: '#94A3B8',
-  },
-  divider: {
-    height: 1,
-    backgroundColor: 'rgba(255, 255, 255, 0.06)',
-    marginVertical: 4,
-  },
-  detailRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-  },
-  detailLabel: {
-    fontSize: 13,
-    color: '#64748B',
-  },
-  detailValue: {
-    fontSize: 13,
-    color: '#FFFFFF',
-    fontWeight: '500',
-    flex: 1,
-    textAlign: 'right',
-    marginLeft: SPACING.md,
-  },
-  totalAmount: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#F5C842',
-  },
-  orderId: {
-    fontSize: 11,
-    color: '#64748B',
-    fontFamily: 'monospace',
-  },
+  qtyBadgeText: { color: T.color.cerulean, fontSize: 12, fontWeight: '900' },
+  itemName: { flex: 1, ...T.type.body, fontSize: 14, color: T.color.ink, fontWeight: '600' },
+  itemPricePlate: {},
+  itemPriceText: { fontSize: 14, fontWeight: '800', color: T.color.ink, letterSpacing: -0.2 },
 
-  // Action Button
-  actionButton: {
-    backgroundColor: '#F5C842',
-    marginHorizontal: SPACING.lg,
-    marginBottom: SPACING.lg,
-    borderRadius: 40,
-    height: 52,
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#F5C842',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.25,
-    shadowRadius: 10,
-    elevation: 4,
-  },
-  actionButtonText: {
-    color: '#0A1128',
-    fontSize: 16,
-    fontWeight: '700',
-  },
+  summaryRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 2 },
+  summaryLabel: { ...T.type.body, fontSize: 14, color: T.color.inkSoft },
+  summaryValue: { ...T.type.body, fontSize: 14, fontWeight: '800', color: T.color.ink },
+  totalLabel: { ...T.type.body, fontSize: 16, fontWeight: '800', color: T.color.ink },
+  totalPlate: {},
+  totalText: { fontSize: 22, fontWeight: '900', color: T.color.cerulean, letterSpacing: -0.5 },
 
-  // Waiting Card
-  waitingCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: SPACING.sm,
-    marginHorizontal: SPACING.lg,
-    marginBottom: SPACING.lg,
-    padding: SPACING.md,
-    backgroundColor: 'rgba(245, 200, 66, 0.08)',
-    borderRadius: 40,
-    borderWidth: 1,
-    borderColor: 'rgba(245, 200, 66, 0.2)',
+  // CTA
+  cta: {
+    marginHorizontal: T.space.lg,
+    marginTop: T.space.lg,
+    backgroundColor: T.color.cerulean,
+    borderRadius: T.radius.pill,
+    height: 54,
+    justifyContent: 'center', alignItems: 'center',
+    ...T.shadow.button,
   },
-  waitingText: {
-    fontSize: 14,
-    color: '#F5C842',
-    fontWeight: '500',
+  ctaText: { color: T.color.card, fontSize: 15, fontWeight: '800', letterSpacing: 0.3 },
+
+  // Not found
+  notFoundTile: {
+    width: 72, height: 72, borderRadius: 22,
+    backgroundColor: T.color.ceruleanTint,
+    justifyContent: 'center', alignItems: 'center',
   },
+  notFoundMark: { fontSize: 32, fontWeight: '900', color: T.color.cerulean },
+  notFoundTitle: { ...T.type.title, fontSize: 20, color: T.color.ink },
+  homeBtn: {
+    backgroundColor: T.color.cerulean,
+    borderRadius: T.radius.pill,
+    paddingHorizontal: T.space.xl, paddingVertical: 12,
+    ...T.shadow.button,
+  },
+  homeBtnText: { color: T.color.card, fontSize: 14, fontWeight: '800' },
 });

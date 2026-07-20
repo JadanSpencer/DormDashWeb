@@ -1,14 +1,27 @@
 // app/(dasher)/home.tsx
-// Dasher dashboard with professional liquid glassmorphism design.
-// Clean, university-friendly aesthetics with navy/gold palette.
+// DormDash — Dasher work surface (inverted Route identity).
+//
+// FUNCTIONALITY UNCHANGED: location tracking with lastSeenAt heartbeat,
+// online toggle, pending-orders listener, active-order listener, race-safe
+// accept (try/catch on rules denial), status walk with deliveredAt,
+// map gated by hasGpsFix.
+//
+// Designed around what a working dasher needs at a glance:
+//   1. AM I ONLINE — the toggle is the hero, impossible to miss.
+//   2. WHAT AM I EARNING TODAY — Today strip: earnings + deliveries,
+//     computed live from this dasher's delivered orders.
+//   3. WHAT'S MY CURRENT JOB — active order card: store → customer,
+//     address big, payout visible, one giant status button.
+//   4. WHAT'S AVAILABLE — queue sorted oldest-first, each card leads
+//     with the PAYOUT (delivery fee) — that's what a dasher scans for —
+//     then store, drop-off, item count, age.
 
 import React, { useEffect, useState, useRef } from 'react';
 import {
-  View, Text, StyleSheet, FlatList, TouchableOpacity,
-  Switch, Alert, ActivityIndicator,
+  View, Text, StyleSheet, FlatList, Pressable,
+  Switch, Alert, ActivityIndicator, Animated, Easing
 } from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { router } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   collection, query, where, onSnapshot,
   updateDoc, doc, orderBy,
@@ -16,9 +29,9 @@ import {
 import * as Location from 'expo-location';
 import { db } from '../../services/firebase';
 import { useAuth } from '../../hooks/useAuth';
-import { logoutUser } from '../../services/auth';
 import { Order, OrderStatus } from '../../types';
-import { COLORS, SPACING, RADIUS, LOCATION_UPDATE_INTERVAL_MS, formatJMD } from '../../constants';
+import { formatJMD, LOCATION_UPDATE_INTERVAL_MS } from '../../constants';
+import { D } from '../../constants/themeDark';
 import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 
 const NEXT_STATUS: Partial<Record<OrderStatus, OrderStatus>> = {
@@ -28,21 +41,50 @@ const NEXT_STATUS: Partial<Record<OrderStatus, OrderStatus>> = {
 };
 
 const NEXT_STATUS_LABEL: Partial<Record<OrderStatus, string>> = {
-  accepted:   "Mark as Picked Up",
-  picking_up: "Mark as On The Way",
-  on_the_way: "Mark as Delivered",
+  accepted:   'Mark as picked up',
+  picking_up: 'Mark as on the way',
+  on_the_way: 'Mark as delivered',
+};
+
+const STATUS_LABEL: Record<OrderStatus, string> = {
+  pending: 'Pending', accepted: 'Accepted', picking_up: 'Picking up',
+  on_the_way: 'On the way', delivered: 'Delivered', cancelled: 'Cancelled',
+};
+
+const minsAgo = (ts: number) => {
+  const m = Math.floor((Date.now() - ts) / 60000);
+  if (m < 1) return 'just now';
+  if (m === 1) return '1 min ago';
+  return `${m} mins ago`;
 };
 
 export default function DasherHome() {
   const { user } = useAuth();
   const insets = useSafeAreaInsets();
+
   const [isOnline, setIsOnline] = useState(false);
   const [pendingOrders, setPendingOrders] = useState<Order[]>([]);
   const [activeOrder, setActiveOrder] = useState<Order | null>(null);
+  const [myOrders, setMyOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [location, setLocation] = useState<{ latitude: number; longitude: number } | null>(null);
   const locationInterval = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  // Online glow
+  const glow = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    if (!isOnline) { glow.setValue(0); return; }
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(glow, { toValue: 1, duration: 1600, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+        Animated.timing(glow, { toValue: 0, duration: 1600, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+      ])
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [isOnline]);
+
+  // ── Location tracking + heartbeat (unchanged) ──────────────────────
   const startLocationTracking = async () => {
     const { status } = await Location.requestForegroundPermissionsAsync();
     if (status !== 'granted') {
@@ -56,8 +98,6 @@ export default function DasherHome() {
       setLocation(coords);
 
       if (user) {
-        // lastSeenAt is the heartbeat — the Cloud Function treats dashers
-        // silent for 10+ minutes as offline (dead phone with toggle stuck on).
         await updateDoc(doc(db, 'dashers', user.uid), {
           currentLocation: coords,
           isOnline: true,
@@ -97,6 +137,7 @@ export default function DasherHome() {
 
   useEffect(() => () => { stopLocationTracking(); }, []);
 
+  // ── Listeners (unchanged) ──────────────────────────────────────────
   useEffect(() => {
     const q = query(
       collection(db, 'orders'),
@@ -127,6 +168,18 @@ export default function DasherHome() {
     return unsub;
   }, [user]);
 
+  // My orders — one listener feeding the Today strip.
+  // Single where clause avoids composite-index requirements; filter client-side.
+  useEffect(() => {
+    if (!user) return;
+    const q = query(collection(db, 'orders'), where('dasherId', '==', user.uid));
+    const unsub = onSnapshot(q, snap => {
+      setMyOrders(snap.docs.map(d => ({ id: d.id, ...d.data() } as Order)));
+    });
+    return unsub;
+  }, [user]);
+
+  // ── Accept / status (unchanged handlers) ───────────────────────────
   const handleAccept = async (order: Order) => {
     if (!user) return;
     if (activeOrder) {
@@ -141,7 +194,6 @@ export default function DasherHome() {
         acceptedAt: Date.now(),
       });
     } catch (e) {
-      // Rules denied it — another dasher claimed it first
       Alert.alert('Too Slow!', 'Another dasher just took this order.');
     }
   };
@@ -152,9 +204,7 @@ export default function DasherHome() {
     if (!next) return;
 
     const update: any = { status: next };
-    if (next === 'delivered') {
-      update.deliveredAt = Date.now();
-    }
+    if (next === 'delivered') update.deliveredAt = Date.now();
     try {
       await updateDoc(doc(db, 'orders', activeOrder.id), update);
     } catch (e) {
@@ -162,108 +212,129 @@ export default function DasherHome() {
     }
   };
 
-  const handleLogout = async () => {
-    stopLocationTracking();
-    await logoutUser();
-  };
+  // ── Today strip math ───────────────────────────────────────────────
+  const dayStart = new Date().setHours(0, 0, 0, 0);
+  const todayDelivered = myOrders.filter(
+    o => o.status === 'delivered' && (o.deliveredAt ?? 0) >= dayStart
+  );
+  const todayEarnings = todayDelivered.reduce((s, o) => s + (Number(o.deliveryFee) || 0), 0);
 
-  // Get status display text
-  const getStatusDisplay = (status: OrderStatus) => {
-    const statusMap: Record<OrderStatus, string> = {
-      pending: 'Pending',
-      accepted: 'Accepted',
-      picking_up: 'Picking Up',
-      on_the_way: 'On The Way',
-      delivered: 'Delivered',
-      cancelled: 'Cancelled',
-    };
-    return statusMap[status] || status;
-  };
-
-  // Get status color
-  const getStatusColor = (status: OrderStatus) => {
-    const colorMap: Record<OrderStatus, string> = {
-      pending: '#8892A4',
-      accepted: '#3B82F6',
-      picking_up: '#F5C842',
-      on_the_way: '#0EA5E9',
-      delivered: '#00D9A3',
-      cancelled: '#FF4757',
-    };
-    return colorMap[status] || '#8892A4';
-  };
+  const glowOpacity = glow.interpolate({ inputRange: [0, 1], outputRange: [0.25, 0.65] });
 
   return (
-    <SafeAreaView style={styles.safe}>
-      {/* Subtle wave background */}
-      <View style={styles.waveDecoration} pointerEvents="none">
-        <View style={styles.waveCircle1} />
-        <View style={styles.waveCircle2} />
-        <View style={styles.waveBlur1} />
-      </View>
-
-      {/* Header */}
-      <View style={styles.header}>
-        <View>
-          <Text style={styles.dasherBadge}>DASHER</Text>
-          <Text style={styles.title}>Welcome back, {user?.name?.split(' ')[0] || 'Dasher'}</Text>
-        </View>
-        <View style={styles.headerRight}>
-          <View style={styles.onlineToggle}>
-            <Text style={[styles.onlineLabel, isOnline && styles.onlineLabelActive]}>
-              {isOnline ? 'Online' : 'Offline'}
-            </Text>
-            <Switch
-              value={isOnline}
-              onValueChange={handleToggleOnline}
-              trackColor={{ false: 'rgba(255,255,255,0.1)', true: '#F5C84260' }}
-              thumbColor={isOnline ? '#F5C842' : '#8892A4'}
-            />
-          </View>
-          <TouchableOpacity onPress={handleLogout} style={styles.logoutBtn}>
-            <Text style={styles.logoutText}>Sign Out</Text>
-          </TouchableOpacity>
-        </View>
+    <View style={styles.root}>
+      <View style={styles.canvas} pointerEvents="none">
+        <View style={styles.blobCerulean} />
+        <View style={styles.blobTeal} />
       </View>
 
       <FlatList
         data={isOnline && !activeOrder ? pendingOrders : []}
         keyExtractor={item => item.id}
-        contentContainerStyle={{ paddingBottom: 40 + insets.bottom }}
+        contentContainerStyle={{ paddingBottom: 120 + insets.bottom }}
         showsVerticalScrollIndicator={false}
         ListHeaderComponent={
           <>
-            {/* Active Order Card */}
+            {/* ── HEADER + ONLINE HERO ─────────────────────────────── */}
+            <View style={[styles.header, { paddingTop: insets.top + D.space.md }]}>
+              <Text style={styles.eyebrow}>Dasher</Text>
+              <Text style={styles.greeting}>
+                {user?.name?.split(' ')[0] ?? 'Dasher'}
+              </Text>
+            </View>
+
+            <View style={[styles.onlineCard, isOnline && styles.onlineCardActive]}>
+              {isOnline && (
+                <Animated.View style={[styles.onlineGlow, { opacity: glowOpacity }]} />
+              )}
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.onlineTitle, isOnline && { color: D.color.teal }]}>
+                  {isOnline ? "You're online" : "You're offline"}
+                </Text>
+                <Text style={styles.onlineSub}>
+                  {isOnline
+                    ? 'Receiving orders — keep the app nearby'
+                    : 'Toggle on to start receiving orders'}
+                </Text>
+              </View>
+              <Switch
+                value={isOnline}
+                onValueChange={handleToggleOnline}
+                trackColor={{ false: D.color.line, true: 'rgba(47, 196, 174, 0.4)' }}
+                thumbColor={isOnline ? D.color.teal : D.color.creamFaint}
+              />
+            </View>
+
+            {/* ── TODAY STRIP ──────────────────────────────────────── */}
+            <View style={styles.todayStrip}>
+              <View style={styles.todayCard}>
+                <Text style={styles.todayLabel}>Today's earnings</Text>
+                <View style={styles.todayPlate}>
+                  <Text style={styles.todayValue}>{formatJMD(todayEarnings)}</Text>
+                </View>
+              </View>
+              <View style={styles.todayCard}>
+                <Text style={styles.todayLabel}>Deliveries</Text>
+                <Text style={styles.todayCount}>{todayDelivered.length}</Text>
+              </View>
+            </View>
+
+            {/* ── ACTIVE ORDER ─────────────────────────────────────── */}
             {activeOrder && (
               <View style={styles.activeCard}>
-                <View style={styles.activeHeader}>
-                  <Text style={styles.activeTitle}>Active Delivery</Text>
-                  <View style={[styles.activeBadge, { backgroundColor: getStatusColor(activeOrder.status) + '18' }]}>
-                    <Text style={[styles.activeBadgeText, { color: getStatusColor(activeOrder.status) }]}>
-                      {getStatusDisplay(activeOrder.status)}
+                <View style={styles.activeHead}>
+                  <View style={styles.activeBadge}>
+                    <View style={styles.activeDot} />
+                    <Text style={styles.activeBadgeText}>ACTIVE DELIVERY</Text>
+                  </View>
+                  <Text style={styles.activeStatus}>{STATUS_LABEL[activeOrder.status]}</Text>
+                </View>
+
+                <Text style={styles.activeStore}>{activeOrder.storeName}</Text>
+
+                <View style={styles.routeRow}>
+                  <View style={styles.routeStop}>
+                    <View style={[styles.routeDot, { backgroundColor: D.color.cerulean }]} />
+                    <Text style={styles.routeText}>Pick up · {activeOrder.storeName}</Text>
+                  </View>
+                  <View style={styles.routeLine} />
+                  <View style={styles.routeStop}>
+                    <View style={[styles.routeDot, { backgroundColor: D.color.teal }]} />
+                    <Text style={styles.routeText} numberOfLines={1}>
+                      Drop off · {activeOrder.deliveryAddress.label}
                     </Text>
                   </View>
                 </View>
 
-                <View style={styles.activeStoreContainer}>
-                  <Text style={styles.activeStore}>{activeOrder.storeName}</Text>
-                </View>
-
-                <View style={styles.activeDetails}>
-                  <Text style={styles.activeStudent}>{activeOrder.studentName}</Text>
-                  <Text style={styles.activeAddress}>{activeOrder.deliveryAddress.label}</Text>
-                </View>
-
                 <View style={styles.activeMeta}>
-                  <Text style={styles.activeItems}>{activeOrder.items.length} items</Text>
-                  <Text style={styles.activeAmount}>{formatJMD(activeOrder.totalAmount)}</Text>
+                  <View>
+                    <Text style={styles.metaLabel}>Customer</Text>
+                    <Text style={styles.metaValue}>{activeOrder.studentName}</Text>
+                  </View>
+                  <View>
+                    <Text style={styles.metaLabel}>Items</Text>
+                    <Text style={styles.metaValue}>{activeOrder.items.length}</Text>
+                  </View>
+                  <View>
+                    <Text style={styles.metaLabel}>Your payout</Text>
+                    <View style={styles.payoutPlate}>
+                      <Text style={styles.payoutText}>{formatJMD(activeOrder.deliveryFee)}</Text>
+                    </View>
+                  </View>
                 </View>
 
-                {/* Map — only when we have a real GPS fix, otherwise the pin lies */}
+                {activeOrder.studentNote ? (
+                  <View style={styles.noteBox}>
+                    <Text style={styles.noteLabel}>Note from customer</Text>
+                    <Text style={styles.noteText}>{activeOrder.studentNote}</Text>
+                  </View>
+                ) : null}
+
+                {/* Map — only with a real GPS fix */}
                 {activeOrder.deliveryAddress.hasGpsFix ? (
-                  <View style={styles.mapContainer}>
+                  <View style={styles.mapWrap}>
                     <MapView
-                      style={styles.activeMap}
+                      style={styles.map}
                       provider={PROVIDER_GOOGLE}
                       initialRegion={{
                         latitude: activeOrder.deliveryAddress.latitude,
@@ -272,512 +343,300 @@ export default function DasherHome() {
                         longitudeDelta: 0.015,
                       }}
                     >
-                      <Marker
-                        coordinate={activeOrder.deliveryAddress}
-                        title="Drop-off"
-                        pinColor="#F5C842"
-                      />
-                      {location && (
-                        <Marker
-                          coordinate={location}
-                          title="Your Location"
-                          pinColor="#3B82F6"
-                        />
-                      )}
+                      <Marker coordinate={activeOrder.deliveryAddress} title="Drop-off" />
+                      {location && <Marker coordinate={location} title="You" pinColor="#33ADD1" />}
                     </MapView>
                   </View>
                 ) : (
                   <View style={styles.noGpsBox}>
-                    <Text style={styles.noGpsText}>📍 No GPS pin — deliver to:</Text>
+                    <Text style={styles.noGpsLabel}>📍 No GPS pin — deliver to</Text>
                     <Text style={styles.noGpsAddress}>{activeOrder.deliveryAddress.label}</Text>
                   </View>
                 )}
 
-                {/* Status update button */}
                 {NEXT_STATUS[activeOrder.status] && (
-                  <TouchableOpacity style={styles.statusBtn} onPress={handleStatusUpdate}>
-                    <Text style={styles.statusBtnText}>
-                      {NEXT_STATUS_LABEL[activeOrder.status]}
-                    </Text>
-                  </TouchableOpacity>
+                  <Pressable
+                    onPress={handleStatusUpdate}
+                    style={({ pressed }) => [styles.statusBtn, pressed && { transform: [{ scale: 0.97 }] }]}
+                  >
+                    <Text style={styles.statusBtnText}>{NEXT_STATUS_LABEL[activeOrder.status]}</Text>
+                  </Pressable>
                 )}
               </View>
             )}
 
-            {/* Offline State */}
-            {!isOnline && (
-              <View style={styles.offlineState}>
-                <View style={styles.offlineIconContainer}>
-                  <View style={styles.offlineIcon} />
-                </View>
-                <Text style={styles.offlineTitle}>You're Offline</Text>
-                <Text style={styles.offlineSub}>Toggle online above to start receiving orders</Text>
+            {/* ── QUEUE HEADER ─────────────────────────────────────── */}
+            {isOnline && !activeOrder && (
+              <View style={styles.queueHead}>
+                <Text style={styles.queueTitle}>
+                  {loading ? 'Loading…' : 'Available orders'}
+                </Text>
+                {!loading && (
+                  <View style={styles.queueCount}>
+                    <Text style={styles.queueCountText}>{pendingOrders.length}</Text>
+                  </View>
+                )}
               </View>
             )}
 
-            {/* Pending Orders Header */}
-            {isOnline && !activeOrder && (
-              <View style={styles.sectionHeader}>
-                <Text style={styles.sectionLabel}>
-                  {loading ? 'Loading orders...' : `Available Orders · ${pendingOrders.length}`}
-                </Text>
-                <View style={styles.sectionLine} />
+            {!isOnline && !activeOrder && (
+              <View style={styles.offline}>
+                <View style={styles.offlineTile}><View style={styles.offlineInner} /></View>
+                <Text style={styles.offlineTitle}>Ready when you are</Text>
+                <Text style={styles.offlineSub}>Go online to see available orders.</Text>
               </View>
             )}
           </>
         }
         ListEmptyComponent={
           isOnline && !activeOrder && !loading ? (
-            <View style={styles.emptyState}>
-              <View style={styles.emptyIconContainer}>
-                <View style={styles.emptyIcon} />
-              </View>
-              <Text style={styles.emptyTitle}>No Orders Available</Text>
-              <Text style={styles.emptySub}>New orders will appear here instantly</Text>
+            <View style={styles.empty}>
+              <Text style={styles.emptyTitle}>No orders right now</Text>
+              <Text style={styles.emptySub}>New orders appear here instantly — you'll also get a push.</Text>
             </View>
           ) : null
         }
         renderItem={({ item }) => (
-          <TouchableOpacity style={styles.orderCard} onPress={() => handleAccept(item)} activeOpacity={0.85}>
-            <View style={styles.orderHeader}>
-              <Text style={styles.orderStore}>{item.storeName}</Text>
-              <Text style={styles.orderAmount}>${formatJMD(item.totalAmount)}</Text>
-            </View>
-
-            <View style={styles.orderDetails}>
-              <View style={styles.orderDetailRow}>
-                <View style={styles.orderDetailDot} />
-                <Text style={styles.orderStudent}>{item.studentName}</Text>
+          <View style={styles.orderCard}>
+            {/* PAYOUT leads — it's what a dasher scans for */}
+            <View style={styles.orderTop}>
+              <View style={styles.orderPayout}>
+                <Text style={styles.orderPayoutText}>{formatJMD(item.deliveryFee)}</Text>
+                <Text style={styles.orderPayoutLabel}>payout</Text>
               </View>
-              <View style={styles.orderDetailRow}>
-                <View style={[styles.orderDetailDot, { backgroundColor: '#F5C842' }]} />
-                <Text style={styles.orderAddress} numberOfLines={1}>{item.deliveryAddress.label}</Text>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.orderStore} numberOfLines={1}>{item.storeName}</Text>
+                <Text style={styles.orderDrop} numberOfLines={1}>→ {item.deliveryAddress.label}</Text>
               </View>
             </View>
 
-            <View style={styles.orderFooter}>
-              <Text style={styles.orderItems}>{item.items.length} items</Text>
-              <Text style={styles.orderTime}>
-                {new Date(item.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-              </Text>
+            <View style={styles.orderMeta}>
+              <Text style={styles.orderMetaText}>{item.items.length} items</Text>
+              <View style={styles.orderMetaDot} />
+              <Text style={styles.orderMetaText}>order {formatJMD(item.totalAmount)}</Text>
+              <View style={styles.orderMetaDot} />
+              <Text style={styles.orderMetaText}>{minsAgo(item.createdAt)}</Text>
             </View>
 
-            <View style={styles.acceptBtn}>
-              <Text style={styles.acceptBtnText}>Accept Order</Text>
-            </View>
-          </TouchableOpacity>
+            <Pressable
+              onPress={() => handleAccept(item)}
+              style={({ pressed }) => [styles.acceptBtn, pressed && { transform: [{ scale: 0.97 }] }]}
+            >
+              <Text style={styles.acceptText}>Accept order</Text>
+            </Pressable>
+          </View>
         )}
       />
-    </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: {
-    flex: 1,
-    backgroundColor: '#0A1128',
+  root: { flex: 1, backgroundColor: D.color.bg },
+
+  canvas: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, overflow: 'hidden', zIndex: -1 },
+  blobCerulean: {
+    position: 'absolute', width: 300, height: 300, borderRadius: 150,
+    backgroundColor: D.color.cerulean, opacity: 0.07,
+    top: -100, right: -100,
+  },
+  blobTeal: {
+    position: 'absolute', width: 260, height: 260, borderRadius: 130,
+    backgroundColor: D.color.teal, opacity: 0.06,
+    top: 300, left: -110,
   },
 
-  // Wave decoration - liquid background
-  waveDecoration: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
+  header: { paddingHorizontal: D.space.lg, paddingBottom: D.space.sm },
+  eyebrow: { ...D.type.label, color: D.color.teal, marginBottom: 4 },
+  greeting: { ...D.type.display, fontSize: 34, color: D.color.cream },
+
+  // Online hero
+  onlineCard: {
+    flexDirection: 'row', alignItems: 'center', gap: D.space.md,
+    backgroundColor: D.color.card,
+    marginHorizontal: D.space.lg,
+    marginBottom: D.space.md,
+    borderRadius: D.radius.xl,
+    padding: D.space.lg,
+    borderWidth: 1.5, borderColor: D.color.line,
     overflow: 'hidden',
-    zIndex: -1,
   },
-  waveCircle1: {
+  onlineCardActive: { borderColor: 'rgba(47, 196, 174, 0.45)' },
+  onlineGlow: {
     position: 'absolute',
-    width: 300,
-    height: 300,
-    borderRadius: 300,
-    backgroundColor: '#1E5FD4',
-    top: -120,
-    right: -80,
-    opacity: 0.06,
+    top: -40, right: -40,
+    width: 140, height: 140, borderRadius: 70,
+    backgroundColor: D.color.teal,
   },
-  waveCircle2: {
-    position: 'absolute',
-    width: 240,
-    height: 240,
-    borderRadius: 240,
-    backgroundColor: '#F5C842',
-    bottom: 100,
-    left: -100,
-    opacity: 0.05,
-  },
-  waveBlur1: {
-    position: 'absolute',
-    width: 320,
-    height: 320,
-    borderRadius: 320,
-    backgroundColor: '#0EA5E9',
-    top: 300,
-    right: -150,
-    opacity: 0.04,
-  },
+  onlineTitle: { ...D.type.title, fontSize: 20, color: D.color.cream },
+  onlineSub: { ...D.type.body, fontSize: 12, color: D.color.creamSoft, marginTop: 2 },
 
-  // Header
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: SPACING.lg,
-    paddingTop: SPACING.md,
-    paddingBottom: SPACING.md,
-    backgroundColor: 'rgba(18, 28, 50, 0.8)',
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(245, 200, 66, 0.1)',
+  // Today strip
+  todayStrip: {
+    flexDirection: 'row', gap: D.space.sm,
+    paddingHorizontal: D.space.lg,
+    marginBottom: D.space.md,
   },
-  dasherBadge: {
-    fontSize: 10,
-    fontWeight: '800',
-    color: '#F5C842',
-    letterSpacing: 1.5,
-    marginBottom: 4,
-    textTransform: 'uppercase',
-  },
-  title: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#FFFFFF',
-    letterSpacing: -0.3,
-  },
-  headerRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.md,
-  },
-  onlineToggle: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.sm,
-    backgroundColor: 'rgba(255,255,255,0.05)',
-    paddingHorizontal: SPACING.sm,
-    paddingVertical: 6,
-    borderRadius: 40,
-  },
-  onlineLabel: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#8892A4',
-  },
-  onlineLabelActive: {
-    color: '#F5C842',
-  },
-  logoutBtn: {
-    backgroundColor: 'rgba(255, 71, 87, 0.12)',
-    borderRadius: 40,
-    paddingHorizontal: SPACING.md,
-    paddingVertical: 8,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 71, 87, 0.2)',
-  },
-  logoutText: {
-    color: '#FF8A92',
-    fontSize: 13,
-    fontWeight: '600',
-  },
-
-  // Section header
-  sectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: SPACING.lg,
-    paddingTop: SPACING.lg,
-    paddingBottom: SPACING.sm,
-    gap: SPACING.sm,
-  },
-  sectionLabel: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#F5C842',
-    letterSpacing: 1,
-    textTransform: 'uppercase',
-  },
-  sectionLine: {
+  todayCard: {
     flex: 1,
-    height: 1,
-    backgroundColor: 'rgba(245, 200, 66, 0.2)',
-  },
-
-  // Active order card - glassmorphism
-  activeCard: {
-    backgroundColor: 'rgba(18, 28, 50, 0.85)',
-    marginHorizontal: SPACING.lg,
-    marginTop: SPACING.lg,
-    marginBottom: SPACING.md,
-    borderRadius: 32,
-    padding: SPACING.lg,
-    borderWidth: 1,
-    borderColor: 'rgba(245, 200, 66, 0.25)',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.3,
-    shadowRadius: 25,
-    elevation: 10,
-    gap: SPACING.md,
-  },
-  activeHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  activeTitle: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: '#FFFFFF',
-  },
-  activeBadge: {
-    borderRadius: 40,
-    paddingHorizontal: SPACING.sm,
-    paddingVertical: 4,
-  },
-  activeBadgeText: {
-    fontSize: 10,
-    fontWeight: '700',
-    letterSpacing: 0.5,
-  },
-  activeStoreContainer: {
-    paddingVertical: SPACING.xs,
-  },
-  activeStore: {
-    fontSize: 22,
-    fontWeight: '800',
-    color: '#F5C842',
-    letterSpacing: -0.5,
-  },
-  activeDetails: {
-    gap: 4,
-  },
-  activeStudent: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#FFFFFF',
-  },
-  activeAddress: {
-    fontSize: 13,
-    color: '#8892A4',
-    lineHeight: 18,
-  },
-  activeMeta: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingTop: SPACING.xs,
-  },
-  activeItems: {
-    fontSize: 13,
-    color: '#8892A4',
-  },
-  activeAmount: {
-    fontSize: 20,
-    fontWeight: '800',
-    color: '#F5C842',
-  },
-  mapContainer: {
-    borderRadius: 20,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
-  },
-  noGpsBox: {
-    backgroundColor: 'rgba(245, 200, 66, 0.08)',
-    borderRadius: 16,
-    padding: SPACING.md,
-    borderWidth: 1,
-    borderColor: 'rgba(245, 200, 66, 0.25)',
-    gap: 4,
-  },
-  noGpsText: {
-    fontSize: 12,
-    color: '#8892A4',
-    fontWeight: '600',
-  },
-  noGpsAddress: {
-    fontSize: 15,
-    color: '#F5C842',
-    fontWeight: '700',
-  },
-  activeMap: {
-    height: 200,
-    width: '100%',
-  },
-  statusBtn: {
-    backgroundColor: '#F5C842',
-    borderRadius: 40,
-    height: 52,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginTop: SPACING.xs,
-    shadowColor: '#F5C842',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 12,
-    elevation: 4,
-  },
-  statusBtnText: {
-    color: '#0A1128',
-    fontSize: 15,
-    fontWeight: '700',
-    letterSpacing: 0.3,
-  },
-
-  // Offline state
-  offlineState: {
-    alignItems: 'center',
-    paddingTop: 80,
-    gap: SPACING.md,
-  },
-  offlineIconContainer: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: 'rgba(255,255,255,0.05)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: SPACING.sm,
-  },
-  offlineIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: '#4A5568',
-    opacity: 0.5,
-  },
-  offlineTitle: {
-    fontSize: 22,
-    fontWeight: '800',
-    color: '#FFFFFF',
-    letterSpacing: -0.5,
-  },
-  offlineSub: {
-    fontSize: 14,
-    color: '#8892A4',
-    textAlign: 'center',
-    paddingHorizontal: SPACING.xl,
-  },
-
-  // Empty state
-  emptyState: {
-    alignItems: 'center',
-    paddingTop: 60,
-    gap: SPACING.md,
-  },
-  emptyIconContainer: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    backgroundColor: 'rgba(245, 200, 66, 0.08)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: SPACING.sm,
-  },
-  emptyIcon: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: '#F5C842',
-    opacity: 0.4,
-  },
-  emptyTitle: {
-    fontSize: 20,
-    fontWeight: '800',
-    color: '#FFFFFF',
-    letterSpacing: -0.5,
-  },
-  emptySub: {
-    fontSize: 14,
-    color: '#8892A4',
-    textAlign: 'center',
-    paddingHorizontal: SPACING.xl,
-  },
-
-  // Pending order cards
-  orderCard: {
-    backgroundColor: 'rgba(18, 28, 50, 0.75)',
-    marginHorizontal: SPACING.lg,
-    marginBottom: SPACING.md,
-    borderRadius: 24,
-    padding: SPACING.md,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.08)',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    elevation: 4,
-    gap: SPACING.sm,
-  },
-  orderHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  orderStore: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#FFFFFF',
-  },
-  orderAmount: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: '#F5C842',
-  },
-  orderDetails: {
-    gap: 6,
-    paddingVertical: 4,
-  },
-  orderDetailRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    backgroundColor: D.color.card,
+    borderRadius: D.radius.lg,
+    padding: D.space.md,
+    borderWidth: 1, borderColor: D.color.line,
     gap: 8,
   },
-  orderDetailDot: {
-    width: 4,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: '#8892A4',
+  todayLabel: { ...D.type.label, fontSize: 10, color: D.color.creamFaint },
+  todayPlate: {
+    alignSelf: 'flex-start',
+    backgroundColor: D.color.tealTint,
+    paddingHorizontal: 12, paddingVertical: 4,
+    borderRadius: D.radius.sm,
+    borderWidth: 1.5, borderColor: D.color.teal,
   },
-  orderStudent: {
-    fontSize: 13,
-    color: '#FFFFFF',
-    fontWeight: '500',
+  todayValue: { fontSize: 20, fontWeight: '900', color: D.color.teal, letterSpacing: -0.4 },
+  todayCount: { fontSize: 26, fontWeight: '900', color: D.color.cerulean, letterSpacing: -0.5 },
+
+  // Active order
+  activeCard: {
+    backgroundColor: D.color.card,
+    marginHorizontal: D.space.lg,
+    marginBottom: D.space.md,
+    borderRadius: D.radius.xl,
+    padding: D.space.lg,
+    borderWidth: 1.5, borderColor: 'rgba(51, 173, 209, 0.4)',
+    gap: D.space.md,
+    ...D.shadow.card,
   },
-  orderAddress: {
-    fontSize: 12,
-    color: '#8892A4',
-    flex: 1,
+  activeHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  activeBadge: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    backgroundColor: D.color.ceruleanTint,
+    paddingHorizontal: 10, paddingVertical: 5,
+    borderRadius: D.radius.pill,
   },
-  orderFooter: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+  activeDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: D.color.cerulean },
+  activeBadgeText: { fontSize: 10, fontWeight: '900', color: D.color.cerulean, letterSpacing: 1 },
+  activeStatus: { ...D.type.label, color: D.color.creamSoft },
+  activeStore: { ...D.type.title, fontSize: 24, color: D.color.cream },
+
+  routeRow: { gap: 4 },
+  routeStop: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  routeDot: { width: 10, height: 10, borderRadius: 5 },
+  routeLine: { width: 2, height: 14, backgroundColor: D.color.lineStrong, marginLeft: 4 },
+  routeText: { ...D.type.body, fontSize: 13, color: D.color.creamSoft, flex: 1, fontWeight: '600' },
+
+  activeMeta: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end',
+    backgroundColor: D.color.cardHigh,
+    borderRadius: D.radius.md,
+    padding: D.space.md,
+  },
+  metaLabel: { ...D.type.label, fontSize: 9, color: D.color.creamFaint, marginBottom: 3 },
+  metaValue: { ...D.type.body, fontSize: 14, fontWeight: '800', color: D.color.cream },
+  payoutPlate: {
+    backgroundColor: D.color.tealTint,
+    paddingHorizontal: 10, paddingVertical: 3,
+    borderRadius: 8,
+    borderWidth: 1.5, borderColor: D.color.teal,
+  },
+  payoutText: { fontSize: 15, fontWeight: '900', color: D.color.teal, letterSpacing: -0.3 },
+
+  noteBox: {
+    backgroundColor: D.color.warningTint,
+    borderRadius: D.radius.md,
+    padding: D.space.sm,
+    borderLeftWidth: 3, borderLeftColor: D.color.warning,
+    gap: 2,
+  },
+  noteLabel: { ...D.type.label, fontSize: 9, color: D.color.warning },
+  noteText: { ...D.type.body, fontSize: 13, color: D.color.cream },
+
+  mapWrap: {
+    borderRadius: D.radius.lg, overflow: 'hidden',
+    borderWidth: 1, borderColor: D.color.line,
+  },
+  map: { height: 180, width: '100%' },
+  noGpsBox: {
+    backgroundColor: D.color.ceruleanTint,
+    borderRadius: D.radius.md,
+    padding: D.space.md,
+    gap: 4,
+    borderWidth: 1, borderColor: 'rgba(51, 173, 209, 0.3)',
+  },
+  noGpsLabel: { ...D.type.label, fontSize: 10, color: D.color.creamSoft },
+  noGpsAddress: { ...D.type.body, fontSize: 15, fontWeight: '800', color: D.color.cerulean },
+
+  statusBtn: {
+    backgroundColor: D.color.cerulean,
+    borderRadius: D.radius.pill,
+    height: 54,
+    justifyContent: 'center', alignItems: 'center',
+    ...D.shadow.button,
+  },
+  statusBtnText: { color: D.color.bg, fontSize: 15, fontWeight: '900', letterSpacing: 0.3 },
+
+  // Queue
+  queueHead: {
+    flexDirection: 'row', alignItems: 'center', gap: D.space.sm,
+    paddingHorizontal: D.space.lg,
+    paddingTop: D.space.sm, paddingBottom: D.space.sm,
+  },
+  queueTitle: { ...D.type.title, fontSize: 20, color: D.color.cream },
+  queueCount: {
+    backgroundColor: D.color.tealTint,
+    minWidth: 26, height: 26, borderRadius: 13,
+    justifyContent: 'center', alignItems: 'center', paddingHorizontal: 8,
+  },
+  queueCountText: { color: D.color.teal, fontSize: 13, fontWeight: '900' },
+
+  orderCard: {
+    backgroundColor: D.color.card,
+    marginHorizontal: D.space.lg,
+    marginBottom: D.space.sm,
+    borderRadius: D.radius.lg,
+    padding: D.space.md,
+    borderWidth: 1, borderColor: D.color.line,
+    gap: D.space.sm,
+  },
+  orderTop: { flexDirection: 'row', alignItems: 'center', gap: D.space.md },
+  orderPayout: {
+    backgroundColor: D.color.tealTint,
+    borderRadius: D.radius.md,
+    paddingHorizontal: 12, paddingVertical: 8,
     alignItems: 'center',
-    paddingTop: 4,
+    borderWidth: 1.5, borderColor: D.color.teal,
+    minWidth: 84,
   },
-  orderItems: {
-    fontSize: 11,
-    color: '#8892A4',
-  },
-  orderTime: {
-    fontSize: 11,
-    color: '#4A5568',
-  },
+  orderPayoutText: { fontSize: 17, fontWeight: '900', color: D.color.teal, letterSpacing: -0.3 },
+  orderPayoutLabel: { fontSize: 9, fontWeight: '700', color: D.color.creamFaint, textTransform: 'uppercase', letterSpacing: 0.8 },
+  orderStore: { ...D.type.body, fontSize: 16, fontWeight: '800', color: D.color.cream },
+  orderDrop: { ...D.type.body, fontSize: 12, color: D.color.creamSoft, marginTop: 2 },
+
+  orderMeta: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  orderMetaText: { fontSize: 11, color: D.color.creamFaint, fontWeight: '600' },
+  orderMetaDot: { width: 3, height: 3, borderRadius: 2, backgroundColor: D.color.lineStrong },
+
   acceptBtn: {
-    backgroundColor: 'rgba(245, 200, 66, 0.12)',
-    borderRadius: 40,
-    height: 44,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginTop: SPACING.sm,
-    borderWidth: 1,
-    borderColor: 'rgba(245, 200, 66, 0.3)',
+    backgroundColor: D.color.cerulean,
+    borderRadius: D.radius.pill,
+    height: 46,
+    justifyContent: 'center', alignItems: 'center',
   },
-  acceptBtnText: {
-    color: '#F5C842',
-    fontSize: 14,
-    fontWeight: '700',
+  acceptText: { color: D.color.bg, fontSize: 14, fontWeight: '900', letterSpacing: 0.3 },
+
+  // Offline / empty
+  offline: { alignItems: 'center', paddingTop: 40, gap: D.space.sm, paddingHorizontal: D.space.xl },
+  offlineTile: {
+    width: 64, height: 64, borderRadius: 20,
+    backgroundColor: D.color.ceruleanTint,
+    justifyContent: 'center', alignItems: 'center',
+    marginBottom: D.space.sm,
   },
+  offlineInner: { width: 24, height: 24, borderRadius: 8, backgroundColor: D.color.cerulean, opacity: 0.5 },
+  offlineTitle: { ...D.type.title, fontSize: 20, color: D.color.cream },
+  offlineSub: { ...D.type.body, fontSize: 13, color: D.color.creamSoft, textAlign: 'center' },
+
+  empty: { alignItems: 'center', paddingTop: 30, gap: 6, paddingHorizontal: D.space.xl },
+  emptyTitle: { ...D.type.title, fontSize: 18, color: D.color.cream },
+  emptySub: { ...D.type.body, fontSize: 13, color: D.color.creamSoft, textAlign: 'center' },
 });
