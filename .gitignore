@@ -53,6 +53,8 @@ functions/lib/
 pglite-debug.log
 output.txt
 
-# codebase dumps (contain API keys)
+# dumps & local exports (contain secrets)
+codebase_dump.txt
 dormdash_dump.txt
 dormdash_audit.txt
+output.txt
