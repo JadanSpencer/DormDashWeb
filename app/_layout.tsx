@@ -7,10 +7,11 @@
 // in a few hundred milliseconds, so the splash was yanked away almost
 // immediately: the "glitches by too fast" problem.
 // Now the guard ignores the index route entirely (segments.length === 0) and
-// lets app/index.tsx finish its sequence and do its own routing. The guard
-// still protects every other route exactly as before.
+// lets app/index.tsx do its own routing. The guard still protects every
+// other route exactly as before. The intro itself is drawn over everything
+// by <IntroLayer> below, on every load.
 
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Stack, router, useSegments } from 'expo-router';
 import { View, ActivityIndicator } from 'react-native';
 import * as SplashScreen from 'expo-splash-screen';
@@ -19,6 +20,8 @@ import { T } from '../constants/theme';
 import { registerForPushNotifications, setupNotificationListeners } from '../services/notifications';
 import { NotificationBanner, BannerHandle } from '../components/NotificationBanner';
 import { InstallPrompt } from '../components/InstallPrompt';
+import { BrandIntro, shouldSkipIntro } from '../components/BrandIntro';
+import { DDAlertHost } from '../components/DDAlertHost';
 import { installWebAlert } from '../services/webAlert';
 import { syncServerClock } from '../services/serverClock';
 
@@ -31,7 +34,7 @@ syncServerClock();
 // there is never a blank frame between the OS splash and our own.
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
-function RouteGuard() {
+function RouteGuard({ introDone }: { introDone: boolean }) {
   const { user, loading } = useAuth();
   const segments = useSegments();
   const bannerRef = useRef<BannerHandle>(null);
@@ -111,15 +114,30 @@ function RouteGuard() {
           contentStyle: { backgroundColor: T.color.cream },
         }}
       />
-      <InstallPrompt uid={user?.uid ?? null} />
+      {/* Wait for the intro to finish so the install card never covers it. */}
+      {introDone && <InstallPrompt uid={user?.uid ?? null} />}
     </>
   );
 }
 
+// The Jcommerce & Tech → DormDash intro plays over the app on every load
+// (see components/BrandIntro.tsx). On phones it starts once the native
+// splash is gone, i.e. when sign-in is known.
+function IntroLayer({ onDone }: { onDone: () => void }) {
+  const { loading } = useAuth();
+  return <BrandIntro canStart={!loading} onDone={onDone} />;
+}
+
 export default function RootLayout() {
+  const [introDone, setIntroDone] = useState(() => shouldSkipIntro());
   return (
     <AuthProvider>
-      <RouteGuard />
+      <View style={{ flex: 1 }}>
+        <RouteGuard introDone={introDone} />
+        {!introDone && <IntroLayer onDone={() => setIntroDone(true)} />}
+        {/* DormDash pop-up for Alert.alert on the web (services/webAlert.web.ts). */}
+        <DDAlertHost />
+      </View>
     </AuthProvider>
   );
 }

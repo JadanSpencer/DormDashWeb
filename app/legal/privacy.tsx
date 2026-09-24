@@ -30,7 +30,8 @@ const sections: Section[] = [
         ['Notifications', 'A notification token for your device, so we can send order updates. It is removed when you sign out.'],
         ['Technical data', 'Our hosting and database provider (Google) keeps short-lived security and error logs, which can include your IP address and device type. We do not use these to track you.'],
       ] },
-      { p: 'We do not collect payment card details, contacts, photos, microphone or camera data.' },
+      { p: 'Payments: card payments are handled by WiPay on its own secure page, so we never receive your card number. From WiPay we keep the transaction reference, amount, date, whether it succeeded and the last 4 digits of the card. We also keep your DormDash token balance and a history of every change to it.' },
+      { p: 'We do not collect full payment card details, contacts, photos, microphone or camera data.' },
     ],
   },
   {
@@ -58,6 +59,7 @@ const sections: Section[] = [
       { p: 'We use a small number of service providers. They process data for us under their own privacy and security terms, and not for their own advertising.' },
       { table: [
         ['Google Firebase (Google LLC)', 'Sign-in, database, server functions, website hosting and push notifications. Stores all of the data described above. Servers may be outside Jamaica, including in the United States.'],
+        ['WiPay', 'Card payments. When you pay by card, you enter your card details on WiPay\'s page and WiPay receives your name, email, the amount and your card details. WiPay\'s own privacy policy applies to that.'],
         ['Google Maps (Google LLC)', 'Shows delivery maps. When a map is displayed, Google receives the coordinates being shown and may set its own cookies. Google\'s privacy policy applies to that content.'],
         ['Expo (650 Industries, Inc.)', 'Delivers push notifications to the DormDash app for iPhone and Android. Receives your device token and the text of the notification.'],
         ['Apple, Google and browser push services', 'Deliver notifications to your device, as with any app or website that sends notifications.'],

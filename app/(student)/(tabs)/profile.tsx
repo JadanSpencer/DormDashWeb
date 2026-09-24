@@ -18,6 +18,7 @@ import { useAuth } from '../../../hooks/useAuth';
 import { logoutUser } from '../../../services/auth';
 import { isValidPassword } from '../../../services/sanitize';
 import { T } from '../../../constants/theme';
+import { WalletCard } from '../../../components/WalletCard';
 import { AccountActions } from '../../../components/AccountActions';
 
 interface UserProfile {
@@ -134,7 +135,11 @@ export default function StudentProfile() {
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Sign out', style: 'destructive',
-        onPress: async () => { setLoggingOut(true); await logoutUser(); },
+        onPress: async () => {
+          setLoggingOut(true);
+          try { await logoutUser(); }
+          catch { setLoggingOut(false); Alert.alert('Sign out failed', 'Check your connection and try again.'); }
+        },
       },
     ]);
   };
@@ -175,6 +180,10 @@ export default function StudentProfile() {
             <Text style={styles.roleText}>Student</Text>
           </View>
         </View>
+
+        {/* Tokens */}
+        <Text style={styles.sectionLabel}>DormDash tokens</Text>
+        {user && <WalletCard uid={user.uid} />}
 
         {/* Personal */}
         <Text style={styles.sectionLabel}>Personal information</Text>

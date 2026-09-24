@@ -22,12 +22,19 @@
 import { onDocumentWritten, onDocumentCreated } from 'firebase-functions/v2/firestore';
 import { logger } from 'firebase-functions/v2';
 import * as admin from 'firebase-admin';
+// FieldValue/FieldPath come from the modular import: the namespace versions
+// (admin.firestore.FieldValue) are undefined inside the local emulator.
+import { FieldValue, FieldPath } from 'firebase-admin/firestore';
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { onSchedule } from 'firebase-functions/v2/scheduler';
+import {
+  reserveTokensAndVerify, chargeTokensOnAccept, settleCancelledOrder, PAY_WINDOW_MS,
+} from './payments';
+export { createPayment, wipayReturn, adminAdjustTokens, adminAdjustFloat, payOrderWithTokens } from './payments';
  
 const CHUNK = 400; // Firestore batches cap at 500 writes
 
-admin.initializeApp();
+if (!admin.apps.length) admin.initializeApp(); // payments.ts may have done it already
 
 const db = admin.firestore();
 
@@ -204,7 +211,7 @@ async function getEligibleDasherTokens(excludeUid?: string): Promise<string[]> {
   for (let i = 0; i < freeUids.length; i += 30) {
     const chunk = freeUids.slice(i, i + 30);
     const usersSnap = await db.collection('users')
-      .where(admin.firestore.FieldPath.documentId(), 'in', chunk)
+      .where(FieldPath.documentId(), 'in', chunk)
       .get();
     usersSnap.forEach(doc => {
       const u = doc.data();
@@ -347,18 +354,33 @@ async function verifyNewOrder(
   if (count > MAX_ITEMS_PER_ORDER) return cancel('too_many_items');
 
   const deliveryFee = Number(store.deliveryFee) || 0;
+  const totalAmount = subtotal + deliveryFee;
+
+  // Payment. Orders from app versions before payments have no method: they
+  // are treated as card orders (paid when a dasher accepts).
+  const paymentMethod = order.paymentMethod === 'tokens' ? 'tokens' : 'card';
+
   const verified = {
     items: cleanItems,
     deliveryFee,
-    totalAmount: subtotal + deliveryFee,
+    totalAmount,
     storeName: String(store.name ?? ''),
     studentName: String(userSnap.data()?.name ?? 'Student'),
+    paymentMethod,
+    paymentStatus: paymentMethod === 'tokens' ? 'reserved' : 'unpaid',
     verifiedAt: Date.now(),
   };
   if (Number(order.totalAmount) !== verified.totalAmount) {
     logger.warn(`Order ${ref.id}: total corrected ${order.totalAmount} -> ${verified.totalAmount}`);
   }
-  await ref.update(verified);
+  if (paymentMethod === 'tokens') {
+    // Reserve the tokens and publish the order to dashers in one step.
+    const result = await reserveTokensAndVerify(ref, String(order.studentId), totalAmount, verified);
+    if (result === 'insufficient') return cancel('insufficient_tokens');
+    if (result === 'gone') return null;
+  } else {
+    await ref.update(verified);
+  }
   return { ...order, ...verified };
 }
 
@@ -396,11 +418,49 @@ export const onOrderStatusChanged = onDocumentWritten(
       return;
     }
 
+    // ── PAYMENT RECEIVED (card or tokens, chosen after accept): tell the
+    //    dasher to go ahead ─────────────────────────────────────────────────
+    if (!statusChanged && before?.paymentStatus === 'awaiting_payment' && after.paymentStatus === 'paid' &&
+        dasherId) {
+      const token = await getUserToken(dasherId);
+      if (token) await sendPushNotification(
+        token,
+        `${MARK.assigned} Payment received`,
+        `The customer paid for the ${after.storeName} order. Go ahead and pick it up.`,
+        { screen: '/(dasher)/dash', orderId }
+      );
+      return;
+    }
+
     if (!statusChanged) return;
 
     // ── STATUS UPDATES: the customer only ─────────────────────────────────
     if (after.status === 'accepted') {
+      const ref = event.data!.after!.ref;
       const token = await getUserToken(studentId);
+
+      if (after.paymentMethod === 'tokens') {
+        await chargeTokensOnAccept(ref);
+        if (token) await sendPushNotification(
+          token,
+          `${MARK.assigned} Dasher assigned`,
+          `${after.dasherName} accepted your order and is heading to ${after.storeName}. Paid with tokens.`,
+          { screen: `/(student)/order/${orderId}`, orderId }
+        );
+        return;
+      }
+
+      if (after.paymentMethod === 'card' && after.paymentStatus === 'unpaid') {
+        await ref.update({ paymentStatus: 'awaiting_payment', payDeadline: Date.now() + PAY_WINDOW_MS });
+        if (token) await sendPushNotification(
+          token,
+          `${MARK.assigned} Pay now to confirm`,
+          `${after.dasherName} accepted your order. Pay ${jmd(after.totalAmount)} with your tokens or card within 10 minutes, or it will be cancelled.`,
+          { screen: `/(student)/order/${orderId}`, orderId }
+        );
+        return;
+      }
+
       if (token) await sendPushNotification(
         token,
         `${MARK.assigned} Dasher assigned`,
@@ -447,6 +507,10 @@ export const onOrderStatusChanged = onDocumentWritten(
     if (after.status === 'cancelled') {
       // A duplicate's original is still going ahead: no alert, or the student
       // gets a stack of "cancelled" pushes for an order that's fine.
+      // Give back anything the student put in (reserved tokens are released;
+      // a paid order is refunded as tokens). Runs for every cancellation.
+      const wasPaid = after.paymentStatus === 'paid';
+      await settleCancelledOrder(event.data!.after!.ref);
       if (after.cancelReason === 'duplicate_order') return;
 
       const reasonText: Record<string, string> = {
@@ -456,13 +520,16 @@ export const onOrderStatusChanged = onDocumentWritten(
         account_inactive: 'Your account is paused. Contact support to restore it.',
         too_many_active: 'You already have 3 orders in progress. Wait for one to arrive, then order again.',
         no_dasher: 'No dasher was free to take it in time. You were not charged. Please try again later.',
-        admin: `Your order from ${after.storeName} was cancelled by DormDash support. You were not charged.`,
+        admin: `Your order from ${after.storeName} was cancelled by DormDash support.`,
+        insufficient_tokens: 'You don\'t have enough tokens for this order. You were not charged.',
+        payment_timeout: `Your order from ${after.storeName} wasn't paid within 10 minutes, so it was cancelled. You were not charged.`,
       };
+      const refundNote = wasPaid ? ' Your payment was returned to you as DormDash tokens.' : '';
       const studentToken = await getUserToken(studentId);
       if (studentToken) await sendPushNotification(
         studentToken,
         `${MARK.cancelled} Order cancelled`,
-        reasonText[after.cancelReason] ?? `Your order from ${after.storeName} was cancelled.`,
+        (reasonText[after.cancelReason] ?? `Your order from ${after.storeName} was cancelled.`) + refundNote,
         { screen: `/(student)/order/${orderId}`, orderId }
       );
 
@@ -471,7 +538,11 @@ export const onOrderStatusChanged = onDocumentWritten(
         if (dasherToken) await sendPushNotification(
           dasherToken,
           `${MARK.cancelled} Order cancelled`,
-          `The ${after.storeName} order was cancelled by the customer.`,
+          after.cancelReason === 'payment_timeout'
+            ? `The customer didn't pay for the ${after.storeName} order in time, so it was cancelled. Don't buy it.`
+            : after.cancelReason === 'admin'
+              ? `The ${after.storeName} order was cancelled by DormDash support.`
+              : `The ${after.storeName} order was cancelled by the customer.`,
           { screen: '/(dasher)/dash' }
         );
       }
@@ -492,8 +563,8 @@ export const onDeliveryCompleted = onDocumentWritten(
     if (!after.dasherId) return;
 
     await db.collection('dashers').doc(after.dasherId).set({
-      totalDeliveries: admin.firestore.FieldValue.increment(1),
-      totalEarnings: admin.firestore.FieldValue.increment(Number(after.deliveryFee) || 0),
+      totalDeliveries: FieldValue.increment(1),
+      totalEarnings: FieldValue.increment(Number(after.deliveryFee) || 0),
     }, { merge: true });
 
     logger.info(`Credited dasher ${after.dasherId} for order ${event.params.orderId}`);
@@ -618,7 +689,7 @@ export const deleteMyAccount = onCall(async (request) => {
         if (field === 'studentId') {
           update.studentId = 'deleted_user';
           update.studentName = 'Deleted user';
-          update.studentNote = admin.firestore.FieldValue.delete();
+          update.studentNote = FieldValue.delete();
           update.deliveryAddress = {
             label: 'Address removed',
             latitude: 0,
@@ -685,4 +756,20 @@ export const cancelStalePendingOrders = onSchedule('every 5 minutes', async () =
     });
   }
   if (stale.length) logger.info(`Auto-cancelled ${stale.length} order(s) nobody accepted in 30 min`);
+
+  // Card orders a dasher accepted but the student never paid for.
+  const now = Date.now();
+  const accepted = await db.collection('orders').where('status', '==', 'accepted').get();
+  const unpaid = accepted.docs.filter(d =>
+    d.get('paymentMethod') === 'card' && d.get('paymentStatus') === 'awaiting_payment' &&
+    Number(d.get('payDeadline')) > 0 && Number(d.get('payDeadline')) < now);
+  for (const d of unpaid) {
+    await db.runTransaction(async tx => {
+      const fresh = await tx.get(d.ref);
+      if (fresh.get('status') !== 'accepted' || fresh.get('paymentStatus') !== 'awaiting_payment') return;
+      tx.update(d.ref, { status: 'cancelled', cancelReason: 'payment_timeout', cancelledAt: Date.now() });
+    });
+  }
+  if (unpaid.length) logger.info(`Cancelled ${unpaid.length} accepted order(s) not paid in time`);
 });
+

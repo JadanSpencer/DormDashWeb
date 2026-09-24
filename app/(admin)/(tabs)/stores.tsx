@@ -19,6 +19,8 @@ import { db } from '../../../services/firebase';
 import { Store } from '../../../types';
 import { formatJMD } from '../../../constants';
 import { S } from '../../../constants/themeMid';
+import { AmountPrompt } from '../../../components/AmountPrompt';
+import { adminAdjustFloat } from '../../../services/payments';
 
 const CATEGORIES = ['Fast Food', 'Grocery', 'Pharmacy', 'Drinks', 'Snacks', 'Other'];
 
@@ -220,6 +222,7 @@ export default function AdminStores() {
   const [loading, setLoading] = useState(true);
   const [modalVisible, setModalVisible] = useState(false);
   const [editTarget, setEditTarget] = useState<Store | null>(null);
+  const [floatTarget, setFloatTarget] = useState<Store | null>(null);
 
   useEffect(() => {
     const q = query(collection(db, 'stores'), orderBy('name', 'asc'));
@@ -305,6 +308,20 @@ export default function AdminStores() {
                 <Text style={styles.metaText}>★ {item.rating}</Text>
               </View>
 
+              {/* Store float: prepaid money the store draws from, so orders
+                  are ready when the dasher arrives. No float = the dasher's
+                  float pays for this store's orders. */}
+              <View style={styles.floatRow}>
+                <Text style={styles.floatText}>
+                  {typeof (item as any).floatJmd === 'number'
+                    ? `Float: ${formatJMD((item as any).floatJmd)}`
+                    : 'No store float (dasher\'s float pays)'}
+                </Text>
+                <Pressable onPress={() => setFloatTarget(item)} style={styles.floatBtn}>
+                  <Text style={styles.floatBtnText}>{typeof (item as any).floatJmd === 'number' ? 'Adjust float' : 'Start float'}</Text>
+                </Pressable>
+              </View>
+
               <View style={styles.actions}>
                 <Pressable
                   style={({ pressed }) => [styles.menuBtn, pressed && { opacity: 0.8 }]}
@@ -331,6 +348,18 @@ export default function AdminStores() {
       )}
 
       <StoreFormModal visible={modalVisible} onClose={() => setModalVisible(false)} initialData={editTarget} />
+      <AmountPrompt
+        visible={!!floatTarget}
+        title={`Float for ${floatTarget?.name ?? ''}`}
+        hint="J$ you gave this store to prepare DormDash orders from. Each paid order's food cost is taken from it. Use a minus sign to reduce it."
+        unitLabel="J$"
+        onCancel={() => setFloatTarget(null)}
+        onSubmit={async (amount, note) => {
+          if (!floatTarget) return;
+          await adminAdjustFloat('store', floatTarget.id, amount, note);
+          setFloatTarget(null);
+        }}
+      />
     </View>
   );
 }
@@ -378,6 +407,10 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: S.color.cerulean,
   },
   feeText: { fontSize: 11, fontWeight: '900', color: S.color.cerulean },
+  floatRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginTop: 8 },
+  floatText: { flex: 1, fontSize: 13, fontWeight: '800', color: S.color.ink },
+  floatBtn: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999, backgroundColor: S.color.ceruleanTint },
+  floatBtnText: { fontSize: 12, fontWeight: '800', color: S.color.cerulean },
   metaText: { fontSize: 11, fontWeight: '600', color: S.color.inkFaint },
   metaDot: { width: 3, height: 3, borderRadius: 2, backgroundColor: S.color.lineOnCard },
 

@@ -442,7 +442,22 @@ export default function DasherHome() {
                   </View>
                 )}
 
-                {NEXT_STATUS[activeOrder.status] && (
+                {/* Payment gate: don't buy anything until the order is paid.
+                    (Orders from before payments have no paymentMethod.) */}
+                {activeOrder.paymentMethod && activeOrder.paymentStatus !== 'paid' && (
+                  <View style={styles.payWait}>
+                    <Text style={styles.payWaitTitle}>
+                      {activeOrder.paymentMethod === 'tokens' ? 'Confirming payment…' : 'Waiting for the customer to pay'}
+                    </Text>
+                    <Text style={styles.payWaitText}>
+                      {activeOrder.paymentMethod === 'tokens'
+                        ? 'This takes a few seconds.'
+                        : 'Don\'t buy anything yet. You\'ll get a notification when they pay. If they don\'t pay within 10 minutes, the order is cancelled.'}
+                    </Text>
+                  </View>
+                )}
+
+                {NEXT_STATUS[activeOrder.status] && (!activeOrder.paymentMethod || activeOrder.paymentStatus === 'paid') && (
                   <Pressable
                     onPress={handleStatusUpdate}
                     style={({ pressed }) => [styles.statusBtn, pressed && { transform: [{ scale: 0.97 }] }]}
@@ -650,6 +665,12 @@ const styles = StyleSheet.create({
   noGpsLabel: { ...D.type.label, fontSize: 10, color: D.color.creamSoft },
   noGpsAddress: { ...D.type.body, fontSize: 15, fontWeight: '800', color: D.color.cerulean },
 
+  payWait: {
+    marginTop: D.space.sm, padding: D.space.md, borderRadius: D.radius.md,
+    borderWidth: 1, borderColor: D.color.line, gap: 4,
+  },
+  payWaitTitle: { color: D.color.cream, fontSize: 15, fontWeight: '800' },
+  payWaitText: { color: D.color.creamFaint, fontSize: 13, lineHeight: 18 },
   statusBtn: {
     backgroundColor: D.color.cerulean,
     borderRadius: D.radius.pill,

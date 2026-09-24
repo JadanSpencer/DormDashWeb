@@ -15,6 +15,8 @@ import { doc, getDoc, collection, onSnapshot, query, orderBy } from 'firebase/fi
 import { db } from '../../../services/firebase';
 import { Store, MenuItem, CartItem } from '../../../types';
 import { MAX_ORDER_ITEMS, formatJMD } from '../../../constants';
+import { usePriceUnit } from '../../../hooks/usePriceUnit';
+import { PriceUnitToggle } from '../../../components/PriceUnitToggle';
 import { T, useReducedMotion } from '../../../constants/theme';
 import { appCache, CACHE_KEYS, CACHE_TTL } from '../../../services/cache';
 import { Watermark } from '../../../components/Watermark';
@@ -30,7 +32,8 @@ const safeGoBack = () => {
 };
 
 const HollowPrice: React.FC<{ value: number; size?: number }> = ({ value, size = 16 }) => {
-  const text = formatJMD(value);
+  const { fmt } = usePriceUnit(); // J$ or tokens, whichever the student chose
+  const text = fmt(value);
   return (
     <View style={styles.pricePlate}>
       <Text style={[styles.hollowText, { fontSize: size }]}>{text}</Text>
@@ -43,6 +46,7 @@ export default function StoreMenuScreen() {
   const insets = useSafeAreaInsets();
   const reduced = useReducedMotion();
 
+  const { fmt } = usePriceUnit();
   const [store, setStore] = useState<Store | null>(null);
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -235,12 +239,18 @@ export default function StoreMenuScreen() {
               <View style={styles.infoPill}>
                 <Text style={styles.infoIcon}>◇</Text>
                 <Text style={[styles.infoText, store.deliveryFee === 0 && { color: T.color.teal, fontWeight: '800' }]}>
-                  {store.deliveryFee === 0 ? 'Free' : formatJMD(store.deliveryFee)}
+                  {store.deliveryFee === 0 ? 'Free' : fmt(store.deliveryFee)}
                 </Text>
               </View>
             </View>
           )}
         </Animated.View>
+
+        {!loading && (
+          <View style={{ paddingHorizontal: T.space.lg, paddingTop: T.space.sm }}>
+            <PriceUnitToggle />
+          </View>
+        )}
 
         {!loading && categories.length > 1 && (
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
@@ -301,7 +311,7 @@ export default function StoreMenuScreen() {
             </View>
             <Text style={styles.cartBtnText}>View cart</Text>
             <View style={styles.cartTotalWrap}>
-              <Text style={styles.cartTotalText}>{formatJMD(cartTotal)}</Text>
+              <Text style={styles.cartTotalText}>{fmt(cartTotal)}</Text>
               <Text style={styles.cartArrow}>→</Text>
             </View>
           </Pressable>

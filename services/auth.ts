@@ -259,14 +259,42 @@ export const resetPassword = async (
   // Detach this device's push token first (needs the user still signed in to
   // write their doc). Before, a normal sign-out left the token attached, so a
   // signed-out device kept getting that account's order alerts.
-  export const logoutUser = async (): Promise<void> => {
-    const uid = auth.currentUser?.uid;
-    if (uid) {
-      await clearPushToken(uid);
-      // Signing out takes a dasher offline, so orders aren't offered to
-      // someone who has left. (Fails harmlessly for students and admins.)
-      await updateDoc(doc(db, 'dashers', uid), { isOnline: false, currentLocation: null })
-        .catch(() => {});
-    }
-    await signOut(auth);
+  //
+  // Each cleanup step gets at most a few seconds. On a slow connection, or
+  // when the browser's push service doesn't answer, these calls used to hang
+  // forever, so the button stayed on "Signing out…" and signOut never ran.
+  // Now sign-out always finishes; a skipped cleanup is harmless (the server
+  // drops dead push tokens, and the dasher can't take orders once signed out).
+  const CLEANUP_LIMIT_MS = 4000;
+  const within = (p: Promise<unknown>, ms: number) =>
+    Promise.race([
+      p.catch(() => {}),
+      new Promise<void>(resolve => setTimeout(resolve, ms)),
+    ]);
+
+  let signingOut: Promise<void> | null = null;
+
+  export const logoutUser = (): Promise<void> => {
+    // A second tap while one sign-out is running joins the first one.
+    if (signingOut) return signingOut;
+    signingOut = (async () => {
+      try {
+        const uid = auth.currentUser?.uid;
+        if (uid) {
+          await within(Promise.allSettled([
+            clearPushToken(uid),
+            // Signing out takes a dasher offline, so orders aren't offered to
+            // someone who has left. (Fails harmlessly for students and admins.)
+            updateDoc(doc(db, 'dashers', uid), { isOnline: false, currentLocation: null }),
+          ]), CLEANUP_LIMIT_MS);
+        }
+      } finally {
+        try {
+          await signOut(auth);
+        } finally {
+          signingOut = null;
+        }
+      }
+    })();
+    return signingOut;
   };

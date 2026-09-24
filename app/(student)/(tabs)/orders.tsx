@@ -19,6 +19,7 @@ import { db } from '../../../services/firebase';
 import { useAuth } from '../../../hooks/useAuth';
 import { Order, OrderStatus } from '../../../types';
 import { formatJMD } from '../../../constants';
+import { usePriceUnit } from '../../../hooks/usePriceUnit';
 import { T, useReducedMotion } from '../../../constants/theme';
 
 
@@ -163,6 +164,7 @@ const rail = StyleSheet.create({
 
 // ─── ACTIVE ORDER CARD ──────────────────────────────────────────────
 const ActiveOrderCard: React.FC<{ order: Order; onCancel: () => void; reduced: boolean }> = ({ order, onCancel, reduced }) => {
+  const { fmt } = usePriceUnit();
   const cfg = STATUS_CONFIG[order.status];
   const glow = useRef(new Animated.Value(0)).current;
 
@@ -206,9 +208,15 @@ const ActiveOrderCard: React.FC<{ order: Order; onCancel: () => void; reduced: b
 
       <Text style={active.store}>{order.storeName}</Text>
 
+      {order.paymentMethod === 'card' && order.paymentStatus === 'awaiting_payment' && (
+        <View style={active.payNeeded}>
+          <Text style={active.payNeededText}>Payment needed. Tap to pay within 10 minutes.</Text>
+        </View>
+      )}
+
       {/* Hollowed amount */}
       <View style={active.amountPlate}>
-        <Text style={active.amountText}>{formatJMD(order.totalAmount)}</Text>
+        <Text style={active.amountText}>{fmt(order.totalAmount)}</Text>
       </View>
 
       <Text style={active.items} numberOfLines={2}>
@@ -257,6 +265,11 @@ const ActiveOrderCard: React.FC<{ order: Order; onCancel: () => void; reduced: b
 };
 
 const active = StyleSheet.create({
+  payNeeded: {
+    alignSelf: 'flex-start', marginTop: 6, paddingHorizontal: 10, paddingVertical: 6,
+    borderRadius: 999, backgroundColor: T.color.ceruleanTint,
+  },
+  payNeededText: { fontSize: 12, fontWeight: '800', color: T.color.ceruleanDeep },
   card: {
     backgroundColor: T.color.card,
     marginHorizontal: T.space.lg,
@@ -341,6 +354,7 @@ const active = StyleSheet.create({
 
 // ─── HISTORY CARD ───────────────────────────────────────────────────
 const HistoryCard: React.FC<{ order: Order }> = ({ order }) => {
+  const { fmt } = usePriceUnit();
   const cfg = STATUS_CONFIG[order.status];
   const isDelivered = order.status === 'delivered';
   return (
@@ -356,7 +370,7 @@ const HistoryCard: React.FC<{ order: Order }> = ({ order }) => {
       <View style={hist.content}>
         <View style={hist.top}>
           <Text style={hist.store} numberOfLines={1}>{order.storeName}</Text>
-          <Text style={hist.amount}>{formatJMD(order.totalAmount)}</Text>
+          <Text style={hist.amount}>{fmt(order.totalAmount)}</Text>
         </View>
         <View style={hist.meta}>
           <Text style={hist.date}>{formatDate(order.createdAt)}</Text>

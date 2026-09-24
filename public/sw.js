@@ -8,7 +8,7 @@
  * Bump VERSION whenever this file changes. App code updates don't need a
  * bump: JS bundles are content-hashed and navigations are network-first.
  */
-const VERSION = 'dd-v4';
+const VERSION = 'dd-v6';
 const SHELL = `${VERSION}-shell`;
 const RUNTIME = `${VERSION}-runtime`;
 
@@ -19,6 +19,9 @@ const PRECACHE = [
   '/icons/icon-512.png',
   '/icons/apple-touch-icon.png',
   '/icons/badge-96.png',
+  // Launch intro images (components/BrandIntro.tsx), so it plays offline too
+  '/brand/jc-logo.png',
+  '/brand/dormdash-tile.png',
 ];
 
 self.addEventListener('install', (event) => {
@@ -40,6 +43,9 @@ self.addEventListener('fetch', (event) => {
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return; // Firebase, Maps, etc.
+  // Server endpoints (e.g. /api/wipay-return, the card payment result) must
+  // always go straight to the server and never be cached.
+  if (url.pathname.startsWith('/api/')) return;
 
   // Page loads (any route — it's a single-page app): network first, so a new
   // deploy is picked up immediately; fall back to the cached shell offline.
@@ -47,8 +53,11 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(
       fetch(req)
         .then((res) => {
-          const copy = res.clone();
-          caches.open(SHELL).then((c) => c.put('/', copy));
+          // Only cache a real page, never a redirect or an error.
+          if (res.ok && res.type === 'basic') {
+            const copy = res.clone();
+            caches.open(SHELL).then((c) => c.put('/', copy));
+          }
           return res;
         })
         .catch(() => caches.match('/'))
@@ -57,7 +66,7 @@ self.addEventListener('fetch', (event) => {
   }
 
   // Hashed bundles, fonts and images never change at the same URL: cache first.
-  if (url.pathname.startsWith('/_expo/') || url.pathname.startsWith('/assets/') || url.pathname.startsWith('/icons/')) {
+  if (url.pathname.startsWith('/_expo/') || url.pathname.startsWith('/assets/') || url.pathname.startsWith('/icons/') || url.pathname.startsWith('/brand/')) {
     event.respondWith(
       caches.match(req).then((hit) => hit || fetch(req).then((res) => {
         if (res.ok) { const copy = res.clone(); caches.open(RUNTIME).then((c) => c.put(req, copy)); }

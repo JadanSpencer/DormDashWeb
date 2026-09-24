@@ -111,7 +111,10 @@ service cloud.firestore {
       allow create: if isStudent()
         && request.resource.data.keys().hasOnly(
              ['studentId', 'studentName', 'storeId', 'storeName', 'items', 'status',
-              'totalAmount', 'deliveryFee', 'deliveryAddress', 'createdAt', 'studentNote'])
+              'totalAmount', 'deliveryFee', 'deliveryAddress', 'createdAt', 'studentNote',
+              'paymentMethod'])
+        && (!('paymentMethod' in request.resource.data)
+            || request.resource.data.paymentMethod in ['card', 'tokens'])
         && request.resource.data.studentId == request.auth.uid
         && request.resource.data.status == 'pending'
         && request.resource.data.items is list
@@ -140,9 +143,13 @@ service cloud.firestore {
         && str(request.resource.data.dasherName, 100)
         && onlyChanged(['status', 'dasherId', 'dasherName', 'acceptedAt']);
 
-      // The assigned dasher moves the order forward one step at a time.
+      // The assigned dasher moves the order forward one step at a time, and
+      // can't start (picking up) until the order is paid. Orders from before
+      // payments existed have no paymentMethod and are exempt.
       allow update: if isDasher()
         && resource.data.get('dasherId', null) == request.auth.uid
+        && (resource.data.get('paymentMethod', null) == null
+            || resource.data.get('paymentStatus', null) == 'paid')
         && onlyChanged(['status', 'deliveredAt'])
         && (
           (resource.data.status == 'accepted'    && request.resource.data.status == 'picking_up')
@@ -183,7 +190,8 @@ service cloud.firestore {
 
       allow update: if isAdmin()
         && isValidString(request.resource.data.name, 100)
-        && isValidPrice(request.resource.data.deliveryFee);
+        && isValidPrice(request.resource.data.deliveryFee)
+        && !changed('floatJmd');
 
       allow delete: if isAdmin();
 
@@ -194,6 +202,25 @@ service cloud.firestore {
           && isValidPrice(request.resource.data.price);
         allow delete: if isAdmin();
       }
+    }
+
+    // ── Payments (all written by Cloud Functions only) ──────────────────
+    // A student sees their own token balance, history and card payments.
+    match /wallets/{uid} {
+      allow read: if signedIn() && (request.auth.uid == uid || isAdmin());
+      allow write: if false;
+    }
+    match /walletTx/{id} {
+      allow read: if signedIn() && (resource.data.uid == request.auth.uid || isAdmin());
+      allow write: if false;
+    }
+    match /payments/{id} {
+      allow read: if signedIn() && (resource.data.uid == request.auth.uid || isAdmin());
+      allow write: if false;
+    }
+    match /floatTx/{id} {
+      allow read: if isAdmin();
+      allow write: if false;
     }
 
     // Everything else is closed.

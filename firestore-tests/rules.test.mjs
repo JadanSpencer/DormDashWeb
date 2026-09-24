@@ -178,3 +178,32 @@ test('unknown collections are closed', async () => {
   await assertFails(setDoc(doc(db('boss'), 'secrets', 'x'), { a: 1 }));
   await assertFails(getDoc(doc(db('stu'), 'notifications', 'x')));
 });
+
+// ── Payments ──────────────────────────────────────────────────────────────
+test('order can carry a payment method, but only card or tokens', async () => {
+  await assertSucceeds(addDoc(collection(db('stu'), 'orders'), { ...baseOrder, paymentMethod: 'tokens' }));
+  await assertSucceeds(addDoc(collection(db('stu'), 'orders'), { ...baseOrder, paymentMethod: 'card' }));
+  await assertFails(addDoc(collection(db('stu'), 'orders'), { ...baseOrder, paymentMethod: 'free' }));
+  await assertFails(addDoc(collection(db('stu'), 'orders'), { ...baseOrder, paymentMethod: 'card', paymentStatus: 'paid' }));
+});
+test('dasher cannot start an unpaid card order', async () => {
+  await env.withSecurityRulesDisabled(async (ctx) => {
+    await setDoc(doc(ctx.firestore(), 'orders', 'unpaid'), { ...baseOrder, status: 'accepted', dasherId: 'dash', paymentMethod: 'card', paymentStatus: 'awaiting_payment' });
+    await setDoc(doc(ctx.firestore(), 'orders', 'paidcard'), { ...baseOrder, status: 'accepted', dasherId: 'dash', paymentMethod: 'card', paymentStatus: 'paid' });
+  });
+  await assertFails(updateDoc(doc(db('dash'), 'orders', 'unpaid'), { status: 'picking_up' }));
+  await assertSucceeds(updateDoc(doc(db('dash'), 'orders', 'paidcard'), { status: 'picking_up' }));
+});
+test('nobody can write balances or payments from the app', async () => {
+  await env.withSecurityRulesDisabled(async (ctx) => {
+    await setDoc(doc(ctx.firestore(), 'wallets', 'stu'), { balanceJmd: 500, reservedJmd: 0 });
+    await setDoc(doc(ctx.firestore(), 'payments', 'p1'), { uid: 'stu', status: 'pending' });
+  });
+  await assertSucceeds(getDoc(doc(db('stu'), 'wallets', 'stu')));
+  await assertFails(getDoc(doc(db('stu2'), 'wallets', 'stu')));
+  await assertFails(setDoc(doc(db('stu'), 'wallets', 'stu'), { balanceJmd: 999999 }));
+  await assertFails(setDoc(doc(db('boss'), 'wallets', 'stu'), { balanceJmd: 999999 }));
+  await assertSucceeds(getDoc(doc(db('stu'), 'payments', 'p1')));
+  await assertFails(updateDoc(doc(db('stu'), 'payments', 'p1'), { status: 'paid' }));
+  await assertFails(updateDoc(doc(db('boss'), 'stores', 'store1'), { floatJmd: 100000 }));
+});

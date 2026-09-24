@@ -35,7 +35,13 @@ const sections: Section[] = [
     title: 'Payment',
     blocks: [
       { p: LEGAL.paymentMethod },
-      { p: `${LEGAL.appName} does not take card details or process payments inside the app. The total shown at checkout is the amount due.` },
+      { p: `${LEGAL.appName} never sees or stores your card number. WiPay may add a card processing fee, which is shown on its payment page before you pay.` },
+      { list: [
+        `DormDash tokens are prepaid credit for ${LEGAL.appName} orders. 1 token = J$${LEGAL.tokenValueJmd}. You can buy them by card in the app, or pay cash to a ${LEGAL.appName} admin, who adds them to your account.`,
+        'Tokens can only be used on DormDash. They have no cash value and cannot be exchanged for cash, except where the law requires it.',
+        'If a paid order is cancelled, or your card payment arrives after the order was cancelled, the amount is returned to you as tokens.',
+        `If you think a charge or token balance is wrong, email ${LEGAL.contactEmail} with the details and we will look into it.`,
+      ] },
     ],
   },
   {
@@ -51,6 +57,7 @@ const sections: Section[] = [
     title: 'What you must not do',
     blocks: [{ list: [
       'Place fake orders, or orders you do not intend to pay for.',
+      'Try to change prices, balances or payments, or reuse a payment confirmation.',
       'Change prices, tamper with the app, or try to get around our security or rate limits.',
       'Access other people\'s accounts or data, or collect data from the app with bots or scripts.',
       'Harass, threaten or discriminate against dashers, students or store staff.',

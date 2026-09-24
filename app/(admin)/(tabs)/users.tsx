@@ -14,6 +14,9 @@ import { collection, onSnapshot, updateDoc, doc, query, orderBy } from 'firebase
 import { db } from '../../../services/firebase';
 import { User } from '../../../types';
 import { S } from '../../../constants/themeMid';
+import { formatJMD } from '../../../constants';
+import { AmountPrompt } from '../../../components/AmountPrompt';
+import { adminAdjustTokens, adminAdjustFloat, formatTokens } from '../../../services/payments';
 
 export default function AdminUsers() {
   const insets = useSafeAreaInsets();
@@ -22,6 +25,22 @@ export default function AdminUsers() {
   const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState<'all' | 'student' | 'dasher' | 'admin'>('all');
   const [searchFocused, setSearchFocused] = useState(false);
+
+  // Money: students' token balances and dashers' floats (read-only here;
+  // changes go through Cloud Functions so every change is in the ledger).
+  const [wallets, setWallets] = useState<Record<string, { balanceJmd: number; reservedJmd: number }>>({});
+  const [floats, setFloats] = useState<Record<string, number>>({});
+  const [adjust, setAdjust] = useState<{ user: User; kind: 'tokens' | 'float' } | null>(null);
+  useEffect(() => onSnapshot(collection(db, 'wallets'), snap => {
+    const m: Record<string, { balanceJmd: number; reservedJmd: number }> = {};
+    snap.forEach(d => { const w = d.data(); m[d.id] = { balanceJmd: Number(w.balanceJmd) || 0, reservedJmd: Number(w.reservedJmd) || 0 }; });
+    setWallets(m);
+  }, () => {}), []);
+  useEffect(() => onSnapshot(collection(db, 'dashers'), snap => {
+    const m: Record<string, number> = {};
+    snap.forEach(d => { m[d.id] = Number(d.data().floatJmd) || 0; });
+    setFloats(m);
+  }, () => {}), []);
 
   useEffect(() => {
     const q = query(collection(db, 'users'), orderBy('createdAt', 'desc'));
@@ -159,6 +178,26 @@ export default function AdminUsers() {
                   </Text>
                 </View>
 
+                {item.role === 'student' && (
+                  <View style={styles.moneyRow}>
+                    <Text style={styles.moneyText}>
+                      Tokens: {formatTokens((wallets[item.uid]?.balanceJmd ?? 0) - (wallets[item.uid]?.reservedJmd ?? 0))}
+                      {(wallets[item.uid]?.reservedJmd ?? 0) > 0 ? ` (+${formatTokens(wallets[item.uid].reservedJmd)} held)` : ''}
+                    </Text>
+                    <Pressable onPress={() => setAdjust({ user: item, kind: 'tokens' })} style={styles.moneyBtn}>
+                      <Text style={styles.moneyBtnText}>Adjust tokens</Text>
+                    </Pressable>
+                  </View>
+                )}
+                {item.role === 'dasher' && (
+                  <View style={styles.moneyRow}>
+                    <Text style={styles.moneyText}>Float: {formatJMD(floats[item.uid] ?? 0)}</Text>
+                    <Pressable onPress={() => setAdjust({ user: item, kind: 'float' })} style={styles.moneyBtn}>
+                      <Text style={styles.moneyBtnText}>Adjust float</Text>
+                    </Pressable>
+                  </View>
+                )}
+
                 {item.role !== 'admin' && (
                   <Pressable
                     style={({ pressed }) => [
@@ -181,11 +220,31 @@ export default function AdminUsers() {
           }}
         />
       )}
+
+      <AmountPrompt
+        visible={!!adjust}
+        title={adjust?.kind === 'float' ? `Float for ${adjust?.user.name}` : `Tokens for ${adjust?.user.name}`}
+        hint={adjust?.kind === 'float'
+          ? 'J$ to add to this dasher\'s float (money you gave them to buy orders). Use a minus sign to reduce it.'
+          : 'Tokens to add (1 token = J$100), e.g. after they pay you cash. Use a minus sign to remove.'}
+        unitLabel={adjust?.kind === 'float' ? 'J$' : 'tokens'}
+        onCancel={() => setAdjust(null)}
+        onSubmit={async (amount, note) => {
+          if (!adjust) return;
+          if (adjust.kind === 'tokens') await adminAdjustTokens(adjust.user.uid, amount, note);
+          else await adminAdjustFloat('dasher', adjust.user.uid, amount, note);
+          setAdjust(null);
+        }}
+      />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+  moneyRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginTop: 4 },
+  moneyText: { flex: 1, fontSize: 13, fontWeight: '800', color: S.color.ink },
+  moneyBtn: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999, backgroundColor: S.color.ceruleanTint },
+  moneyBtnText: { fontSize: 12, fontWeight: '800', color: S.color.cerulean },
   root: { flex: 1, backgroundColor: S.color.bg },
 
   header: { paddingHorizontal: S.space.lg, paddingBottom: S.space.sm },

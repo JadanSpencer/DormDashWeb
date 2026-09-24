@@ -118,6 +118,11 @@ export interface Order {
     studentRating?: number;
     cancelReason?: string;   // set by the server when it rejects an order
     verifiedAt?: number;     // set by the server after re-pricing the order
+    // Payments (functions/src/payments.ts). Missing on orders from before payments.
+    paymentMethod?: 'card' | 'tokens';
+    paymentStatus?: 'unpaid' | 'reserved' | 'awaiting_payment' | 'paid' | 'released' | 'refunded_tokens';
+    payDeadline?: number;    // card: pay by this time after a dasher accepts
+    paidAt?: number;
     studentNote?: string;
 }
 

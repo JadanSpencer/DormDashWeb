@@ -36,6 +36,7 @@ interface DasherStats {
   rating: number;
   totalDeliveries: number;
   totalEarnings: number;
+  floatJmd?: number; // money DormDash gave you to buy orders with
 }
 
 const formatDate = (ts: number) => {
@@ -67,6 +68,7 @@ export default function DasherProfile() {
           rating: Number(d.rating) || 0,
           totalDeliveries: Number(d.totalDeliveries) || 0,
           totalEarnings: Number(d.totalEarnings) || 0,
+          floatJmd: Number(d.floatJmd) || 0,
         });
       }
     });
@@ -97,7 +99,11 @@ export default function DasherProfile() {
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Sign out', style: 'destructive',
-        onPress: async () => { setLoggingOut(true); await logoutUser(); },
+        onPress: async () => {
+          setLoggingOut(true);
+          try { await logoutUser(); }
+          catch { setLoggingOut(false); Alert.alert('Sign out failed', 'Check your connection and try again.'); }
+        },
       },
     ]);
   };
@@ -137,6 +143,16 @@ export default function DasherProfile() {
               <View style={styles.roleBadge}>
                 <View style={styles.roleDot} />
                 <Text style={styles.roleText}>Dasher</Text>
+              </View>
+            </View>
+
+            {/* Float: money DormDash gave this dasher for buying orders.
+                Paid orders at stores without their own float draw from it. */}
+            <Text style={styles.sectionLabel}>Order float</Text>
+            <View style={styles.statsRow}>
+              <View style={styles.statCard}>
+                <Text style={styles.statBig}>{stats ? formatJMD(stats.floatJmd ?? 0) : '—'}</Text>
+                <Text style={styles.statLabel}>For buying orders</Text>
               </View>
             </View>
 

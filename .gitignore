@@ -60,3 +60,6 @@ output.txt
 # local debug output
 dormdash-*.txt
 .firebase/
+
+# emulator logs
+*-debug.log

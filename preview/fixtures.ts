@@ -78,5 +78,17 @@ export function seed(): Record<string, any> {
     db[`orders/h${i}`] = order(`h${i}`, 's3', [item('s3', 'm7', 1)], 'delivered', (10 + i) * day,
       { dasherId: 'das1', dasherName: 'Kemar Reid', deliveredAt: now - (10 + i) * day + 20 * min });
   }
+  // Payments (preview only): a token balance, a card order waiting for
+  // payment, and a paid card payment for the /payment-result screen.
+  db['wallets/stu1'] = { balanceJmd: 1500, reservedJmd: 450, updatedAt: now };
+  db['walletTx/t1'] = { uid: 'stu1', type: 'topup_card', amountJmd: 1000, createdAt: now - 2 * day };
+  db['walletTx/t2'] = { uid: 'stu1', type: 'admin_adjust', amountJmd: 500, createdAt: now - day };
+  db['walletTx/t3'] = { uid: 'stu1', type: 'order_reserve', amountJmd: -450, createdAt: now - 2 * min };
+  db['orders/o8'] = order('o8', 's3', [item('s3', 'm7', 1)], 'accepted', 3 * min, {
+    dasherId: 'das1', dasherName: 'Kemar Reid', acceptedAt: now - min, verifiedAt: now - 3 * min,
+    paymentMethod: 'card', paymentStatus: 'awaiting_payment', payDeadline: now + 8 * min,
+  });
+  db['payments/pdemo'] = { uid: 'stu1', purpose: 'order', orderId: 'o1', amountJmd: 2100, status: 'paid' };
+  db['payments/ptok'] = { uid: 'stu1', purpose: 'tokens', tokens: 10, amountJmd: 1000, status: 'paid' };
   return db;
 }

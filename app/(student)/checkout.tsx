@@ -30,6 +30,8 @@ import { useAuth } from '../../hooks/useAuth';
 import { CartItem, Order } from '../../types';
 import { formatJMD, CAMPUS_CENTER, MAX_ACTIVE_ORDERS } from '../../constants';
 import { serverNow } from '../../services/serverClock';
+import { usePriceUnit } from '../../hooks/usePriceUnit';
+import { PriceUnitToggle } from '../../components/PriceUnitToggle';
 import { sanitizeText, sanitizeAddress, sanitizeNote, isValidCoordinate } from '../../services/sanitize';
 import { T } from '../../constants/theme';
 import * as Location from 'expo-location';
@@ -51,6 +53,11 @@ export default function CheckoutScreen() {
   const deliveryFee = parseFloat(params.deliveryFee ?? '0');
   const subtotal = cart.reduce((sum, c) => sum + c.menuItem.price * c.quantity, 0);
   const total = subtotal + deliveryFee;
+
+  // Payment happens after a dasher accepts: the student then chooses their
+  // tokens or their card (app/(student)/order/[id].tsx). Nothing is chosen
+  // or charged here. Prices show in J$ or tokens.
+  const { fmt } = usePriceUnit();
 
   const [deliveryLabel, setDeliveryLabel] = useState('');
   const [note, setNote] = useState('');
@@ -141,6 +148,9 @@ export default function CheckoutScreen() {
           hasGpsFix: coords !== null,
         },
         createdAt: serverNow(),
+        // "Pay after a dasher accepts". The student picks tokens or card
+        // then; the server switches this to 'tokens' if they use tokens.
+        paymentMethod: 'card',
         ...(cleanNote ? { studentNote: cleanNote } : {}),
       };
 
@@ -170,6 +180,7 @@ export default function CheckoutScreen() {
           </View>
           <Text style={styles.eyebrow}>Reviewing your order from</Text>
           <Text style={styles.storeName}>{params.storeName}</Text>
+          <View style={{ marginTop: T.space.sm }}><PriceUnitToggle /></View>
         </View>
 
         {/* Cart summary */}
@@ -183,7 +194,7 @@ export default function CheckoutScreen() {
               <Text style={styles.itemName} numberOfLines={1}>{item.menuItem.name}</Text>
               <View style={styles.itemPricePlate}>
                 <Text style={styles.itemPriceText}>
-                  {formatJMD(item.menuItem.price * item.quantity)}
+                  {fmt(item.menuItem.price * item.quantity)}
                 </Text>
               </View>
             </View>
@@ -227,24 +238,33 @@ export default function CheckoutScreen() {
           <Text style={styles.charCount}>{note.length}/200</Text>
         </View>
 
+        {/* Payment */}
+        <Text style={styles.sectionLabel}>Payment</Text>
+        <View style={styles.card}>
+          <Text style={styles.payTitle}>Pay after a dasher accepts</Text>
+          <Text style={styles.paySub}>
+            Nothing is charged now. When a dasher accepts, you'll get a notification and choose how to pay: with your DormDash tokens or by card. You then have 10 minutes to pay.
+          </Text>
+        </View>
+
         {/* Summary */}
         <Text style={styles.sectionLabel}>Summary</Text>
         <View style={styles.card}>
           <View style={styles.summaryRow}>
             <Text style={styles.summaryLabel}>Subtotal</Text>
-            <Text style={styles.summaryValue}>{formatJMD(subtotal)}</Text>
+            <Text style={styles.summaryValue}>{fmt(subtotal)}</Text>
           </View>
           <View style={styles.summaryRow}>
             <Text style={styles.summaryLabel}>Delivery</Text>
             <Text style={[styles.summaryValue, deliveryFee === 0 && { color: T.color.teal, fontWeight: '900' }]}>
-              {deliveryFee === 0 ? 'Free' : formatJMD(deliveryFee)}
+              {deliveryFee === 0 ? 'Free' : fmt(deliveryFee)}
             </Text>
           </View>
           <View style={styles.divider} />
           <View style={styles.summaryRow}>
             <Text style={styles.totalLabel}>Total</Text>
             <View style={styles.totalPlate}>
-              <Text style={styles.totalText}>{formatJMD(total)}</Text>
+              <Text style={styles.totalText}>{fmt(total)}</Text>
             </View>
           </View>
         </View>
@@ -272,7 +292,7 @@ export default function CheckoutScreen() {
               <>
                 <Text style={styles.ctaText}>Place order</Text>
                 <View style={styles.ctaTotalPlate}>
-                  <Text style={styles.ctaTotalText}>{formatJMD(total)}</Text>
+                  <Text style={styles.ctaTotalText}>{fmt(total)}</Text>
                 </View>
               </>
             )}
@@ -360,6 +380,21 @@ const styles = StyleSheet.create({
 
   // Summary
   summaryRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  payOpt: {
+    flexDirection: 'row', alignItems: 'flex-start', gap: 12,
+    padding: T.space.sm, borderRadius: T.radius.md,
+    borderWidth: 1.5, borderColor: T.color.line, backgroundColor: T.color.cream,
+  },
+  payOptOn: { borderColor: T.color.cerulean, backgroundColor: T.color.card },
+  radio: {
+    width: 20, height: 20, borderRadius: 10, marginTop: 2,
+    borderWidth: 2, borderColor: T.color.inkFaint, alignItems: 'center', justifyContent: 'center',
+  },
+  radioOn: { borderColor: T.color.cerulean },
+  radioDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: T.color.cerulean },
+  payTitle: { fontSize: 15, fontWeight: '800', color: T.color.ink },
+  paySub: { fontSize: 12, lineHeight: 17, color: T.color.inkSoft, marginTop: 2 },
+  payLink: { fontSize: 14, fontWeight: '800', color: T.color.ceruleanDeep, textDecorationLine: 'underline', paddingTop: 4 },
   summaryLabel: { ...T.type.body, fontSize: 14, color: T.color.inkSoft },
   summaryValue: { ...T.type.body, fontSize: 14, fontWeight: '800', color: T.color.ink },
   divider: { height: 1, backgroundColor: T.color.line, marginVertical: 6 },

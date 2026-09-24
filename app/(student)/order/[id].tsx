@@ -20,7 +20,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import {
   View, Text, StyleSheet, ScrollView,
   TouchableOpacity, Pressable, ActivityIndicator,
-  Animated, Easing
+  Animated, Easing, Alert
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, router } from 'expo-router';
@@ -31,6 +31,11 @@ import { formatJMD } from '../../../constants';
 import { T, useReducedMotion } from '../../../constants/theme';
 import { Watermark } from '../../../components/Watermark';
 import MapView, { Marker, PROVIDER_GOOGLE } from '../../../components/MapView';
+import { usePriceUnit } from '../../../hooks/usePriceUnit';
+import { payOrderByCard, payOrderWithTokens, formatTokens } from '../../../services/payments';
+import { useWallet } from '../../../hooks/useWallet';
+import { useAuth } from '../../../hooks/useAuth';
+import { serverNow } from '../../../services/serverClock';
 
 const STATUS_CONFIG: Record<OrderStatus, { label: string; color: string; description: string }> = {
   pending:    { label: 'Finding a dasher', color: T.color.warning,  description: 'Waiting for a dasher to accept your order' },
@@ -52,10 +57,151 @@ const CANCEL_REASONS: Record<string, string> = {
   rate_limited: 'Too many orders in a short time. Wait a few minutes and try again.',
   account_inactive: 'Your account is paused. Contact support to restore it.',
   too_many_active: 'You already had 3 orders in progress. You were not charged. Wait for one to arrive, then order again.',
+  insufficient_tokens: 'You didn\'t have enough tokens for this order. You were not charged.',
+  payment_timeout: 'The order wasn\'t paid within 10 minutes of a dasher accepting, so it was cancelled. You were not charged.',
   no_dasher: 'No dasher was free to take it within 30 minutes. You were not charged. Please try again later.',
   admin: 'DormDash support cancelled this order. You were not charged. Email us if you have questions.',
   duplicate_order: 'This was an accidental repeat of an order you had just placed. Only the first one goes through, and you were not charged twice.',
 };
+
+// ─── PAYMENT PANEL ───────────────────────────────────────────────────
+// Nothing is paid until a dasher accepts. Then the student chooses: their
+// DormDash tokens (taken at once) or their card (WiPay's secure page), and
+// has 10 minutes. The server makes sure an order can only be paid once.
+// Orders placed with tokens on older app versions show "Tokens held".
+const PaymentPanel: React.FC<{ order: Order }> = ({ order }) => {
+  const { fmt } = usePriceUnit();
+  const { user } = useAuth();
+  const wallet = useWallet(user?.uid);
+  const [busy, setBusy] = useState<null | 'card' | 'tokens'>(null);
+  const [now, setNow] = useState(serverNow());
+  const awaiting = order.paymentStatus === 'awaiting_payment';
+  useEffect(() => {
+    if (!awaiting) return;
+    const t = setInterval(() => setNow(serverNow()), 1000);
+    return () => clearInterval(t);
+  }, [awaiting]);
+
+  if (!order.paymentMethod) return null; // orders from before payments
+
+  const total = order.totalAmount;
+  const enoughTokens = wallet.loaded && wallet.availableJmd >= total;
+
+  const payCard = async () => {
+    if (busy) return;
+    setBusy('card');
+    try {
+      await payOrderByCard(order.id); // leaves the app for WiPay's secure page
+    } catch (e: any) {
+      Alert.alert('Couldn\'t open card payment', e.message);
+      setBusy(null);
+    }
+  };
+
+  const doPayTokens = async () => {
+    if (busy) return;
+    setBusy('tokens');
+    try {
+      await payOrderWithTokens(order.id);
+      // The order updates live; this panel switches to "Paid with tokens".
+    } catch (e: any) {
+      Alert.alert('Couldn\'t pay with tokens', e.message);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const payTokens = () => {
+    if (busy || !enoughTokens) return;
+    Alert.alert(
+      'Pay with tokens?',
+      `${fmt(total)} will be taken from your token balance.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: `Pay ${fmt(total)}`, onPress: doPayTokens },
+      ]
+    );
+  };
+
+  let title = '';
+  let text = '';
+  if (order.paymentStatus === 'paid') {
+    title = order.paymentMethod === 'tokens' ? 'Paid with tokens' : 'Paid by card';
+    text = `${fmt(total)} paid. Your dasher is on it.`;
+  } else if (order.paymentMethod === 'tokens') {
+    // Placed with tokens on an older app version.
+    title = 'Tokens held';
+    text = `${fmt(total)} is held from your tokens. It is only used when a dasher accepts.`;
+  } else if (awaiting) {
+    const left = Math.max(0, (order.payDeadline ?? 0) - now);
+    const mm = Math.floor(left / 60000);
+    const ss = Math.floor((left % 60000) / 1000).toString().padStart(2, '0');
+    title = 'Pay now to confirm';
+    text = left > 0
+      ? `A dasher accepted your order. Choose how to pay within ${mm}:${ss}, or the order will be cancelled.`
+      : 'Time is up. The order will be cancelled shortly unless the payment already went through.';
+  } else {
+    title = 'Pay after a dasher accepts';
+    text = 'You haven\'t been charged. When a dasher accepts, you\'ll get a notification and choose to pay with your tokens or by card.';
+  }
+
+  const tokenNote = !wallet.loaded
+    ? 'Checking your balance…'
+    : enoughTokens
+      ? `Your balance: ${formatTokens(wallet.availableJmd)}`
+      : `Your balance: ${formatTokens(wallet.availableJmd)}. Not enough for this order.`;
+
+  return (
+    <View style={[pay_.box, awaiting && pay_.boxUrgent]}>
+      <Text style={pay_.title}>{title}</Text>
+      <Text style={pay_.text}>{text}</Text>
+      {awaiting && (
+        <>
+          <Pressable
+            onPress={payTokens}
+            disabled={!!busy || !enoughTokens}
+            style={({ pressed }) => [pay_.btn, pay_.btnTokens, (!enoughTokens) && pay_.btnOff, (pressed || busy === 'tokens') && { opacity: 0.85 }]}
+            accessibilityRole="button"
+            accessibilityState={{ disabled: !!busy || !enoughTokens }}
+          >
+            {busy === 'tokens'
+              ? <ActivityIndicator color={T.color.card} />
+              : <Text style={[pay_.btnText, !enoughTokens && pay_.btnTextOff]}>Pay {fmt(total)} with tokens</Text>}
+          </Pressable>
+          <Text style={pay_.fine}>{tokenNote}</Text>
+          <Pressable
+            onPress={payCard}
+            disabled={!!busy}
+            style={({ pressed }) => [pay_.btn, (pressed || busy === 'card') && { opacity: 0.85 }]}
+            accessibilityRole="button"
+          >
+            {busy === 'card' ? <ActivityIndicator color={T.color.card} /> : <Text style={pay_.btnText}>Pay {fmt(total)} by card</Text>}
+          </Pressable>
+          <Text style={pay_.fine}>Card details are entered on WiPay's secure page. DormDash never sees them.</Text>
+        </>
+      )}
+    </View>
+  );
+};
+
+const pay_ = StyleSheet.create({
+  box: {
+    marginHorizontal: T.space.lg, marginTop: T.space.md, padding: T.space.md,
+    borderRadius: T.radius.lg, borderWidth: 1, borderColor: T.color.line, backgroundColor: T.color.card, gap: 6,
+  },
+  boxUrgent: { borderColor: T.color.cerulean, borderWidth: 2 },
+  title: { fontSize: 16, fontWeight: '900', color: T.color.ink },
+  text: { fontSize: 13, lineHeight: 19, color: T.color.inkSoft },
+  btn: {
+    marginTop: 6, backgroundColor: T.color.cerulean, borderRadius: 999, height: 50,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  btnText: { color: T.color.card, fontSize: 15, fontWeight: '900' },
+  btnTokens: { backgroundColor: T.color.teal },
+  btnOff: { backgroundColor: T.color.line },
+  btnTextOff: { color: T.color.inkFaint },
+  fine: { fontSize: 11, color: T.color.inkFaint, textAlign: 'center' },
+});
 
 export default function OrderTracking() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -64,6 +210,7 @@ export default function OrderTracking() {
 
   const [order, setOrder] = useState<Order | null>(null);
   const [loading, setLoading] = useState(true);
+  const { fmt } = usePriceUnit();
 
   // Live pulse on the status dot
   const pulse = useRef(new Animated.Value(0)).current;
@@ -162,6 +309,7 @@ export default function OrderTracking() {
             <Text style={styles.cancelledTitle}>Order cancelled</Text>
             <Text style={styles.cancelledSub}>
               {CANCEL_REASONS[order.cancelReason ?? ''] ?? 'You were not charged. You can order again anytime.'}
+              {order.paymentStatus === 'refunded_tokens' ? ' Your payment was returned to you as DormDash tokens.' : ''}
             </Text>
           </View>
         ) : (
@@ -197,6 +345,9 @@ export default function OrderTracking() {
         )}
 
         {/* ── LIVE MAP — only en route with a real GPS fix ────────── */}
+        {/* Payment right under the status, where the student looks first. */}
+        {!isCancelled && <PaymentPanel order={order} />}
+
         {showMap && (
           <View style={styles.mapCard}>
             <MapView
@@ -224,8 +375,11 @@ export default function OrderTracking() {
             <View style={styles.card}>
               {STATUS_ORDER.map((status, idx) => {
                 const s = STATUS_CONFIG[status];
-                const isCompleted = idx < currentStepIndex;
-                const isCurrent = idx === currentStepIndex;
+                // Delivered is the end of the route: once it's reached, every
+                // stop (including Delivered itself) is ticked.
+                const isDelivered = order.status === 'delivered';
+                const isCompleted = idx < currentStepIndex || (isDelivered && idx === currentStepIndex);
+                const isCurrent = idx === currentStepIndex && !isDelivered;
                 return (
                   <View key={status} style={styles.step}>
                     <View style={styles.stepLeft}>
@@ -245,10 +399,11 @@ export default function OrderTracking() {
                         styles.stepLabel,
                         isCompleted && styles.stepLabelDone,
                         isCurrent && { color: s.color, fontWeight: '900' },
+                        isDelivered && idx === currentStepIndex && { color: T.color.teal, fontWeight: '900' },
                       ]}>
                         {s.label}
                       </Text>
-                      {isCurrent && (
+                      {(isCurrent || (isDelivered && idx === currentStepIndex)) && (
                         <Text style={styles.stepDesc}>{s.description}</Text>
                       )}
                     </View>
@@ -284,7 +439,7 @@ export default function OrderTracking() {
               <Text style={styles.itemName} numberOfLines={1}>{item.menuItem.name}</Text>
               <View style={styles.itemPricePlate}>
                 <Text style={styles.itemPriceText}>
-                  {formatJMD(item.menuItem.price * item.quantity)}
+                  {fmt(item.menuItem.price * item.quantity)}
                 </Text>
               </View>
             </View>
@@ -295,13 +450,13 @@ export default function OrderTracking() {
           <View style={styles.summaryRow}>
             <Text style={styles.summaryLabel}>Delivery</Text>
             <Text style={[styles.summaryValue, order.deliveryFee === 0 && { color: T.color.teal, fontWeight: '900' }]}>
-              {order.deliveryFee === 0 ? 'Free' : formatJMD(order.deliveryFee)}
+              {order.deliveryFee === 0 ? 'Free' : fmt(order.deliveryFee)}
             </Text>
           </View>
           <View style={styles.summaryRow}>
             <Text style={styles.totalLabel}>Total</Text>
             <View style={styles.totalPlate}>
-              <Text style={styles.totalText}>{formatJMD(order.totalAmount)}</Text>
+              <Text style={styles.totalText}>{fmt(order.totalAmount)}</Text>
             </View>
           </View>
         </View>
