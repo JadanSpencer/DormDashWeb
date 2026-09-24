@@ -21,6 +21,8 @@ export interface User {
     createdAt: number; // Unix timestamp - easier to sort than date objects
     isActive: boolean; // Admin can deactivate accounts without deleting
     profileImage?: string; // Optional - the ? means it might not exist
+    termsAcceptedAt?: number; // when they ticked "18+ and agree" at sign-up
+    termsVersion?: string;    // which Terms/Privacy date they agreed to
 }
 
 // ---- Dasher Profile ------------------------------------------------------
@@ -114,6 +116,8 @@ export interface Order {
     acceptedAt?: number;
     deliveredAt?: number;
     studentRating?: number;
+    cancelReason?: string;   // set by the server when it rejects an order
+    verifiedAt?: number;     // set by the server after re-pricing the order
     studentNote?: string;
 }
 

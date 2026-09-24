@@ -22,9 +22,10 @@ import {
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { registerUser } from '../../services/auth';
+import { requestPushPermissionFromGesture } from '../../services/notifications';
 import { T } from '../../constants/theme';
 import { UserRole } from '../../types';
-import { Ionicons, MaterialIcons } from '@expo/vector-icons';
+import { Icon } from '../../components/TabIcon'; // SVG icons: no icon font to fail loading
 
 const ROLES: { role: UserRole; label: string; description: string; icon: string; iconSet: string; color: string }[] = [
   {
@@ -45,13 +46,16 @@ const ROLES: { role: UserRole; label: string; description: string; icon: string;
   },
 ];
 
+// Student university choices. Add campuses here as DormDash expands.
+const STUDENT_UNIVERSITIES = ['UWI Mona', 'Other'];
+
 const renderIcon = (iconName: string, iconSet: string, color: string, size: number = 26) => {
   if (iconSet === 'ionicons') {
-    return <Ionicons name={iconName as any} size={size} color={color} />;
+    return <Icon name={iconName as any} size={size} color={color} />;
   } else if (iconSet === 'material') {
-    return <MaterialIcons name={iconName as any} size={size} color={color} />;
+    return <Icon name={iconName as any} size={size} color={color} />;
   }
-  return <Ionicons name="person-outline" size={size} color={color} />;
+  return <Icon name="person-outline" size={size} color={color} />;
 };
 
 export default function RegisterScreen() {
@@ -61,6 +65,7 @@ export default function RegisterScreen() {
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [university, setUniversity] = useState('');
+  const [uniOpen, setUniOpen] = useState(false);
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -97,11 +102,26 @@ export default function RegisterScreen() {
   };
 
   // ── Handler (unchanged) ──────────────────────────────────────────────
+  // Clickwrap: an explicit tick is much stronger evidence of agreement than
+  // "by creating an account you agree". registerUser records when.
+  const [agreed, setAgreed] = useState(false);
+
   const handleRegister = async () => {
+    // Must run before any await: browsers only allow the notification
+    // prompt during the tap. No-op on native and once already answered.
+    requestPushPermissionFromGesture();
     setError('');
 
     if (!selectedRole) {
       setError('Please select a role.');
+      return;
+    }
+    if (selectedRole === 'student' && !STUDENT_UNIVERSITIES.includes(university)) {
+      setError('Please choose your university.');
+      return;
+    }
+    if (!agreed) {
+      setError('Please confirm you are 18 or older and agree to the Terms and Privacy Policy.');
       return;
     }
     if (password !== confirmPassword) {
@@ -148,12 +168,6 @@ export default function RegisterScreen() {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          {/* Ambient canvas */}
-          <View style={styles.canvas} pointerEvents="none">
-            <View style={styles.blobTeal} />
-            <View style={styles.blobCerulean} />
-          </View>
-
           {/* ── TOP BAR ──────────────────────────────────────────────── */}
           <View style={styles.topBar}>
             <TouchableOpacity
@@ -161,7 +175,7 @@ export default function RegisterScreen() {
               hitSlop={8}
               style={styles.backBtn}
             >
-              <Ionicons name="arrow-back" size={18} color={T.color.ink} />
+              <Icon name="arrow-back" size={18} color={T.color.ink} />
               <Text style={styles.backText}>Back</Text>
             </TouchableOpacity>
 
@@ -175,7 +189,7 @@ export default function RegisterScreen() {
 
           {/* ── HEADER ───────────────────────────────────────────────── */}
           <View style={styles.header}>
-            <Text style={styles.eyebrow}>{step === 1 ? 'Step 1 · Choose your role' : 'Step 2 · Your details'}</Text>
+            <Text style={styles.eyebrow}>{step === 1 ? 'Step 1 of 2' : 'Step 2 of 2'}</Text>
             <Text style={styles.title}>
               {step === 1 ? 'Join DormDash' : 'Almost there'}
             </Text>
@@ -208,7 +222,7 @@ export default function RegisterScreen() {
                           <Text style={styles.roleDescription}>{item.description}</Text>
                         </View>
                         <View style={[styles.roleCheck, selected && { backgroundColor: item.color, borderColor: item.color }]}>
-                          {selected && <Ionicons name="checkmark" size={13} color={T.color.card} />}
+                          {selected && <Icon name="checkmark" size={13} color={T.color.card} />}
                         </View>
                       </Pressable>
                     </Animated.View>
@@ -242,7 +256,7 @@ export default function RegisterScreen() {
                     ]}
                   >
                     <Text style={[styles.ctaText, !selectedRole && styles.ctaTextDisabled]}>Continue</Text>
-                    <Ionicons name="arrow-forward" size={18} color={!selectedRole ? T.color.inkFaint : T.color.card} />
+                    <Icon name="arrow-forward" size={18} color={!selectedRole ? T.color.inkFaint : T.color.card} />
                   </Animated.View>
                 </Pressable>
               </View>
@@ -259,7 +273,41 @@ export default function RegisterScreen() {
                   </View>
                 )}
 
-                {fields.map(f => (
+                {fields.map(f => f.key === 'university' && selectedRole === 'student' ? (
+                  // Students pick from a fixed list (for now UWI Mona or Other),
+                  // so every student at the same campus is recorded the same way.
+                  <View key={f.key}>
+                    <Text style={styles.inputLabel}>{f.label}</Text>
+                    <Pressable
+                      onPress={() => setUniOpen(o => !o)}
+                      style={[styles.input, styles.select, uniOpen && styles.inputFocused]}
+                      accessibilityRole="button"
+                      accessibilityLabel={`University: ${university || 'not chosen'}`}
+                      accessibilityState={{ expanded: uniOpen }}
+                    >
+                      <Text style={[styles.selectText, !university && { color: T.color.inkFaint }]}>
+                        {university || 'Choose your university'}
+                      </Text>
+                      <Icon name="chevron-down" size={18} color={T.color.inkSoft} />
+                    </Pressable>
+                    {uniOpen && (
+                      <View style={styles.selectMenu} accessibilityRole="menu">
+                        {STUDENT_UNIVERSITIES.map(u => (
+                          <Pressable
+                            key={u}
+                            onPress={() => { setUniversity(u); setUniOpen(false); }}
+                            style={({ pressed }) => [styles.selectOption, (pressed || university === u) && styles.selectOptionOn]}
+                            accessibilityRole="menuitem"
+                            accessibilityState={{ selected: university === u }}
+                          >
+                            <Text style={styles.selectText}>{u}</Text>
+                            {university === u && <Icon name="checkmark" size={16} color={T.color.ceruleanDeep} />}
+                          </Pressable>
+                        ))}
+                      </View>
+                    )}
+                  </View>
+                ) : (
                   <View key={f.key}>
                     <Text style={styles.inputLabel}>{f.label}</Text>
                     <TextInput
@@ -282,6 +330,26 @@ export default function RegisterScreen() {
                 ) : null}
 
                 <Pressable
+                  onPress={() => setAgreed(a => !a)}
+                  style={styles.consentRow}
+                  accessibilityRole="checkbox"
+                  accessibilityState={{ checked: agreed }}
+                  hitSlop={6}
+                >
+                  <Icon
+                    name={agreed ? 'checkbox' : 'square-outline'}
+                    size={22}
+                    color={agreed ? T.color.ceruleanDeep : T.color.inkSoft}
+                  />
+                  <Text style={styles.consentText}>
+                    I am 18 or older and I agree to the{' '}
+                    <Text style={styles.termsLink} onPress={() => router.push('/legal/terms' as any)}>Terms of Service</Text>
+                    {' '}and{' '}
+                    <Text style={styles.termsLink} onPress={() => router.push('/legal/privacy' as any)}>Privacy Policy</Text>.
+                  </Text>
+                </Pressable>
+
+                <Pressable
                   onPress={handleRegister}
                   disabled={loading}
                   onPressIn={() => Animated.spring(pressScale, { toValue: 0.97, useNativeDriver: true }).start()}
@@ -296,9 +364,6 @@ export default function RegisterScreen() {
                   </Animated.View>
                 </Pressable>
 
-                <Text style={styles.terms}>
-                  By registering you agree to DormDash's Terms of Service and Privacy Policy
-                </Text>
               </View>
             )}
           </Animated.View>
@@ -424,11 +489,25 @@ const styles = StyleSheet.create({
     marginBottom: T.space.md,
   },
   inputFocused: { borderColor: T.color.cerulean, backgroundColor: T.color.card },
+  select: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  selectText: { ...T.type.body, color: T.color.ink },
+  selectMenu: {
+    marginTop: -T.space.sm,
+    marginBottom: T.space.md,
+    borderWidth: 1.5,
+    borderColor: T.color.line,
+    borderRadius: T.radius.md,
+    backgroundColor: T.color.card,
+    overflow: 'hidden',
+  },
+  selectOption: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: T.space.md, height: 48,
+  },
+  selectOptionOn: { backgroundColor: T.color.cream },
 
   errorBanner: {
     backgroundColor: T.color.dangerTint,
-    borderLeftWidth: 3,
-    borderLeftColor: T.color.danger,
     borderRadius: T.radius.sm,
     padding: T.space.sm,
     marginBottom: T.space.md,
@@ -454,12 +533,20 @@ const styles = StyleSheet.create({
 
   terms: {
     ...T.type.body,
-    fontSize: 11,
-    color: T.color.inkFaint,
+    fontSize: 13,
+    color: T.color.inkSoft,
     textAlign: 'center',
     marginTop: T.space.md,
-    lineHeight: 16,
+    lineHeight: 19,
   },
+  consentRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    marginBottom: T.space.md,
+  },
+  consentText: { ...T.type.body, flex: 1, fontSize: 14, color: T.color.ink, lineHeight: 20 },
+  termsLink: { color: T.color.ceruleanDeep, fontWeight: '700', textDecorationLine: 'underline' },
 
   footer: { flexDirection: 'row', justifyContent: 'center', marginTop: T.space.lg },
   footerText: { ...T.type.body, color: T.color.inkSoft },

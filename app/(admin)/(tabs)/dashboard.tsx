@@ -8,6 +8,7 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Pressable } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Icon } from '../../../components/TabIcon'; // SVG icons: no icon font to fail loading
 import { router } from 'expo-router';
 import { collection, onSnapshot } from 'firebase/firestore';
 import { db } from '../../../services/firebase';
@@ -95,7 +96,6 @@ export default function AdminDashboard() {
         {/* Header */}
         <View style={styles.header}>
           <View>
-            <Text style={styles.eyebrow}>Control room</Text>
             <Text style={styles.name}>{user?.name?.split(' ')[0] || 'Admin'}</Text>
           </View>
           <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout}>
@@ -112,19 +112,17 @@ export default function AdminDashboard() {
         {/* Hero cards */}
         <View style={styles.heroGrid}>
           <View style={styles.heroCard}>
-            <Text style={styles.cardNumber}>01</Text>
             <Text style={styles.heroValue}>{stats.totalOrders}</Text>
-            <Text style={styles.cardLabel}>total orders</Text>
+            <Text style={styles.cardLabel}>Total orders</Text>
             <View style={styles.heroTrend}>
               <Text style={styles.heroTrendText}>{stats.ordersToday} today · {stats.ordersThisWeek} this week</Text>
             </View>
           </View>
           <View style={styles.heroCard}>
-            <Text style={styles.cardNumber}>02</Text>
             <View style={styles.moneyPlate}>
               <Text style={styles.moneyText}>{formatJMD(stats.revenue)}</Text>
             </View>
-            <Text style={styles.cardLabel}>delivery revenue</Text>
+            <Text style={styles.cardLabel}>Delivery revenue</Text>
             <View style={styles.heroTrend}>
               <Text style={styles.heroTrendText}>{formatJMD(stats.gmv)} GMV</Text>
             </View>
@@ -132,67 +130,62 @@ export default function AdminDashboard() {
         </View>
 
         {/* Metrics grid */}
-        <Text style={styles.sectionTitle}>metrics</Text>
+        <Text style={styles.sectionTitle}>Metrics</Text>
         <View style={styles.grid}>
           <View style={styles.statCard}>
-            <Text style={styles.cardNumber}>03</Text>
             <Text style={styles.statValue}>{stats.totalUsers}</Text>
-            <Text style={styles.cardLabel}>total users</Text>
+            <Text style={styles.cardLabel}>Total users</Text>
             <Text style={styles.statDetail}>{stats.totalStudents} students · {stats.totalDashers} dashers</Text>
           </View>
           <View style={styles.statCard}>
-            <Text style={styles.cardNumber}>04</Text>
             <Text style={styles.statValue}>{stats.activeOrders}</Text>
-            <Text style={styles.cardLabel}>active now</Text>
+            <Text style={styles.cardLabel}>Active now</Text>
             <Text style={styles.statDetail}>{stats.pendingOrders} pending</Text>
           </View>
           <View style={styles.statCard}>
-            <Text style={styles.cardNumber}>05</Text>
             <Text style={styles.statValue}>{stats.totalStores}</Text>
-            <Text style={styles.cardLabel}>stores</Text>
+            <Text style={styles.cardLabel}>Stores</Text>
             <Text style={styles.statDetail}>{stats.activeStores} open now</Text>
           </View>
           <View style={styles.statCard}>
-            <Text style={styles.cardNumber}>06</Text>
             <Text style={styles.statValue}>{completionRate}%</Text>
-            <Text style={styles.cardLabel}>completion</Text>
+            <Text style={styles.cardLabel}>Completion</Text>
             <Text style={styles.statDetail}>{stats.cancelledOrders} cancelled</Text>
           </View>
         </View>
 
         {/* Platform health */}
-        <Text style={styles.sectionTitle}>platform health</Text>
+        <Text style={styles.sectionTitle}>Platform health</Text>
         <View style={styles.healthCard}>
           <View style={styles.healthHead}>
-            <Text style={styles.cardLabel}>order fulfilment</Text>
-            <Text style={styles.cardNumber}>07</Text>
+            <Text style={styles.cardLabel}>Order fulfilment</Text>
           </View>
           <View style={styles.progressBar}>
             <View style={[styles.progressFill, { width: `${completionRate}%` }]} />
           </View>
           <View style={styles.healthStats}>
             <View>
-              <Text style={styles.healthLabel}>completed</Text>
+              <Text style={styles.healthLabel}>Completed</Text>
               <Text style={styles.healthValue}>{stats.deliveredOrders}</Text>
             </View>
             <View>
-              <Text style={styles.healthLabel}>pending</Text>
+              <Text style={styles.healthLabel}>Pending</Text>
               <Text style={styles.healthValue}>{stats.pendingOrders}</Text>
             </View>
             <View>
-              <Text style={styles.healthLabel}>avg time</Text>
+              <Text style={styles.healthLabel}>Average time</Text>
               <Text style={styles.healthValue}>{stats.avgDeliveryMins > 0 ? `${stats.avgDeliveryMins}m` : '—'}</Text>
             </View>
           </View>
         </View>
 
         {/* Quick actions — now actually navigate */}
-        <Text style={styles.sectionTitle}>quick actions</Text>
+        <Text style={styles.sectionTitle}>Quick actions</Text>
         <Pressable
           style={({ pressed }) => [styles.actionRow, pressed && { transform: [{ scale: 0.99 }] }]}
           onPress={() => router.push('/(admin)/(tabs)/stores' as any)}
         >
-          <View style={styles.actionNumber}><Text style={styles.actionNumberText}>08</Text></View>
+          <View style={styles.actionNumber}><Icon name="storefront-outline" size={18} color={S.color.teal} /></View>
           <View style={{ flex: 1 }}>
             <Text style={styles.actionTitle}>Manage stores</Text>
             <Text style={styles.actionDesc}>Add, edit, or remove stores</Text>
@@ -203,7 +196,7 @@ export default function AdminDashboard() {
           style={({ pressed }) => [styles.actionRow, pressed && { transform: [{ scale: 0.99 }] }]}
           onPress={() => router.push('/(admin)/(tabs)/users' as any)}
         >
-          <View style={styles.actionNumber}><Text style={styles.actionNumberText}>09</Text></View>
+          <View style={styles.actionNumber}><Icon name="people-outline" size={18} color={S.color.teal} /></View>
           <View style={{ flex: 1 }}>
             <Text style={styles.actionTitle}>Manage users</Text>
             <Text style={styles.actionDesc}>Student and dasher accounts</Text>

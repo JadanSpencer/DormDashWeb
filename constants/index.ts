@@ -47,7 +47,15 @@ export const COLORS = {
   };
   
   export const DASHER_SEARCH_RADIUS_KM = 5;
-  export const LOCATION_UPDATE_INTERVAL_MS = 5000;
+  // How many orders a student can have in progress at once. Keep in sync
+  // with MAX_ACTIVE_ORDERS in functions/src/index.ts.
+  export const MAX_ACTIVE_ORDERS = 3;
+
+  // How often the dasher's own map pin refreshes (stays on the phone).
+  export const LOCATION_UPDATE_INTERVAL_MS = 15000;
+  // How often an online dasher tells the server "still here". The server
+  // treats a dasher as gone after 45 min without one (STALE_MS in functions).
+  export const HEARTBEAT_INTERVAL_MS = 60000;
   export const MAX_SPECIAL_INSTRUCTIONS_LENGTH = 200;
   export const MAX_ORDER_ITEMS = 20;
 

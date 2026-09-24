@@ -1,0 +1,48 @@
+# CI: runs on every push and pull request (including Dependabot's).
+# Fails if the app or Cloud Functions don't type-check or the web build
+# breaks. The dependency audit is reported but doesn't fail the build,
+# because most findings are in Expo's build tools and are fixed by
+# upgrading the Expo SDK, not by us.
+name: CI
+on:
+  push: { branches: [main] }
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  app:
+    runs-on: ubuntu-latest
+    env:
+      # Placeholders so the build runs without real secrets. The real values
+      # live in .env on your machine / your host's environment settings.
+      EXPO_PUBLIC_FIREBASE_API_KEY: ci-placeholder
+      EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN: ci.firebaseapp.com
+      EXPO_PUBLIC_FIREBASE_PROJECT_ID: ci
+      EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET: ci.appspot.com
+      EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: "0"
+      EXPO_PUBLIC_FIREBASE_APP_ID: ci
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - run: npx expo export --platform web
+      - run: npx tsc --noEmit
+      - name: Dependency audit (production packages)
+        run: npm audit --omit=dev --audit-level=high
+        continue-on-error: true
+
+  functions:
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: functions } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm, cache-dependency-path: functions/package-lock.json }
+      - run: npm ci
+      - run: npx tsc --noEmit
+      - name: Dependency audit
+        run: npm audit --omit=dev --audit-level=high
+        continue-on-error: true

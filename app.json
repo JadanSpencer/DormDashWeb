@@ -15,9 +15,6 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.dormdash.app",
-      "config": {
-        "googleMapsApiKey": "AIzaSyDkYy3RFJnYDY92EwjoZgn6J17U7VcR90Q"
-      },
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       }
@@ -30,11 +27,6 @@
       },
       "package": "com.dormdash.app",
       "versionCode": 2,
-      "config": {
-        "googleMaps": {
-          "apiKey": "AIzaSyCM62hlNfAtFKr-kZB1s_1ZjYv2e-NuDjE"
-        }
-      },
       "permissions": [
         "android.permission.ACCESS_COARSE_LOCATION",
         "android.permission.ACCESS_FINE_LOCATION",
@@ -42,7 +34,15 @@
       ]
     },
     "web": {
-      "favicon": "./assets/favicon.png"
+      "favicon": "./assets/favicon.png",
+      "bundler": "metro",
+      "output": "single",
+      "name": "DormDash",
+      "shortName": "DormDash",
+      "description": "Order meals and essentials on campus. Students deliver to students.",
+      "themeColor": "#0E8FB5",
+      "backgroundColor": "#FAF5EC",
+      "lang": "en"
     },
     "plugins": [
       "expo-router",

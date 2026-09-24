@@ -23,6 +23,7 @@ import { onDocumentWritten, onDocumentCreated } from 'firebase-functions/v2/fire
 import { logger } from 'firebase-functions/v2';
 import * as admin from 'firebase-admin';
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
+import { onSchedule } from 'firebase-functions/v2/scheduler';
  
 const CHUNK = 400; // Firestore batches cap at 500 writes
 
@@ -33,7 +34,6 @@ const db = admin.firestore();
 // A dasher's heartbeat only writes while the app is foregrounded. 45 minutes
 // keeps a dasher reachable while their phone is pocketed, without spamming
 // someone who closed the app hours ago.
-const STALE_MS = 45 * 60 * 1000;
 
 const CERULEAN = '#0E8FB5';
 
@@ -66,13 +66,66 @@ function jmd(value: unknown): string {
 }
 
 // ─── Push helper ───────────────────────────────────────────────────────────
+// Two kinds of token live in users/{uid}.pushToken:
+//   • "ExponentPushToken[...]"  → native app → Expo push service
+//   • "web:<fcm token>"         → PWA        → Firebase Cloud Messaging
+// The PWA writes the "web:" prefix (services/notifications.web.ts). Callers
+// don't need to know which kind they have.
+const WEB_TOKEN_PREFIX = 'web:';
+
+async function sendWebPush(
+  storedToken: string,
+  title: string,
+  body: string,
+  data?: Record<string, string>
+): Promise<void> {
+  const token = storedToken.slice(WEB_TOKEN_PREFIX.length);
+  try {
+    // Data-only message: public/sw.js builds the notification itself, so it
+    // can show the in-app banner instead when DormDash is open.
+    await admin.messaging().send({
+      token,
+      data: { ...(data ?? {}), title, body },
+      webpush: {
+        headers: { Urgency: 'high', TTL: '3600' },
+      },
+    });
+    logger.info('Web push sent', { token: token.slice(0, 16) });
+  } catch (err: any) {
+    const code: string = err?.code ?? '';
+    logger.error('Web push failed', { code, message: err?.message });
+    // Browser unsubscribed or token expired — detach it so we stop trying.
+    if (code === 'messaging/registration-token-not-registered' ||
+        code === 'messaging/invalid-registration-token') {
+      const stale = await db.collection('users').where('pushToken', '==', storedToken).get();
+      // pushTokenDead tells the app "this exact token is dead, make a new
+      // one" — otherwise the browser keeps re-saving its cached dead copy.
+      await Promise.all(stale.docs.map(d => d.ref.update({
+        pushToken: null,
+        pushTokenDead: storedToken,
+        pushTokenUpdatedAt: Date.now(),
+      })));
+      // Say whose alerts just stopped, so the logs are readable. The app puts
+      // a fresh token back next time that person opens DormDash.
+      stale.docs.forEach(d => logger.warn('Dead web push token removed', {
+        uid: d.id,
+        role: d.data()?.role ?? 'unknown',
+        token: token.slice(0, 16),
+      }));
+    }
+  }
+}
+
 async function sendPushNotification(
   token: string,
   title: string,
   body: string,
   data?: Record<string, string>
 ): Promise<void> {
-  if (!token || typeof token !== 'string' || !token.startsWith('ExponentPushToken')) return;
+  if (token.startsWith(WEB_TOKEN_PREFIX)) {
+    await sendWebPush(token, title, body, data);
+    return;
+  }
 
   const message = {
     to: token,
@@ -81,18 +134,29 @@ async function sendPushNotification(
     body,
     data: data ?? {},
     channelId: 'default',
-    priority: 'high',
-    color: CERULEAN,
   };
 
-  try {
-    await fetch('https://exp.host/--/api/v2/push/send', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-      body: JSON.stringify(message),
+  const response = await fetch('https://exp.host/--/api/v2/push/send', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+    },
+    body: JSON.stringify(message),
+  });
+
+  const result = await response.json();
+
+  if (result.data?.status === 'error') {
+    logger.error('Push notification failed', {
+      token,
+      error: result.data.message,
+      errorType: result.data.details?.error,
     });
-  } catch (e) {
-    logger.warn('Push send failed', e);
+  } else if (result.errors) {
+    logger.error('Expo push API error', { errors: result.errors });
+  } else {
+    logger.info('Push sent successfully', { token: token.slice(0, 20) });
   }
 }
 
@@ -108,16 +172,14 @@ async function getUserToken(uid: string): Promise<string | null> {
 
 // ─── Which dashers should actually hear about a new order ──────────────────
 async function getEligibleDasherTokens(excludeUid?: string): Promise<string[]> {
-  const now = Date.now();
-
-  // 1. Dashers currently toggled online with a fresh heartbeat
+  // 1. Dashers currently switched online
   const dasherSnap = await db.collection('dashers').where('isOnline', '==', true).get();
 
   const candidateUids: string[] = [];
   dasherSnap.forEach(doc => {
     const d = doc.data();
-    const lastSeen = Number(d.lastSeenAt) || 0;
-    if (now - lastSeen > STALE_MS) return;      // app closed too long ago
+    // No "last seen" cutoff: a dasher stays online until they switch off or
+    // sign out, and gets new orders as push notifications with the app closed.
     if (excludeUid && doc.id === excludeUid) return; // don't ping the customer
     candidateUids.push(doc.id);
   });
@@ -152,7 +214,152 @@ async function getEligibleDasherTokens(excludeUid?: string): Promise<string[]> {
     });
   }
 
-  return tokens;
+  return [...new Set(tokens)]; // never alert the same device twice
+}
+
+// ─── NEW ORDER VERIFICATION ────────────────────────────────────────────────
+// The app builds the order on the phone, including prices. Anything on the
+// phone can be edited by a determined user, so the server re-checks every
+// new order against the real store and menu before any dasher sees it:
+//   • store exists and is open
+//   • every item exists, is available, quantity is a whole number 1–20
+//   • prices, names, delivery fee and total come from Firestore, not the app
+//   • the student's name comes from their profile (can't be spoofed)
+//   • rate limit: at most MAX_ORDERS_PER_WINDOW new orders per student per
+//     ORDER_WINDOW_MS, which stops scripted spam
+// Invalid orders are cancelled with a cancelReason. Returns the corrected
+// order data, or null if the order was cancelled.
+const MAX_ITEMS_PER_ORDER = 20;
+const MAX_ORDERS_PER_WINDOW = 5;
+// Keep in sync with MAX_ACTIVE_ORDERS in constants/index.ts (the app).
+const MAX_ACTIVE_ORDERS = 3;
+const DUPLICATE_WINDOW_MS = 2 * 60 * 1000;
+const ORDER_WINDOW_MS = 10 * 60 * 1000;
+
+async function verifyNewOrder(
+  ref: admin.firestore.DocumentReference,
+  order: admin.firestore.DocumentData
+): Promise<admin.firestore.DocumentData | null> {
+  const cancel = async (reason: string) => {
+    logger.warn(`Order ${ref.id} rejected: ${reason}`, { studentId: order.studentId });
+    await ref.update({ status: 'cancelled', cancelReason: reason, cancelledAt: Date.now() });
+    return null;
+  };
+
+  const [storeSnap, userSnap] = await Promise.all([
+    db.collection('stores').doc(String(order.storeId ?? '')).get(),
+    db.collection('users').doc(String(order.studentId ?? '')).get(),
+  ]);
+  if (!userSnap.exists || userSnap.data()?.isActive === false) return cancel('account_inactive');
+  if (!storeSnap.exists) return cancel('store_not_found');
+  const store = storeSnap.data()!;
+  if (store.isOpen === false) return cancel('store_closed');
+
+  // Filtered in memory so no composite Firestore index is needed.
+  const mine = await db.collection('orders')
+    .where('studentId', '==', order.studentId)
+    .select('createdAt', 'verifiedAt', 'status', 'cancelReason', 'storeId', 'items')
+    .get();
+
+  // Up to MAX_ACTIVE_ORDERS in progress per student, plus duplicate
+  // protection (a burst of taps once created 9 identical orders in half a
+  // second). Every copy of this function sees the same set of orders and
+  // uses the same ordering (createdAt, then id), so they all agree.
+  const ACTIVE = ['pending', 'accepted', 'picking_up', 'on_the_way'];
+  const myCreated = Number(order.createdAt) || 0;
+  const isEarlier = (d: admin.firestore.QueryDocumentSnapshot) => {
+    const c = Number(d.get('createdAt')) || 0;
+    return c < myCreated || (c === myCreated && d.id < ref.id);
+  };
+  const isActive = (d: admin.firestore.QueryDocumentSnapshot) =>
+    ACTIVE.includes(String(d.get('status')));
+  // Same store + same items (ids and quantities) = same order.
+  const signature = (storeId: unknown, items: unknown) =>
+    String(storeId ?? '') + '|' + (Array.isArray(items) ? items : [])
+      .map((l: any) => `${l?.menuItem?.id ?? ''}x${Number(l?.quantity) || 0}`)
+      .sort().join(',');
+  const mySig = signature(order.storeId, order.items);
+  const others = mine.docs.filter(d => d.id !== ref.id);
+  const earlierActive = others.filter(d => isActive(d) && isEarlier(d));
+
+  // Identical to an earlier active order placed within DUPLICATE_WINDOW_MS:
+  // that's a double tap, not a second order.
+  if (earlierActive.some(d =>
+    myCreated - (Number(d.get('createdAt')) || 0) < DUPLICATE_WINDOW_MS &&
+    signature(d.get('storeId'), d.get('items')) === mySig
+  )) return cancel('duplicate_order');
+
+  // Count earlier orders that are real, not accidental repeats that are
+  // about to be cancelled themselves.
+  const realEarlier = earlierActive.filter(d => {
+    const c = Number(d.get('createdAt')) || 0;
+    const sig = signature(d.get('storeId'), d.get('items'));
+    return !earlierActive.some(e =>
+      e.id !== d.id &&
+      ((Number(e.get('createdAt')) || 0) < c || ((Number(e.get('createdAt')) || 0) === c && e.id < d.id)) &&
+      c - (Number(e.get('createdAt')) || 0) < DUPLICATE_WINDOW_MS &&
+      signature(e.get('storeId'), e.get('items')) === sig
+    );
+  });
+  if (realEarlier.length >= MAX_ACTIVE_ORDERS) return cancel('too_many_active');
+
+  // Rate limit. Doesn't count orders the server itself rejected (duplicates,
+  // earlier rate-limit hits), or later duplicates of this order that are
+  // about to be rejected, so one tap-burst can't lock a student out.
+  const since = Date.now() - ORDER_WINDOW_MS;
+  // verifiedAt is the server's clock; createdAt comes from the phone and
+  // could be set in the past to dodge the limit.
+  const recentCount = 1 + others.filter(d =>
+    Number(d.get('verifiedAt') ?? d.get('createdAt')) > since &&
+    !d.get('cancelReason') &&
+    !(isActive(d) && !isEarlier(d))
+  ).length;
+  if (recentCount > MAX_ORDERS_PER_WINDOW) return cancel('rate_limited');
+
+  const items: any[] = Array.isArray(order.items) ? order.items : [];
+  if (items.length === 0) return cancel('empty_order');
+
+  let count = 0;
+  let subtotal = 0;
+  const cleanItems = [];
+  for (const line of items) {
+    const qty = Number(line?.quantity);
+    const itemId = String(line?.menuItem?.id ?? '');
+    if (!Number.isInteger(qty) || qty < 1 || qty > MAX_ITEMS_PER_ORDER || !itemId) {
+      return cancel('invalid_item');
+    }
+    const itemSnap = await storeSnap.ref.collection('menuItems').doc(itemId).get();
+    if (!itemSnap.exists || itemSnap.data()?.isAvailable === false) return cancel('item_unavailable');
+    const real = itemSnap.data()!;
+    const price = Number(real.price) || 0;
+    count += qty;
+    subtotal += price * qty;
+    cleanItems.push({
+      quantity: qty,
+      menuItem: {
+        id: itemId, storeId: storeSnap.id, name: String(real.name ?? ''),
+        description: String(real.description ?? ''), price,
+        category: String(real.category ?? ''), isAvailable: true,
+        ...(Array.isArray(real.allergens) ? { allergens: real.allergens } : {}),
+      },
+    });
+  }
+  if (count > MAX_ITEMS_PER_ORDER) return cancel('too_many_items');
+
+  const deliveryFee = Number(store.deliveryFee) || 0;
+  const verified = {
+    items: cleanItems,
+    deliveryFee,
+    totalAmount: subtotal + deliveryFee,
+    storeName: String(store.name ?? ''),
+    studentName: String(userSnap.data()?.name ?? 'Student'),
+    verifiedAt: Date.now(),
+  };
+  if (Number(order.totalAmount) !== verified.totalAmount) {
+    logger.warn(`Order ${ref.id}: total corrected ${order.totalAmount} -> ${verified.totalAmount}`);
+  }
+  await ref.update(verified);
+  return { ...order, ...verified };
 }
 
 // ─── TRIGGER: ORDER WRITTEN ────────────────────────────────────────────────
@@ -160,7 +367,7 @@ export const onOrderStatusChanged = onDocumentWritten(
   'orders/{orderId}',
   async (event) => {
     const before = event.data?.before?.data();
-    const after = event.data?.after?.data();
+    let after = event.data?.after?.data();
     const orderId = event.params.orderId;
 
     if (!after) return;
@@ -173,13 +380,16 @@ export const onOrderStatusChanged = onDocumentWritten(
 
     // ── NEW ORDER: only eligible dashers ──────────────────────────────────
     if (isNewOrder) {
+      const checked = await verifyNewOrder(event.data!.after!.ref, after);
+      if (!checked) return; // cancelled; the cancel write re-triggers and notifies the student
+      after = checked;
       const tokens = await getEligibleDasherTokens(studentId);
       await Promise.all(tokens.map(token =>
         sendPushNotification(
           token,
           `${MARK.newOrder} New order available`,
           `${after.storeName} — ${jmd(after.deliveryFee)} to deliver`,
-          { screen: '/(dasher)/home', orderId }
+          { screen: '/(dasher)/dash', orderId }
         )
       ));
       logger.info(`New order ${orderId}: notified ${tokens.length} eligible dashers`);
@@ -195,7 +405,7 @@ export const onOrderStatusChanged = onDocumentWritten(
         token,
         `${MARK.assigned} Dasher assigned`,
         `${after.dasherName} accepted your order and is heading to ${after.storeName}.`,
-        { screen: `/(student)/order/${orderId}` }
+        { screen: `/(student)/order/${orderId}`, orderId }
       );
       return;
     }
@@ -206,7 +416,7 @@ export const onOrderStatusChanged = onDocumentWritten(
         token,
         `${MARK.pickingUp} Picking up your order`,
         `${after.dasherName} is at ${after.storeName} collecting your items.`,
-        { screen: `/(student)/order/${orderId}` }
+        { screen: `/(student)/order/${orderId}`, orderId }
       );
       return;
     }
@@ -217,7 +427,7 @@ export const onOrderStatusChanged = onDocumentWritten(
         token,
         `${MARK.onTheWay} On the way`,
         `${after.dasherName} is heading to you now.`,
-        { screen: `/(student)/order/${orderId}` }
+        { screen: `/(student)/order/${orderId}`, orderId }
       );
       return;
     }
@@ -228,19 +438,32 @@ export const onOrderStatusChanged = onDocumentWritten(
         token,
         `${MARK.delivered} Delivered`,
         `Your order from ${after.storeName} has arrived. Enjoy.`,
-        { screen: `/(student)/order/${orderId}` }
+        { screen: `/(student)/order/${orderId}`, orderId }
       );
       return;
     }
 
     // ── CANCELLED: customer, plus the assigned dasher only ────────────────
     if (after.status === 'cancelled') {
+      // A duplicate's original is still going ahead: no alert, or the student
+      // gets a stack of "cancelled" pushes for an order that's fine.
+      if (after.cancelReason === 'duplicate_order') return;
+
+      const reasonText: Record<string, string> = {
+        rate_limited: 'Too many orders in a short time. Try again in a few minutes.',
+        store_closed: `${after.storeName} closed before your order went through. You were not charged.`,
+        item_unavailable: 'An item in your order is no longer available. You were not charged.',
+        account_inactive: 'Your account is paused. Contact support to restore it.',
+        too_many_active: 'You already have 3 orders in progress. Wait for one to arrive, then order again.',
+        no_dasher: 'No dasher was free to take it in time. You were not charged. Please try again later.',
+        admin: `Your order from ${after.storeName} was cancelled by DormDash support. You were not charged.`,
+      };
       const studentToken = await getUserToken(studentId);
       if (studentToken) await sendPushNotification(
         studentToken,
         `${MARK.cancelled} Order cancelled`,
-        `Your order from ${after.storeName} was cancelled.`,
-        { screen: '/(student)/(tabs)/home' }
+        reasonText[after.cancelReason] ?? `Your order from ${after.storeName} was cancelled.`,
+        { screen: `/(student)/order/${orderId}`, orderId }
       );
 
       if (dasherId) {
@@ -249,7 +472,7 @@ export const onOrderStatusChanged = onDocumentWritten(
           dasherToken,
           `${MARK.cancelled} Order cancelled`,
           `The ${after.storeName} order was cancelled by the customer.`,
-          { screen: '/(dasher)/home' }
+          { screen: '/(dasher)/dash' }
         );
       }
       return;
@@ -303,6 +526,44 @@ export const onNewUserRegistered = onDocumentCreated(
     await Promise.all(sends);
   }
 );
+
+// ─── SESSION ENFORCEMENT ────────────────────────────────────────────────────
+// isActive in Firestore is what admins toggle. This mirrors it into Firebase
+// Auth: deactivated accounts are disabled (can't sign in or refresh a
+// session) and their existing sessions are revoked, so a deactivated user is
+// signed out within the hour on every device, not just on the next login.
+export const onUserActiveChanged = onDocumentWritten('users/{uid}', async (event) => {
+  const before = event.data?.before?.data();
+  const after = event.data?.after?.data();
+  if (!after) return;
+  const wasActive = before ? before.isActive !== false : true;
+  const isActive = after.isActive !== false;
+  if (wasActive === isActive) return;
+  const uid = event.params.uid;
+  try {
+    await admin.auth().updateUser(uid, { disabled: !isActive });
+    if (!isActive) await admin.auth().revokeRefreshTokens(uid);
+    logger.info(`Auth ${isActive ? 'enabled' : 'disabled'} for ${uid}`);
+  } catch (e) {
+    logger.error(`Could not sync auth state for ${uid}`, e);
+  }
+});
+
+// ─── ONE DEVICE, ONE ACCOUNT ───────────────────────────────────────────────
+// A phone or browser has one push token. If someone signs in on a device
+// where another account was used and never signed out, both user docs would
+// hold the same token and the new person would receive the old account's
+// order alerts. Whenever a token is saved, remove it from every other user.
+export const onPushTokenChanged = onDocumentWritten('users/{uid}', async (event) => {
+  const token = event.data?.after?.data()?.pushToken;
+  const previous = event.data?.before?.data()?.pushToken;
+  if (!token || token === previous) return;
+  const uid = event.params.uid;
+  const others = await db.collection('users').where('pushToken', '==', token).get();
+  const stale = others.docs.filter(d => d.id !== uid);
+  await Promise.all(stale.map(d => d.ref.update({ pushToken: null, pushTokenUpdatedAt: Date.now() })));
+  if (stale.length) logger.info(`Push token moved to ${uid}; detached from ${stale.length} other account(s)`);
+});
 
 export const deactivateMyAccount = onCall(async (request) => {
   const uid = request.auth?.uid;
@@ -384,7 +645,15 @@ export const deleteMyAccount = onCall(async (request) => {
   if ((await dasherRef.get()).exists) await dasherRef.delete();
   await db.collection('users').doc(uid).delete();
  
-  // ── 3. Delete the authentication account itself ─────────────────────────
+  // ── 3. Delete any files the user uploaded (Storage path users/{uid}/) ──
+  // The app has no uploads yet; this keeps deletion complete if they're added.
+  try {
+    await admin.storage().bucket().deleteFiles({ prefix: `users/${uid}/` });
+  } catch (e) {
+    logger.warn(`Storage cleanup skipped for ${uid}`, e);
+  }
+
+  // ── 4. Delete the authentication account itself ─────────────────────────
   try {
     await admin.auth().deleteUser(uid);
   } catch (e) {
@@ -394,4 +663,26 @@ export const deleteMyAccount = onCall(async (request) => {
  
   logger.info(`Account deleted: ${uid} (anonymised ${studentOrders} student / ${dasherOrders} dasher orders)`);
   return { ok: true, anonymisedOrders: studentOrders + dasherOrders };
+});
+
+
+// ─── STALE ORDER CLEANUP ────────────────────────────────────────────────────
+// An order nobody accepts would otherwise sit on "Finding a dasher" forever.
+// Every 5 minutes, cancel pending orders older than PENDING_TIMEOUT_MS. The
+// cancel write triggers onOrderStatusChanged, which tells the student why.
+const PENDING_TIMEOUT_MS = 30 * 60 * 1000;
+
+export const cancelStalePendingOrders = onSchedule('every 5 minutes', async () => {
+  const cutoff = Date.now() - PENDING_TIMEOUT_MS;
+  const snap = await db.collection('orders').where('status', '==', 'pending').get();
+  const stale = snap.docs.filter(d => Number(d.get('verifiedAt') ?? d.get('createdAt')) < cutoff);
+  for (const d of stale) {
+    // Transaction: skip it if a dasher accepted it in the meantime.
+    await db.runTransaction(async tx => {
+      const fresh = await tx.get(d.ref);
+      if (fresh.get('status') !== 'pending') return;
+      tx.update(d.ref, { status: 'cancelled', cancelReason: 'no_dasher', cancelledAt: Date.now() });
+    });
+  }
+  if (stale.length) logger.info(`Auto-cancelled ${stale.length} order(s) nobody accepted in 30 min`);
 });

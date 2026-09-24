@@ -156,11 +156,6 @@ export default function StoreMenuScreen() {
 
   return (
     <View style={styles.root}>
-      <View style={styles.canvas} pointerEvents="none">
-        <View style={styles.blobTeal} />
-        <View style={styles.blobCerulean} />
-      </View>
-
       {/* Sticky rail */}
       <Animated.View
         pointerEvents={stickyActive ? 'auto' : 'none'}
@@ -219,12 +214,9 @@ export default function StoreMenuScreen() {
           </View>
 
           <View style={styles.monogramTile}>
-            <View style={styles.monogramCircle1} />
-            <View style={styles.monogramCircle2} />
             <Text style={styles.monogramText}>{store?.name.charAt(0) ?? '?'}</Text>
           </View>
 
-          <Text style={styles.eyebrow}>Store</Text>
           <Text style={styles.storeName}>{store?.name ?? ' '}</Text>
           {store?.description ? <Text style={styles.storeDesc} numberOfLines={2}>{store.description}</Text> : null}
 
@@ -295,6 +287,7 @@ export default function StoreMenuScreen() {
             ))}
           </View>
         )}
+        <Watermark variant="inline" tint="teal" />
       </Animated.ScrollView>
 
       {cartCount > 0 && (
@@ -315,7 +308,6 @@ export default function StoreMenuScreen() {
         </Animated.View>
       )}
 
-      <Watermark variant="floating" tint={cartCount > 0 ? 'cerulean' : 'teal'} />
     </View>
   );
 }
@@ -356,7 +348,7 @@ const ItemCard: React.FC<{
         <Text style={styles.itemName} numberOfLines={2}>{item.name}</Text>
         {item.description ? <Text style={styles.itemDesc} numberOfLines={2}>{item.description}</Text> : null}
         {item.allergens && item.allergens.length > 0 && (
-          <Text style={styles.allergens}>⚠ {item.allergens.join(', ')}</Text>
+          <Text style={styles.allergens}>Contains: {item.allergens.join(', ')}</Text>
         )}
         <HollowPrice value={item.price} size={16} />
       </View>
@@ -407,7 +399,7 @@ const styles = StyleSheet.create({
   backText: { fontSize: 20, fontWeight: '700', color: T.color.ink },
   openBadge: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: T.space.md, paddingVertical: 7, borderRadius: T.radius.pill },
   openDot: { width: 6, height: 6, borderRadius: 3 },
-  openText: { fontSize: 11, fontWeight: '800', letterSpacing: 0.8, textTransform: 'uppercase' },
+  openText: { fontSize: 11, fontWeight: '800', letterSpacing: 0.8 },
 
   monogramTile: {
     width: 96, height: 96, borderRadius: 28, backgroundColor: T.color.ceruleanTint,
@@ -469,7 +461,7 @@ const styles = StyleSheet.create({
   qtyControl: { justifyContent: 'center' },
   addBtn: {
     backgroundColor: T.color.cerulean, borderRadius: T.radius.pill,
-    paddingHorizontal: T.space.md, paddingVertical: 10, ...T.shadow.button, shadowOpacity: 0.2,
+    paddingHorizontal: T.space.md, paddingVertical: 10, ...T.shadow.button, shadowOpacity: 0.06,
   },
   addBtnText: { color: T.color.card, fontSize: 13, fontWeight: '800', letterSpacing: 0.2 },
   qtyRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },

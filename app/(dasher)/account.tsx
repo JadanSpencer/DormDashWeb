@@ -1,4 +1,4 @@
-// app/(dasher)/profile.tsx
+// app/(dasher)/account.tsx  (URL: /account)
 // DormDash — Dasher profile (inverted Route identity). NEW SCREEN.
 //
 // What a dasher needs from a profile:
@@ -93,7 +93,7 @@ export default function DasherProfile() {
   }, [user]);
 
   const handleLogout = () => {
-    Alert.alert('Sign out', 'Going offline and signing out — sure?', [
+    Alert.alert('Sign out', 'You will go offline and be signed out.', [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Sign out', style: 'destructive',
@@ -113,11 +113,6 @@ export default function DasherProfile() {
 
   return (
     <View style={styles.root}>
-      <View style={styles.canvas} pointerEvents="none">
-        <View style={styles.blobCerulean} />
-        <View style={styles.blobTeal} />
-      </View>
-
       <FlatList
         data={recentOrders}
         keyExtractor={item => item.id}
@@ -127,7 +122,6 @@ export default function DasherProfile() {
           <>
             {/* Header */}
             <View style={[styles.header, { paddingTop: insets.top + D.space.md }]}>
-              <Text style={styles.eyebrow}>Your record</Text>
               <Text style={styles.title}>Profile</Text>
             </View>
 
@@ -157,7 +151,7 @@ export default function DasherProfile() {
                 </View>
                 <Text style={styles.statLabel}>Total earned</Text>
               </View>
-              <View style={styles.statCard}>
+              <View style={[styles.statCard, styles.statDivided]}>
                 <Text style={styles.statBig}>{stats?.totalDeliveries ?? '—'}</Text>
                 <Text style={styles.statLabel}>Deliveries</Text>
               </View>
@@ -316,7 +310,7 @@ const styles = StyleSheet.create({
     borderRadius: D.radius.pill,
   },
   roleDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: D.color.teal },
-  roleText: { fontSize: 11, fontWeight: '800', color: D.color.teal, letterSpacing: 0.8, textTransform: 'uppercase' },
+  roleText: { fontSize: 11, fontWeight: '800', color: D.color.teal, letterSpacing: 0.8 },
 
   sectionLabel: {
     ...D.type.label, color: D.color.teal,
@@ -325,20 +319,23 @@ const styles = StyleSheet.create({
   },
 
   // Stats
+  // One summary strip with dividers instead of three separate boxes.
   statsRow: {
-    flexDirection: 'row', gap: D.space.sm,
-    paddingHorizontal: D.space.lg,
+    flexDirection: 'row',
+    marginHorizontal: D.space.lg,
     marginBottom: D.space.md,
+    backgroundColor: D.color.card,
+    borderRadius: D.radius.md,
+    borderWidth: 1, borderColor: D.color.line,
+    paddingVertical: D.space.md,
   },
   statCard: {
     flex: 1,
-    backgroundColor: D.color.card,
-    borderRadius: D.radius.lg,
-    padding: D.space.md,
+    paddingHorizontal: D.space.sm,
     alignItems: 'center',
-    borderWidth: 1, borderColor: D.color.line,
     gap: 8,
   },
+  statDivided: { borderLeftWidth: 1, borderRightWidth: 1, borderColor: D.color.line },
   statPlate: {
     backgroundColor: D.color.tealTint,
     paddingHorizontal: 8, paddingVertical: 3,

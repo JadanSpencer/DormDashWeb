@@ -43,7 +43,6 @@ yarn-error.*
 /android
 
 # secrets & credentials
-google-services.json
 fcm-service-account.json
 credentials.json
 
@@ -58,3 +57,6 @@ codebase_dump.txt
 dormdash_dump.txt
 dormdash_audit.txt
 output.txt
+# local debug output
+dormdash-*.txt
+.firebase/

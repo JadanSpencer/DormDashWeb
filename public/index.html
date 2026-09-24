@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="%LANG_ISO_CODE%">
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <!-- viewport-fit=cover lets the app draw under the iPhone notch; safe-area
+         insets are handled by react-native-safe-area-context. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>%WEB_TITLE%</title>
+
+    <!-- PWA -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <!-- Start the connection to Firebase while the app code downloads -->
+    <link rel="preconnect" href="https://firestore.googleapis.com" crossorigin />
+    <link rel="preconnect" href="https://identitytoolkit.googleapis.com" crossorigin />
+    <link rel="preconnect" href="https://securetoken.googleapis.com" crossorigin />
+    <link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32.png" />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="DormDash" />
+    <meta name="application-name" content="DormDash" />
+    <meta name="format-detection" content="telephone=no" />
+
+    <!-- react-native-web recommended reset -->
+    <style id="expo-reset">
+      html, body { height: 100%; }
+      body {
+        overflow: hidden;
+        margin: 0;
+        background-color: #FAF5EC; /* T.color.cream — no white flash on launch */
+        overscroll-behavior: none;
+        -webkit-tap-highlight-color: transparent;
+      }
+      #root { display: flex; height: 100%; flex: 1; }
+      /* Keep the phone-shaped layout readable on laptops/desktops */
+      @media (min-width: 640px) {
+        body { background-color: #F1E9DB; }
+        #root { max-width: 480px; margin: 0 auto; background-color: #FAF5EC;
+                box-shadow: 0 0 40px rgba(18, 51, 59, 0.08); }
+      }
+    </style>
+  </head>
+
+  <body>
+    <noscript>You need to enable JavaScript to use DormDash.</noscript>
+    <div id="root"></div>
+
+    <script src="/register-sw.js" defer></script>
+  </body>
+</html>

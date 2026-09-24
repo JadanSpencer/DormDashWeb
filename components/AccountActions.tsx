@@ -21,11 +21,12 @@ import { httpsCallable } from 'firebase/functions';
 import { auth, functions } from '../services/firebase';
 import { logoutUser } from '../services/auth';
 import { clearPushToken } from '../services/notifications';
+import { router } from 'expo-router';
 
 type Action = 'deactivate' | 'delete';
 
 const LIGHT = {
-  sheet: '#FFFFFF',
+  sheet: '#FFFDF9',
   text: '#12333B',
   soft: '#4E6B72',
   faint: '#8AA0A5',
@@ -133,7 +134,7 @@ export const AccountActions: React.FC<{ dark?: boolean }> = ({ dark }) => {
         <View style={{ flex: 1 }}>
           <Text style={[styles.rowTitle, { color: C.warning }]}>Deactivate account</Text>
           <Text style={[styles.rowSub, { color: C.soft }]}>
-            Pause your account. Nothing is deleted — you can come back.
+            Pause your account. Nothing is deleted, and you can come back.
           </Text>
         </View>
       </Pressable>
@@ -155,6 +156,16 @@ export const AccountActions: React.FC<{ dark?: boolean }> = ({ dark }) => {
       </Pressable>
 
       {/* Modal */}
+      {/* Legal */}
+      <View style={styles.legalRow}>
+        <Text accessibilityRole="link" onPress={() => router.push('/legal/privacy' as any)} style={[styles.legalLink, { color: C.soft }]}>
+          Privacy Policy
+        </Text>
+        <Text accessibilityRole="link" onPress={() => router.push('/legal/terms' as any)} style={[styles.legalLink, { color: C.soft }]}>
+          Terms of Service
+        </Text>
+      </View>
+
       <Modal visible={action !== null} transparent animationType="fade" onRequestClose={close}>
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -179,7 +190,7 @@ export const AccountActions: React.FC<{ dark?: boolean }> = ({ dark }) => {
                       <Bullet C={C} text="Your profile, contact details and login are deleted." />
                       <Bullet C={C} text="Your name, delivery addresses and order notes are removed from every past order." />
                       <Bullet C={C} text="If you dashed, your earnings history and dasher profile are deleted." />
-                      <Bullet C={C} text="Past orders remain in our records as anonymous transactions — no name, no address — because merchants and tax records require them." />
+                      <Bullet C={C} text="Past orders stay in our records as anonymous transactions, with no name or address, because merchants and tax records require them." />
                       <Bullet C={C} text="This cannot be undone. You would need to register again from scratch." />
                     </>
                   ) : (
@@ -278,9 +289,10 @@ const Bullet: React.FC<{ C: typeof LIGHT; text: string }> = ({ C, text }) => (
 );
 
 const styles = StyleSheet.create({
+  legalRow: { flexDirection: 'row', justifyContent: 'center', gap: 24, marginTop: 20, marginBottom: 8 },
+  legalLink: { fontSize: 13, textDecorationLine: 'underline' },
   sectionLabel: {
-    fontSize: 10, fontWeight: '700', letterSpacing: 1.4,
-    textTransform: 'uppercase',
+    fontSize: 10, fontWeight: '700', letterSpacing: 0.2,
     paddingHorizontal: 24, paddingTop: 24, paddingBottom: 10,
   },
   row: {
@@ -296,10 +308,10 @@ const styles = StyleSheet.create({
   sheet: {
     width: '100%', maxHeight: '82%',
     borderRadius: 28, padding: 24,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: 0.3, shadowRadius: 24, elevation: 16,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06, shadowRadius: 2, elevation: 1,
   },
-  sheetEyebrow: { fontSize: 10, fontWeight: '800', letterSpacing: 1.6, textTransform: 'uppercase' },
+  sheetEyebrow: { fontSize: 10, fontWeight: '800', letterSpacing: 0.2 },
   sheetTitle: { fontSize: 22, fontWeight: '800', letterSpacing: -0.4, marginTop: 4, marginBottom: 14 },
   body: { fontSize: 14, fontWeight: '500', lineHeight: 20, marginBottom: 12 },
 
@@ -312,7 +324,7 @@ const styles = StyleSheet.create({
     borderWidth: 1.5, fontSize: 15, fontWeight: '500',
     marginTop: 4, marginBottom: 12,
   },
-  errorBox: { borderRadius: 10, padding: 12, borderLeftWidth: 3, marginBottom: 12 },
+  errorBox: { borderRadius: 10, padding: 12, marginBottom: 12 },
   errorText: { fontSize: 13, fontWeight: '600' },
 
   actions: { flexDirection: 'row', gap: 10, marginTop: 8 },

@@ -18,6 +18,14 @@ import { AuthProvider, useAuth } from '../hooks/useAuth';
 import { T } from '../constants/theme';
 import { registerForPushNotifications, setupNotificationListeners } from '../services/notifications';
 import { NotificationBanner, BannerHandle } from '../components/NotificationBanner';
+import { InstallPrompt } from '../components/InstallPrompt';
+import { installWebAlert } from '../services/webAlert';
+import { syncServerClock } from '../services/serverClock';
+
+// Web/PWA only: make Alert.alert work in the browser (no-op on native).
+installWebAlert();
+// Web/PWA: measure how wrong this device's clock is (see services/serverClock).
+syncServerClock();
 
 // Hold the native splash until React is mounted and auth has resolved, so
 // there is never a blank frame between the OS splash and our own.
@@ -37,8 +45,11 @@ function RouteGuard() {
     if (loading) return;
 
     // On the launch screen? Leave it alone. index.tsx routes when it's done.
-    const onSplash = segments.length === 0;
+    const onSplash = (segments as string[]).length === 0;
     if (onSplash) return;
+
+    // Privacy Policy and Terms must open for everyone, signed in or not.
+    if ((segments[0] as string) === 'legal') return;
 
     const inAuthGroup    = segments[0] === '(auth)';
     const inStudentGroup = segments[0] === '(student)';
@@ -53,7 +64,7 @@ function RouteGuard() {
     if (user.role === 'student' && !inStudentGroup) {
       router.replace('/(student)/(tabs)/home');
     } else if (user.role === 'dasher' && !inDasherGroup) {
-      router.replace('/(dasher)/home');
+      router.replace('/(dasher)/dash');
     } else if (user.role === 'admin' && !inAdminGroup) {
       router.replace('/(admin)/(tabs)/dashboard');
     }
@@ -100,6 +111,7 @@ function RouteGuard() {
           contentStyle: { backgroundColor: T.color.cream },
         }}
       />
+      <InstallPrompt uid={user?.uid ?? null} />
     </>
   );
 }

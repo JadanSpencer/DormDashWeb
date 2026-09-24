@@ -25,6 +25,7 @@ import {
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { loginUser, resetPassword } from '../../services/auth';
+import { requestPushPermissionFromGesture } from '../../services/notifications';
 import { T, useReducedMotion } from '../../constants/theme';
 import { Logo } from '../../components/Logo';
 
@@ -48,7 +49,6 @@ export default function LoginScreen() {
   const cardFade = useRef(new Animated.Value(0)).current;
   const cardRise = useRef(new Animated.Value(24)).current;
   const footFade = useRef(new Animated.Value(0)).current;
-  const blobDrift = useRef(new Animated.Value(0)).current;
   const pressScale = useRef(new Animated.Value(1)).current;
   const errorSlide = useRef(new Animated.Value(0)).current;
 
@@ -66,19 +66,6 @@ export default function LoginScreen() {
     ]).start();
   }, []);
 
-  // Ambient background drift — stilled when the user prefers reduced motion
-  useEffect(() => {
-    if (reduced) return;
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(blobDrift, { toValue: 1, duration: 9000, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
-        Animated.timing(blobDrift, { toValue: 0, duration: 9000, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
-      ])
-    );
-    loop.start();
-    return () => loop.stop();
-  }, [reduced]);
-
   useEffect(() => {
     Animated.timing(errorSlide, {
       toValue: error ? 1 : 0,
@@ -88,8 +75,6 @@ export default function LoginScreen() {
     }).start();
   }, [error]);
 
-  const blobUp = blobDrift.interpolate({ inputRange: [0, 1], outputRange: [0, -14] });
-  const blobDown = blobDrift.interpolate({ inputRange: [0, 1], outputRange: [0, 12] });
 
   // ── Handlers (unchanged) ─────────────────────────────────────────────
   const handleForgotPassword = async () => {
@@ -113,6 +98,9 @@ export default function LoginScreen() {
   };
 
   const handleLogin = async () => {
+    // Must run before any await: browsers only allow the notification
+    // prompt during the tap. No-op on native and once already answered.
+    requestPushPermissionFromGesture();
     setError('');
     setLoading(true);
 
@@ -140,18 +128,11 @@ export default function LoginScreen() {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          {/* Ambient canvas shapes */}
-          <View style={styles.canvas} pointerEvents="none">
-            <Animated.View style={[styles.blobTeal, { transform: [{ translateY: blobUp }] }]} />
-            <Animated.View style={[styles.blobCerulean, { transform: [{ translateY: blobDown }] }]} />
-          </View>
-
           {/* ── HERO ─────────────────────────────────────────────────── */}
           <Animated.View style={[styles.hero, { opacity: heroFade, transform: [{ translateY: heroRise }] }]}>
             <View style={styles.logoTile}>
               <Logo size={SMALL ? 44 : 54} variant="brand" />
             </View>
-            <Text style={styles.eyebrow}>Campus delivery</Text>
             <Text style={styles.wordmark} numberOfLines={1} adjustsFontSizeToFit maxFontSizeMultiplier={1.1}>
               DormDash
             </Text>
@@ -256,19 +237,9 @@ export default function LoginScreen() {
               </TouchableOpacity>
             </View>
 
-            <View style={styles.roleHint}>
-              <View style={styles.roleChip}>
-                <View style={[styles.roleDot, { backgroundColor: T.color.cerulean }]} />
-                <Text style={styles.roleChipText}>Student</Text>
-              </View>
-              <View style={styles.roleChip}>
-                <View style={[styles.roleDot, { backgroundColor: T.color.teal }]} />
-                <Text style={styles.roleChipText}>Dasher</Text>
-              </View>
-              <View style={styles.roleChip}>
-                <View style={[styles.roleDot, { backgroundColor: T.color.ink }]} />
-                <Text style={styles.roleChipText}>Admin</Text>
-              </View>
+            <View style={styles.legal}>
+              <Text style={styles.legalLink} onPress={() => router.push('/legal/privacy' as any)} accessibilityRole="link">Privacy Policy</Text>
+              <Text style={styles.legalLink} onPress={() => router.push('/legal/terms' as any)} accessibilityRole="link">Terms of Service</Text>
             </View>
           </Animated.View>
         </ScrollView>
@@ -383,8 +354,6 @@ const styles = StyleSheet.create({
 
   errorBanner: {
     backgroundColor: T.color.dangerTint,
-    borderLeftWidth: 3,
-    borderLeftColor: T.color.danger,
     borderRadius: T.radius.sm,
     padding: T.space.sm,
     marginBottom: T.space.md,
@@ -407,6 +376,8 @@ const styles = StyleSheet.create({
   footerText: { ...T.type.body, color: T.color.inkSoft },
   footerLink: { ...T.type.body, color: T.color.cerulean, fontWeight: '800' },
 
+  legal: { flexDirection: 'row', justifyContent: 'center', gap: T.space.lg, marginTop: T.space.xs },
+  legalLink: { fontSize: 13, color: T.color.inkSoft, textDecorationLine: 'underline' },
   roleHint: { flexDirection: 'row', justifyContent: 'center', gap: T.space.sm },
   roleChip: {
     flexDirection: 'row', alignItems: 'center', gap: 8,

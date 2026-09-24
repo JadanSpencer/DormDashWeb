@@ -16,18 +16,18 @@ export const S = {
     // Type on cards (ink family)
     ink: '#12333B',
     inkSoft: '#4E6B72',
-    inkFaint: '#8AA0A5',
+    inkFaint: '#5C7379',
 
     // Type on the slate canvas
     cream: '#F2EFE6',
     creamSoft: '#B8C8C5',
-    creamFaint: '#84999B',
+    creamFaint: '#A3B5B6',
 
     // Accents — standard depth on cream, brightened on slate
-    cerulean: '#0E8FB5',
+    cerulean: '#0A7A9C',
     ceruleanBright: '#54BBD9',
     ceruleanTint: '#E3F2F7',
-    teal: '#0FA893',
+    teal: '#0A7D6E',
     tealBright: '#3ECDB4',
     tealTint: '#E2F4F1',
 
@@ -43,23 +43,23 @@ export const S = {
   },
 
   space: { xs: 6, sm: 10, md: 16, lg: 24, xl: 32, xxl: 48 },
-  radius: { sm: 10, md: 16, lg: 24, xl: 32, pill: 999 },
+  radius: { sm: 8, md: 12, lg: 14, xl: 18, pill: 999 },
 
   type: {
     display: { fontSize: 34, fontWeight: '900' as const, letterSpacing: -1.2 },
     title:   { fontSize: 24, fontWeight: '800' as const, letterSpacing: -0.5 },
     body:    { fontSize: 14, fontWeight: '500' as const, letterSpacing: 0 },
-    label:   { fontSize: 10, fontWeight: '700' as const, letterSpacing: 1.4, textTransform: 'uppercase' as const },
+    label:   { fontSize: 12, fontWeight: '700' as const, letterSpacing: 0.1, textTransform: 'none' as const },
     number:  { fontSize: 11, fontWeight: '800' as const, letterSpacing: 1 },
   },
 
   shadow: {
     card: {
       shadowColor: '#0B1F24',
-      shadowOffset: { width: 0, height: 10 },
-      shadowOpacity: 0.28,
-      shadowRadius: 18,
-      elevation: 7,
+      shadowOffset: { width: 0, height: 1 },
+      shadowOpacity: 0.06,
+      shadowRadius: 2,
+      elevation: 1,
     },
   },
 };

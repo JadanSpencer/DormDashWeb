@@ -1,4 +1,4 @@
-// app/(admin)/store/[id].tsx
+// app/(admin)/manage-store/[id].tsx  (URL: /manage-store/:id)
 // DormDash — Menu-item editor for one store (mid-tone "slate" identity).
 // FUNCTIONALITY PRESERVED: store header fetch, real-time menuItems
 // sub-collection listener (/stores/{id}/menuItems), add/edit via
@@ -261,7 +261,6 @@ export default function StoreMenuItems() {
         <View style={styles.loading}><ActivityIndicator color={S.color.ceruleanBright} size="large" /></View>
       ) : items.length === 0 ? (
         <View style={styles.empty}>
-          <Text style={styles.emptyNumber}>00</Text>
           <Text style={styles.emptyText}>No menu items yet</Text>
           <Text style={styles.emptySub}>Tap ＋ Add to create the first item</Text>
         </View>
@@ -282,7 +281,7 @@ export default function StoreMenuItems() {
                       <Text style={styles.itemDesc} numberOfLines={2}>{item.description}</Text>
                     ) : null}
                     {item.allergens && item.allergens.length > 0 && (
-                      <Text style={styles.allergens}>⚠ {item.allergens.join(', ')}</Text>
+                      <Text style={styles.allergens}>Contains: {item.allergens.join(', ')}</Text>
                     )}
                     <View style={styles.pricePlate}>
                       <Text style={styles.priceText}>{formatJMD(item.price)}</Text>
@@ -428,7 +427,6 @@ const m = StyleSheet.create({
   toggleSub: { fontSize: 10, color: S.color.creamFaint, marginTop: 2 },
   errorBanner: {
     backgroundColor: 'rgba(227, 107, 107, 0.15)',
-    borderLeftWidth: 3, borderLeftColor: S.color.dangerBright,
     borderRadius: S.radius.sm, padding: S.space.sm, marginBottom: S.space.md,
   },
   errorText: { color: S.color.dangerBright, fontSize: 12, fontWeight: '700', textAlign: 'center' },

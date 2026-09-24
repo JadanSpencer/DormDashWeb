@@ -20,20 +20,20 @@ export const T = {
     // Canvas
     cream: '#FAF5EC',
     creamDeep: '#F1E9DB',
-    card: '#FFFFFF',
+    card: '#FFFDF9',        // warm white, never pure #FFF
 
     // Ink (never pure black — deep teal-ink ties text to palette)
     ink: '#12333B',
     inkSoft: '#4E6B72',
-    inkFaint: '#8AA0A5',
+    inkFaint: '#5C7379',     // AA 4.6:1 on cream (was #8AA0A5, 2.5:1)
 
     // Action
-    cerulean: '#0E8FB5',
+    cerulean: '#0A7A9C',     // AA with white text (was #0E8FB5, 3.7:1)
     ceruleanDeep: '#0A6E8C',
     ceruleanTint: '#E3F2F7',
 
     // Support
-    teal: '#0FA893',
+    teal: '#0A7D6E',         // AA as small text on cream (was #0FA893, 2.8:1)
     tealDeep: '#0B8676',
     tealTint: '#E2F4F1',
 
@@ -47,30 +47,30 @@ export const T = {
 
   space: { xs: 6, sm: 10, md: 16, lg: 24, xl: 32, xxl: 48 },
 
-  radius: { sm: 10, md: 16, lg: 24, xl: 32, pill: 999 },
+  radius: { sm: 8, md: 12, lg: 14, xl: 18, pill: 999 },
 
   type: {
     display: { fontSize: 40, fontWeight: '900' as const, letterSpacing: -1.4 },
     title:   { fontSize: 26, fontWeight: '800' as const, letterSpacing: -0.6 },
     body:    { fontSize: 15, fontWeight: '500' as const, letterSpacing: 0 },
-    label:   { fontSize: 11, fontWeight: '700' as const, letterSpacing: 1.4, textTransform: 'uppercase' as const },
+    label:   { fontSize: 12, fontWeight: '700' as const, letterSpacing: 0.1, textTransform: 'none' as const },
     button:  { fontSize: 16, fontWeight: '700' as const, letterSpacing: 0.2 },
   },
 
   shadow: {
     card: {
       shadowColor: '#12333B',
-      shadowOffset: { width: 0, height: 12 },
-      shadowOpacity: 0.08,
-      shadowRadius: 24,
-      elevation: 6,
+      shadowOffset: { width: 0, height: 1 },
+      shadowOpacity: 0.06,
+      shadowRadius: 2,
+      elevation: 1,
     },
     button: {
       shadowColor: '#0E8FB5',
-      shadowOffset: { width: 0, height: 8 },
-      shadowOpacity: 0.28,
-      shadowRadius: 16,
-      elevation: 5,
+      shadowOffset: { width: 0, height: 1 },
+      shadowOpacity: 0.06,
+      shadowRadius: 2,
+      elevation: 1,
     },
   },
 };

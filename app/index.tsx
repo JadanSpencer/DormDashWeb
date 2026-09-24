@@ -16,13 +16,27 @@
 // frames, which is why the splash appeared to "glitch by".
 
 import React, { useEffect, useRef, useState } from 'react';
-import { View, Text, StyleSheet, Image, Animated, Easing } from 'react-native';
+import { View, Text, StyleSheet, Image, Animated, Easing, Platform } from 'react-native';
 import { router } from 'expo-router';
 import { useAuth } from '../hooks/useAuth';
 import { T, useReducedMotion } from '../constants/theme';
 
 const ACT_ONE_MS = 2000;   // Jcommerce holds this long
 const TOTAL_MS  = 4400;    // then DormDash, then route
+const QUICK_MS  = 800;     // returning web visitors: brand flash, then route
+
+// Web/PWA: the full two-act intro plays on the first visit only. After that
+// the app shows the DormDash mark briefly and gets out of the way, because
+// people open a delivery app to order, not to watch the intro again.
+const SEEN_KEY = 'dd_seen_intro';
+function isReturningWebVisitor(): boolean {
+  if (Platform.OS !== 'web') return false;
+  try { return localStorage.getItem(SEEN_KEY) === '1'; } catch { return false; }
+}
+function markIntroSeen() {
+  if (Platform.OS !== 'web') return;
+  try { localStorage.setItem(SEEN_KEY, '1'); } catch {}
+}
 
 const DORM = ['D', 'o', 'r', 'm'];
 
@@ -31,6 +45,7 @@ export default function Index() {
   const reduced = useReducedMotion();
   const [act, setAct] = useState<1 | 2>(1);
   const routed = useRef(false);
+  const returning = useRef(isReturningWebVisitor()).current;
 
   // ── Act one: Jcommerce ────────────────────────────────────────────
   const jcFade  = useRef(new Animated.Value(0)).current;
@@ -55,7 +70,8 @@ export default function Index() {
   const taglineRise = useRef(new Animated.Value(8)).current;
 
   useEffect(() => {
-    if (reduced) {
+    markIntroSeen();
+    if (reduced || returning) {
       // Reduced motion: show act two, still hold so the brand is seen.
       setAct(2);
       tileFade.setValue(1); tileScale.setValue(1); eyebrowFade.setValue(1);
@@ -125,13 +141,13 @@ export default function Index() {
       if (!user) {
         router.replace('/(auth)/login');
       } else if (user.role === 'dasher') {
-        router.replace('/(dasher)/home');
+        router.replace('/(dasher)/dash');
       } else if (user.role === 'admin') {
         router.replace('/(admin)/(tabs)/dashboard');
       } else {
         router.replace('/(student)/(tabs)/home');
       }
-    }, TOTAL_MS);
+    }, returning ? QUICK_MS : TOTAL_MS);
 
     return () => clearTimeout(t);
   }, [loading, user]);
@@ -140,11 +156,6 @@ export default function Index() {
 
   return (
     <View style={styles.root}>
-      <View style={styles.canvas} pointerEvents="none">
-        <View style={styles.blobTeal} />
-        <View style={styles.blobGold} />
-      </View>
-
       {act === 1 ? (
         /* ─── ACT ONE — JCOMMERCE ─────────────────────────────── */
         <Animated.View style={[styles.stage, { opacity: jcFade, transform: [{ translateY: jcLift }] }]}>
@@ -253,10 +264,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center', alignItems: 'center',
     marginBottom: T.space.lg,
     shadowColor: '#12333B',
-    shadowOffset: { width: 0, height: 14 },
-    shadowOpacity: 0.10,
-    shadowRadius: 26,
-    elevation: 8,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06,
+    shadowRadius: 2,
+    elevation: 1,
   },
   jcLogo: { width: 96, height: 96 },
   jcName: {
@@ -289,10 +300,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center', alignItems: 'center',
     marginBottom: T.space.xl,
     shadowColor: '#12333B',
-    shadowOffset: { width: 0, height: 14 },
-    shadowOpacity: 0.12,
-    shadowRadius: 26,
-    elevation: 9,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06,
+    shadowRadius: 2,
+    elevation: 1,
   },
   tileImg: { width: 76, height: 76, borderRadius: 20 },
   eyebrow: { ...T.type.label, color: T.color.teal, marginBottom: T.space.md },

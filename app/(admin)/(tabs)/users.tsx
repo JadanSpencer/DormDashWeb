@@ -74,7 +74,6 @@ export default function AdminUsers() {
   return (
     <View style={styles.root}>
       <View style={[styles.header, { paddingTop: insets.top + S.space.md }]}>
-        <Text style={styles.eyebrow}>Community</Text>
         <Text style={styles.title}>Users</Text>
         <Text style={styles.subtitle}>{users.length} registered</Text>
       </View>
@@ -120,7 +119,6 @@ export default function AdminUsers() {
           showsVerticalScrollIndicator={false}
           ListEmptyComponent={
             <View style={styles.empty}>
-              <Text style={styles.emptyNumber}>00</Text>
               <Text style={styles.emptyText}>No users found</Text>
             </View>
           }
@@ -129,14 +127,14 @@ export default function AdminUsers() {
             return (
               <View style={[styles.card, !item.isActive && styles.cardInactive]}>
                 <View style={styles.cardHead}>
-                  <Text style={styles.cardNumber}>{(index + 1).toString().padStart(2, '0')}</Text>
+                  <View />
                   <View style={styles.badges}>
                     <View style={[styles.roleBadge, { backgroundColor: roleColor + '1F' }]}>
-                      <Text style={[styles.roleText, { color: roleColor }]}>{item.role}</Text>
+                      <Text style={[styles.roleText, { color: roleColor }]}>{item.role.charAt(0).toUpperCase() + item.role.slice(1)}</Text>
                     </View>
                     {!item.isActive && (
                       <View style={styles.bannedBadge}>
-                        <Text style={styles.bannedText}>banned</Text>
+                        <Text style={styles.bannedText}>Banned</Text>
                       </View>
                     )}
                   </View>
@@ -232,12 +230,12 @@ const styles = StyleSheet.create({
   cardNumber: { ...S.type.number, color: S.color.teal },
   badges: { flexDirection: 'row', gap: 6 },
   roleBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: S.radius.pill },
-  roleText: { fontSize: 10, fontWeight: '800', letterSpacing: 0.6, textTransform: 'uppercase' },
+  roleText: { fontSize: 10, fontWeight: '800', letterSpacing: 0.6 },
   bannedBadge: {
     backgroundColor: S.color.dangerTint,
     paddingHorizontal: 10, paddingVertical: 4, borderRadius: S.radius.pill,
   },
-  bannedText: { fontSize: 10, fontWeight: '800', color: S.color.danger, letterSpacing: 0.6, textTransform: 'uppercase' },
+  bannedText: { fontSize: 10, fontWeight: '800', color: S.color.danger, letterSpacing: 0.6 },
 
   userRow: { flexDirection: 'row', alignItems: 'center', gap: S.space.md },
   avatar: {

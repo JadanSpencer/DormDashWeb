@@ -30,7 +30,7 @@ import { Order, OrderStatus } from '../../../types';
 import { formatJMD } from '../../../constants';
 import { T, useReducedMotion } from '../../../constants/theme';
 import { Watermark } from '../../../components/Watermark';
-import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
+import MapView, { Marker, PROVIDER_GOOGLE } from '../../../components/MapView';
 
 const STATUS_CONFIG: Record<OrderStatus, { label: string; color: string; description: string }> = {
   pending:    { label: 'Finding a dasher', color: T.color.warning,  description: 'Waiting for a dasher to accept your order' },
@@ -44,6 +44,18 @@ const STATUS_CONFIG: Record<OrderStatus, { label: string; color: string; descrip
 const STATUS_ORDER: OrderStatus[] = ['pending', 'accepted', 'picking_up', 'on_the_way', 'delivered'];
 
 const goHome = () => router.replace('/(student)/(tabs)/home');
+
+// Shown when the server rejects an order (functions/src/index.ts verifyNewOrder).
+const CANCEL_REASONS: Record<string, string> = {
+  store_closed: 'This store closed before your order went through. You were not charged.',
+  item_unavailable: 'An item in your order is no longer available. You were not charged.',
+  rate_limited: 'Too many orders in a short time. Wait a few minutes and try again.',
+  account_inactive: 'Your account is paused. Contact support to restore it.',
+  too_many_active: 'You already had 3 orders in progress. You were not charged. Wait for one to arrive, then order again.',
+  no_dasher: 'No dasher was free to take it within 30 minutes. You were not charged. Please try again later.',
+  admin: 'DormDash support cancelled this order. You were not charged. Email us if you have questions.',
+  duplicate_order: 'This was an accidental repeat of an order you had just placed. Only the first one goes through, and you were not charged twice.',
+};
 
 export default function OrderTracking() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -114,11 +126,6 @@ export default function OrderTracking() {
 
   return (
     <View style={styles.root}>
-      <View style={styles.canvas} pointerEvents="none">
-        <View style={styles.blobTeal} />
-        <View style={styles.blobCerulean} />
-      </View>
-
       <ScrollView
         contentContainerStyle={{ paddingBottom: 60 + insets.bottom }}
         showsVerticalScrollIndicator={false}
@@ -154,7 +161,7 @@ export default function OrderTracking() {
             </View>
             <Text style={styles.cancelledTitle}>Order cancelled</Text>
             <Text style={styles.cancelledSub}>
-              No charge — feel free to order again anytime.
+              {CANCEL_REASONS[order.cancelReason ?? ''] ?? 'You were not charged. You can order again anytime.'}
             </Text>
           </View>
         ) : (
@@ -390,8 +397,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center', alignItems: 'center',
     marginBottom: T.space.md,
     shadowColor: T.color.teal,
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.3, shadowRadius: 16, elevation: 6,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06, shadowRadius: 2, elevation: 1,
   },
   deliveredCheck: { color: T.color.card, fontSize: 36, fontWeight: '900' },
   deliveredTitle: { ...T.type.title, fontSize: 24, color: T.color.ink, marginBottom: 4 },

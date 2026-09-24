@@ -6,7 +6,16 @@
     "start": "expo start",
     "android": "expo run:android",
     "ios": "expo run:ios",
-    "web": "expo start --web"
+    "web": "expo start --web",
+    "build:web": "expo export --platform web",
+    "serve:web": "npx serve dist --single",
+    "deploy:web": "npm run build:web && firebase deploy --only hosting",
+    "preview:web": "DD_PREVIEW=1 expo start --web --clear",
+    "typecheck": "tsc --noEmit",
+    "audit:prod": "npm audit --omit=dev",
+    "deploy:all": "npm run build:web && firebase deploy --only hosting,functions",
+    "test:rules": "cd firestore-tests && npm install && npm test",
+    "deploy:rules": "firebase deploy --only firestore:rules"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.1.1",

@@ -13,7 +13,7 @@
 
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
-import { doc, updateDoc } from 'firebase/firestore';
+import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import { db } from './firebase';
 
 export const CERULEAN = '#0E8FB5';
@@ -45,8 +45,21 @@ async function ensureAndroidChannel() {
   });
 }
 
+// The token this phone last saved, so sign-out only detaches THIS phone.
+let myToken: string | null = null;
+
 export async function registerForPushNotifications(uid: string): Promise<string | null> {
   try {
+
+    if (Platform.OS === 'android') {
+      await Notifications.setNotificationChannelAsync('default', {
+        name: 'default',
+        importance: Notifications.AndroidImportance.HIGH,
+        vibrationPattern: [0, 250, 250, 250],
+        lightColor: '#0E8FB5',
+      });
+    }
+
     await ensureAndroidChannel();
 
     const { status: existingStatus } = await Notifications.getPermissionsAsync();
@@ -66,6 +79,7 @@ export async function registerForPushNotifications(uid: string): Promise<string 
       projectId: '18c72c59-4aeb-40ed-80d8-56715d0c010b',
     })).data;
 
+    myToken = token;
     await updateDoc(doc(db, 'users', uid), {
       pushToken: token,
       pushTokenUpdatedAt: Date.now(),
@@ -83,10 +97,13 @@ export async function registerForPushNotifications(uid: string): Promise<string 
 // next person to use the phone doesn't inherit their notifications.
 export async function clearPushToken(uid: string): Promise<void> {
   try {
-    await updateDoc(doc(db, 'users', uid), {
-      pushToken: null,
-      pushTokenUpdatedAt: Date.now(),
-    });
+    if (!myToken) return;
+    const ref = doc(db, 'users', uid);
+    const snap = await getDoc(ref);
+    // Only detach if the account still points at this phone.
+    if (snap.data()?.pushToken === myToken) {
+      await updateDoc(ref, { pushToken: null, pushTokenUpdatedAt: Date.now() });
+    }
   } catch {
     // Non-fatal: sign-out proceeds regardless.
   }
@@ -116,3 +133,14 @@ export function setupNotificationListeners(
     responseListener.remove();
   };
 }
+
+// ─── Web-only helpers (see services/notifications.web.ts) ─────────────────
+// Native registers for push on sign-in, so these are inert here. They exist
+// so shared components can import the same names on every platform.
+export async function webPushPermission(): Promise<'granted' | 'denied' | 'default' | 'unsupported'> {
+  return 'unsupported';
+}
+export async function enableWebPush(_uid: string): Promise<boolean> {
+  return false;
+}
+export function requestPushPermissionFromGesture(): void {}

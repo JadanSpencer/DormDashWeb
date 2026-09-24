@@ -152,17 +152,11 @@ export default function StudentProfile() {
 
   return (
     <View style={styles.root}>
-      <View style={styles.canvas} pointerEvents="none">
-        <View style={styles.blobTeal} />
-        <View style={styles.blobCerulean} />
-      </View>
-
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: 120 + insets.bottom }}
       >
         <View style={[styles.header, { paddingTop: insets.top + T.space.md }]}>
-          <Text style={styles.eyebrow}>Your account</Text>
           <Text style={styles.title}>Profile</Text>
         </View>
 
@@ -431,7 +425,7 @@ const styles = StyleSheet.create({
     borderRadius: T.radius.pill,
   },
   roleDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: T.color.teal },
-  roleText: { fontSize: 11, fontWeight: '800', color: T.color.teal, letterSpacing: 0.8, textTransform: 'uppercase' },
+  roleText: { fontSize: 11, fontWeight: '800', color: T.color.teal, letterSpacing: 0.8 },
 
   // Section
   sectionLabel: {
@@ -484,7 +478,7 @@ const styles = StyleSheet.create({
     borderRadius: T.radius.xl,
     padding: T.space.lg,
     ...T.shadow.card,
-    shadowOpacity: 0.2,
+    shadowOpacity: 0.06,
     gap: T.space.sm,
   },
   modalEyebrow: { ...T.type.label, color: T.color.teal, marginBottom: -2 },
@@ -516,13 +510,12 @@ const styles = StyleSheet.create({
     height: 48,
     justifyContent: 'center', alignItems: 'center',
     ...T.shadow.button,
-    shadowOpacity: 0.2,
+    shadowOpacity: 0.06,
   },
   modalSaveText: { color: T.color.card, fontSize: 14, fontWeight: '800' },
 
   errorBanner: {
     backgroundColor: T.color.dangerTint,
-    borderLeftWidth: 3, borderLeftColor: T.color.danger,
     borderRadius: T.radius.sm,
     padding: T.space.sm,
     marginBottom: T.space.sm,

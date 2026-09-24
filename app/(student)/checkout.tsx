@@ -28,7 +28,8 @@ import { collection, addDoc, getDocs, query, where, onSnapshot } from 'firebase/
 import { db } from '../../services/firebase';
 import { useAuth } from '../../hooks/useAuth';
 import { CartItem, Order } from '../../types';
-import { formatJMD, CAMPUS_CENTER } from '../../constants';
+import { formatJMD, CAMPUS_CENTER, MAX_ACTIVE_ORDERS } from '../../constants';
+import { serverNow } from '../../services/serverClock';
 import { sanitizeText, sanitizeAddress, sanitizeNote, isValidCoordinate } from '../../services/sanitize';
 import { T } from '../../constants/theme';
 import * as Location from 'expo-location';
@@ -54,6 +55,10 @@ export default function CheckoutScreen() {
   const [deliveryLabel, setDeliveryLabel] = useState('');
   const [note, setNote] = useState('');
   const [placing, setPlacing] = useState(false);
+  // Synchronous lock. `placing` is React state, so it only takes effect on the
+  // next render; fast taps (or taps while the network is slow) all got
+  // through before it did, and one tap-burst created 9 orders at once.
+  const placingRef = useRef(false);
   const [coords, setCoords] = useState<{ latitude: number; longitude: number } | null>(null);
   const [onlineDashers, setOnlineDashers] = useState<number | null>(null);
   const [focused, setFocused] = useState<'address' | 'note' | null>(null);
@@ -94,24 +99,29 @@ export default function CheckoutScreen() {
       return;
     }
     if (cleanLabel.length < 3) {
-      Alert.alert('Add a little more detail', 'A dasher needs enough to find you — for example "Block C, Room 204".');
+      Alert.alert('Add a little more detail', 'Your dasher needs enough to find you, for example "Block C, Room 204".');
       return;
     }
     if (!user) return;
-
-    // One active order at a time — no stacking
-    const activeSnap = await getDocs(query(
-      collection(db, 'orders'),
-      where('studentId', '==', user.uid),
-      where('status', 'in', ['pending', 'accepted', 'picking_up', 'on_the_way'])
-    ));
-    if (!activeSnap.empty) {
-      Alert.alert('Active Order', 'You already have an order in progress. Wait for it to arrive before placing another.');
-      return;
-    }
-
+    if (placingRef.current) return;
+    placingRef.current = true;
     setPlacing(true);
     try {
+      // Up to MAX_ACTIVE_ORDERS in progress at once (the server enforces
+      // the same limit in verifyNewOrder).
+      const activeSnap = await getDocs(query(
+        collection(db, 'orders'),
+        where('studentId', '==', user.uid),
+        where('status', 'in', ['pending', 'accepted', 'picking_up', 'on_the_way'])
+      ));
+      if (activeSnap.size >= MAX_ACTIVE_ORDERS) {
+        Alert.alert(
+          'Order limit reached',
+          `You can have up to ${MAX_ACTIVE_ORDERS} orders in progress at once. Wait for one to arrive, then order again.`
+        );
+        return;
+      }
+
       // Firestore rejects `undefined` field values outright, which is why an
       // empty note used to throw "Function addDoc() called with invalid data".
       // The note is optional, so when it's blank the key is simply not written.
@@ -130,7 +140,7 @@ export default function CheckoutScreen() {
           label: cleanLabel,
           hasGpsFix: coords !== null,
         },
-        createdAt: Date.now(),
+        createdAt: serverNow(),
         ...(cleanNote ? { studentNote: cleanNote } : {}),
       };
 
@@ -139,17 +149,13 @@ export default function CheckoutScreen() {
     } catch (e: any) {
       Alert.alert('Order Failed', e.message ?? 'Could not place order. Try again.');
     } finally {
+      placingRef.current = false;
       setPlacing(false);
     }
   };
 
   return (
     <View style={styles.root}>
-      <View style={styles.canvas} pointerEvents="none">
-        <View style={styles.blobTeal} />
-        <View style={styles.blobCerulean} />
-      </View>
-
       <ScrollView
         contentContainerStyle={{ paddingBottom: 160 + insets.bottom }}
         showsVerticalScrollIndicator={false}
@@ -199,7 +205,7 @@ export default function CheckoutScreen() {
             maxLength={100}
           />
           <Text style={styles.gpsHint}>
-            {coords ? '📍 GPS captured — dasher gets a live pin' : 'Text address only — dasher navigates by name'}
+            {coords ? 'Location pinned. Your dasher gets a map pin.' : 'No location pin. Your dasher will go by the address you type.'}
           </Text>
         </View>
 
@@ -249,7 +255,7 @@ export default function CheckoutScreen() {
         {onlineDashers === 0 && (
           <View style={styles.warning}>
             <Text style={styles.warningText}>
-              ⚠ No dashers online right now — your order may take longer to be accepted.
+              No dashers are online right now, so your order may take longer to be accepted.
             </Text>
           </View>
         )}
@@ -372,7 +378,6 @@ const styles = StyleSheet.create({
   },
   warning: {
     backgroundColor: T.color.dangerTint,
-    borderLeftWidth: 3, borderLeftColor: T.color.danger,
     borderRadius: T.radius.sm,
     padding: T.space.sm,
     marginBottom: T.space.sm,

@@ -1,0 +1,39 @@
+# Dependabot: GitHub checks your dependencies every week and opens a pull
+# request when a package has a security fix or a new version. Review and
+# merge them like any other change; CI (workflows/ci.yml) runs on each one.
+#
+# Expo SDK packages (expo, expo-*, react-native, react) are only allowed
+# patch updates here, because minor/major bumps must be done together with
+# `npx expo install --fix` when upgrading the whole SDK.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule: { interval: weekly }
+    open-pull-requests-limit: 5
+    groups:
+      security:
+        applies-to: security-updates
+        patterns: ["*"]
+    ignore:
+      - dependency-name: "expo*"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      - dependency-name: "react-native*"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      - dependency-name: "react"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      - dependency-name: "react-dom"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+
+  - package-ecosystem: npm
+    directory: /functions
+    schedule: { interval: weekly }
+    open-pull-requests-limit: 5
+    groups:
+      security:
+        applies-to: security-updates
+        patterns: ["*"]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule: { interval: monthly }

@@ -54,8 +54,6 @@ const FeaturedCard: React.FC<{ store: Store; onPress: () => void }> = ({ store, 
     >
       <View style={styles.featuredHead}>
         <View style={styles.featuredMono}>
-          <View style={styles.featuredCircle1} />
-          <View style={styles.featuredCircle2} />
           <Text style={styles.featuredInitial}>{store.name.charAt(0)}</Text>
         </View>
 
@@ -203,12 +201,6 @@ export default function StudentHome() {
 
   return (
     <View style={styles.root}>
-      {/* Ambient canvas */}
-      <View style={styles.canvas} pointerEvents="none">
-        <View style={styles.blobTeal} />
-        <View style={styles.blobCerulean} />
-      </View>
-
       <ScrollView
         showsVerticalScrollIndicator={false}
         refreshControl={
@@ -228,7 +220,6 @@ export default function StudentHome() {
             { paddingTop: insets.top + T.space.md, opacity: headerFade, transform: [{ translateY: headerRise }] },
           ]}
         >
-          <Text style={styles.eyebrow}>Campus delivery</Text>
           <Text style={styles.greeting}>{greeting()},</Text>
           <Text style={styles.name}>{firstName}.</Text>
         </Animated.View>
@@ -458,7 +449,7 @@ const styles = StyleSheet.create({
     borderRadius: T.radius.pill,
   },
   openDot: { width: 6, height: 6, borderRadius: 3 },
-  openText: { fontSize: 10, fontWeight: '800', letterSpacing: 0.6, textTransform: 'uppercase' },
+  openText: { fontSize: 10, fontWeight: '800', letterSpacing: 0.6 },
 
   // Row cards
   rowList: { paddingHorizontal: T.space.lg, gap: T.space.sm, paddingBottom: T.space.md },
@@ -491,7 +482,7 @@ const styles = StyleSheet.create({
     flexShrink: 0,
   },
   rowStatusDot: { width: 5, height: 5, borderRadius: 3 },
-  rowStatusText: { fontSize: 10, fontWeight: '800', letterSpacing: 0.4, textTransform: 'uppercase' },
+  rowStatusText: { fontSize: 10, fontWeight: '800', letterSpacing: 0.4 },
   rowDesc: { ...T.type.body, fontSize: 12, color: T.color.inkSoft },
   rowMeta: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 2 },
   rowChevron: { fontSize: 22, color: T.color.cerulean, fontWeight: '700', flexShrink: 0 },

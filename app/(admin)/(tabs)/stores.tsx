@@ -247,13 +247,11 @@ export default function AdminStores() {
     await updateDoc(doc(db, 'stores', store.id), { isOpen: !store.isOpen });
   };
 
-  const getStoreNumber = (index: number) => (index + 1).toString().padStart(2, '0');
 
   return (
     <View style={styles.root}>
       <View style={[styles.header, { paddingTop: insets.top + S.space.md }]}>
         <View>
-          <Text style={styles.eyebrow}>Marketplace</Text>
           <Text style={styles.title}>Stores</Text>
           <Text style={styles.subtitle}>{stores.length} total</Text>
         </View>
@@ -275,7 +273,6 @@ export default function AdminStores() {
           showsVerticalScrollIndicator={false}
           ListEmptyComponent={
             <View style={styles.empty}>
-              <Text style={styles.emptyNumber}>00</Text>
               <Text style={styles.emptyText}>No stores yet</Text>
               <Text style={styles.emptySub}>Tap ＋ New to add your first store</Text>
             </View>
@@ -283,7 +280,7 @@ export default function AdminStores() {
           renderItem={({ item, index }) => (
             <View style={styles.card}>
               <View style={styles.cardHead}>
-                <Text style={styles.cardNumber}>{getStoreNumber(index)}</Text>
+                <View />
                 <Pressable
                   style={[styles.statusBtn, { backgroundColor: item.isOpen ? S.color.tealTint : S.color.dangerTint }]}
                   onPress={() => handleToggleOpen(item)}
@@ -311,7 +308,7 @@ export default function AdminStores() {
               <View style={styles.actions}>
                 <Pressable
                   style={({ pressed }) => [styles.menuBtn, pressed && { opacity: 0.8 }]}
-                  onPress={() => router.push(`/(admin)/store/${item.id}` as any)}
+                  onPress={() => router.push(`/(admin)/manage-store/${item.id}` as any)}
                 >
                   <Text style={styles.menuBtnText}>Menu items</Text>
                 </Pressable>
@@ -368,7 +365,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10, paddingVertical: 5, borderRadius: S.radius.pill,
   },
   statusDot: { width: 6, height: 6, borderRadius: 3 },
-  statusText: { fontSize: 10, fontWeight: '800', letterSpacing: 0.6, textTransform: 'uppercase' },
+  statusText: { fontSize: 10, fontWeight: '800', letterSpacing: 0.6 },
 
   storeName: { fontSize: 17, fontWeight: '800', color: S.color.ink, letterSpacing: -0.3 },
   storeCategory: { ...S.type.label, fontSize: 9, color: S.color.cerulean },
@@ -452,7 +449,6 @@ const m = StyleSheet.create({
   toggleSub: { fontSize: 10, color: S.color.creamFaint, marginTop: 2 },
   errorBanner: {
     backgroundColor: 'rgba(227, 107, 107, 0.15)',
-    borderLeftWidth: 3, borderLeftColor: S.color.dangerBright,
     borderRadius: S.radius.sm, padding: S.space.sm, marginBottom: S.space.md,
   },
   errorText: { color: S.color.dangerBright, fontSize: 12, fontWeight: '700', textAlign: 'center' },

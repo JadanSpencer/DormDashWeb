@@ -156,7 +156,6 @@ const rail = StyleSheet.create({
     color: T.color.inkFaint,
     marginTop: 8, textAlign: 'center',
     letterSpacing: 0.3,
-    textTransform: 'uppercase',
   },
   labelDone: { color: T.color.inkSoft },
   labelActive: { color: T.color.cerulean, fontWeight: '800' },
@@ -279,8 +278,8 @@ const active = StyleSheet.create({
   liveWrap: { width: 8, height: 8, justifyContent: 'center', alignItems: 'center' },
   livePulse: { position: 'absolute', width: 8, height: 8, borderRadius: 4, backgroundColor: T.color.teal },
   liveDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: T.color.teal },
-  liveText: { fontSize: 10, fontWeight: '900', color: T.color.teal, letterSpacing: 1.2 },
-  id: { fontSize: 11, color: T.color.inkFaint, fontFamily: 'monospace', fontWeight: '700' },
+  liveText: { fontSize: 10, fontWeight: '900', color: T.color.teal, letterSpacing: 0.2 },
+  id: { fontSize: 11, color: T.color.inkFaint, fontVariant: ['tabular-nums'], fontWeight: '700' },
 
   store: { ...T.type.title, fontSize: 22, color: T.color.ink, marginBottom: T.space.sm },
 
@@ -320,14 +319,12 @@ const active = StyleSheet.create({
   dasherLabel: { ...T.type.label, color: T.color.inkFaint, fontSize: 9 },
   dasherName: { ...T.type.body, fontSize: 14, fontWeight: '800', color: T.color.ink },
   statusPill: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: T.radius.pill },
-  statusPillText: { fontSize: 10, fontWeight: '800', letterSpacing: 0.5, textTransform: 'uppercase' },
+  statusPillText: { fontSize: 10, fontWeight: '800', letterSpacing: 0.5 },
 
   descBox: {
     backgroundColor: T.color.ceruleanTint,
     borderRadius: T.radius.md,
     padding: T.space.sm,
-    borderLeftWidth: 3,
-    borderLeftColor: T.color.cerulean,
   },
   desc: { ...T.type.body, fontSize: 13, color: T.color.ink, fontWeight: '600', lineHeight: 18 },
 
@@ -403,9 +400,11 @@ const hist = StyleSheet.create({
   time: { fontSize: 11, color: T.color.inkFaint, fontWeight: '600' },
   metaDot: { width: 2, height: 2, borderRadius: 1, backgroundColor: T.color.lineStrong },
   statusChip: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: T.radius.pill },
-  statusText: { fontSize: 9, fontWeight: '800', letterSpacing: 0.4, textTransform: 'uppercase' },
+  statusText: { fontSize: 9, fontWeight: '800', letterSpacing: 0.4 },
   items: { ...T.type.body, fontSize: 12, color: T.color.inkFaint, marginTop: 2 },
 });
+
+const PAGE_SIZE = 10;
 
 // ─── MAIN ────────────────────────────────────────────────────────────
 export default function StudentOrders() {
@@ -413,9 +412,13 @@ export default function StudentOrders() {
   const insets = useSafeAreaInsets();
   const reduced = useReducedMotion();
 
-  const [activeOrder, setActiveOrder] = useState<Order | null>(null);
+  const [activeOrders, setActiveOrders] = useState<Order[]>([]);
   const [pastOrders, setPastOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
+  // Past orders are shown PAGE_SIZE at a time. Paging happens on the phone,
+  // over the list the listener already has, so no new Firestore index is
+  // needed and nothing about the live updates changes.
+  const [visiblePast, setVisiblePast] = useState(PAGE_SIZE);
 
   useEffect(() => {
     if (!user) return;
@@ -425,11 +428,9 @@ export default function StudentOrders() {
       where('status', 'in', ['pending', 'accepted', 'picking_up', 'on_the_way'])
     );
     return onSnapshot(q, snap => {
-      if (!snap.empty) {
-        setActiveOrder({ id: snap.docs[0].id, ...snap.docs[0].data() } as Order);
-      } else {
-        setActiveOrder(null);
-      }
+      // Up to MAX_ACTIVE_ORDERS at once; oldest first.
+      const docs = snap.docs.map(d => ({ id: d.id, ...d.data() } as Order));
+      setActiveOrders(docs.sort((a, b) => a.createdAt - b.createdAt));
     });
   }, [user]);
 
@@ -447,8 +448,7 @@ export default function StudentOrders() {
     });
   }, [user]);
 
-  const handleCancel = () => {
-    if (!activeOrder) return;
+  const handleCancel = (activeOrder: Order) => {
     Alert.alert(
       'Cancel Order',
       'Are you sure you want to cancel this order?',
@@ -482,13 +482,7 @@ export default function StudentOrders() {
 
   return (
     <View style={styles.root}>
-      <View style={styles.canvas} pointerEvents="none">
-        <View style={styles.blobTeal} />
-        <View style={styles.blobCerulean} />
-      </View>
-
       <View style={[styles.header, { paddingTop: insets.top + T.space.md }]}>
-        <Text style={styles.eyebrow}>Your activity</Text>
         <Text style={styles.title}>Orders</Text>
       </View>
 
@@ -498,7 +492,7 @@ export default function StudentOrders() {
         </View>
       ) : (
         <FlatList
-          data={pastOrders}
+          data={pastOrders.slice(0, visiblePast)}
           keyExtractor={item => item.id}
           contentContainerStyle={{ paddingBottom: 120 + insets.bottom }}
           showsVerticalScrollIndicator={false}
@@ -510,22 +504,24 @@ export default function StudentOrders() {
                   <Text style={styles.statValue}>{deliveredCount}</Text>
                   <Text style={styles.statLabel}>Delivered</Text>
                 </View>
-                <View style={styles.statCard}>
+                <View style={[styles.statCard, styles.statDivided]}>
                   <View style={styles.statHollow}>
                     <Text style={styles.statValueHollow} numberOfLines={1} adjustsFontSizeToFit>{formatJMDCompact(totalSpent)}</Text>
                   </View>
                   <Text style={styles.statLabel}>Total spent</Text>
                 </View>
                 <View style={styles.statCard}>
-                  <Text style={[styles.statValue, activeOrder && { color: T.color.teal }]}>
-                    {activeOrder ? 1 : 0}
+                  <Text style={[styles.statValue, activeOrders.length > 0 && { color: T.color.teal }]}>
+                    {activeOrders.length}
                   </Text>
                   <Text style={styles.statLabel}>Active</Text>
                 </View>
               </View>
 
-              {activeOrder ? (
-                <ActiveOrderCard order={activeOrder} onCancel={handleCancel} reduced={reduced} />
+              {activeOrders.length > 0 ? (
+                activeOrders.map(o => (
+                  <ActiveOrderCard key={o.id} order={o} onCancel={() => handleCancel(o)} reduced={reduced} />
+                ))
               ) : (
                 <View style={styles.noActiveCard}>
                   <View style={styles.noActiveTile}><View style={styles.noActiveInner} /></View>
@@ -539,8 +535,22 @@ export default function StudentOrders() {
               )}
             </>
           }
+          ListFooterComponent={
+            pastOrders.length > visiblePast ? (
+              <Pressable
+                onPress={() => setVisiblePast(n => n + PAGE_SIZE)}
+                style={({ pressed }) => [styles.moreBtn, pressed && { opacity: 0.7 }]}
+                accessibilityRole="button"
+              >
+                <Text style={styles.moreText}>
+                  Show {Math.min(PAGE_SIZE, pastOrders.length - visiblePast)} more
+                  {' '}({pastOrders.length - visiblePast} older)
+                </Text>
+              </Pressable>
+            ) : null
+          }
           ListEmptyComponent={
-            !activeOrder ? (
+            activeOrders.length === 0 ? (
               <View style={styles.empty}>
                 <Text style={styles.emptyTitle}>No orders yet</Text>
                 <Text style={styles.emptySub}>Your order history will appear here.</Text>
@@ -579,22 +589,25 @@ const styles = StyleSheet.create({
   loading: { flex: 1, justifyContent: 'center', alignItems: 'center' },
 
   // Stats
+  // One summary strip, not three boxes: the numbers belong together.
   stats: {
-    flexDirection: 'row', gap: T.space.sm,
-    paddingHorizontal: T.space.lg,
+    flexDirection: 'row',
+    marginHorizontal: T.space.lg,
     marginBottom: T.space.md,
+    backgroundColor: T.color.card,
+    borderRadius: T.radius.md,
+    borderWidth: 1, borderColor: T.color.line,
+    paddingVertical: T.space.sm,
   },
   statCard: {
     flex: 1,
-    backgroundColor: T.color.card,
-    borderRadius: T.radius.lg,
-    padding: T.space.md,
+    paddingHorizontal: T.space.sm,
     alignItems: 'center',
-    borderWidth: 1, borderColor: T.color.line,
-    gap: 6,
+    gap: 4,
   },
   statValue: { fontSize: 20, fontWeight: '900', color: T.color.cerulean, letterSpacing: -0.4 },
   statHollow: {},
+  statDivided: { borderLeftWidth: 1, borderRightWidth: 1, borderColor: T.color.line },
   statValueHollow: { fontSize: 15, fontWeight: '900', color: T.color.cerulean, letterSpacing: -0.3 },
   statLabel: { ...T.type.label, fontSize: 10, color: T.color.inkFaint },
 
@@ -619,6 +632,17 @@ const styles = StyleSheet.create({
   noActiveTitle: { ...T.type.title, fontSize: 18, color: T.color.ink },
   noActiveSub: { ...T.type.body, fontSize: 13, color: T.color.inkSoft, textAlign: 'center' },
 
+  moreBtn: {
+    alignSelf: 'center',
+    marginTop: T.space.md,
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: T.color.line,
+    backgroundColor: T.color.card,
+  },
+  moreText: { ...T.type.body, fontSize: 14, fontWeight: '700', color: T.color.ceruleanDeep },
   historyLabel: {
     ...T.type.label,
     color: T.color.teal,

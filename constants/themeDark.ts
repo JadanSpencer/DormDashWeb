@@ -14,7 +14,7 @@ export const D = {
     // Type (the flip: cream becomes the text)
     cream: '#FAF5EC',         // primary text
     creamSoft: '#B9C9C6',     // secondary text
-    creamFaint: '#7E9793',    // placeholders, captions
+    creamFaint: '#90A8A4',   // AA on cards (was #7E9793)    // placeholders, captions
 
     // Action — brightened for contrast on dark
     cerulean: '#33ADD1',
@@ -36,30 +36,30 @@ export const D = {
   },
 
   space: { xs: 6, sm: 10, md: 16, lg: 24, xl: 32, xxl: 48 },
-  radius: { sm: 10, md: 16, lg: 24, xl: 32, pill: 999 },
+  radius: { sm: 8, md: 12, lg: 14, xl: 18, pill: 999 },
 
   type: {
     display: { fontSize: 40, fontWeight: '900' as const, letterSpacing: -1.4 },
     title:   { fontSize: 26, fontWeight: '800' as const, letterSpacing: -0.6 },
     body:    { fontSize: 15, fontWeight: '500' as const, letterSpacing: 0 },
-    label:   { fontSize: 11, fontWeight: '700' as const, letterSpacing: 1.4, textTransform: 'uppercase' as const },
+    label:   { fontSize: 12, fontWeight: '700' as const, letterSpacing: 0.1, textTransform: 'none' as const },
     button:  { fontSize: 16, fontWeight: '700' as const, letterSpacing: 0.2 },
   },
 
   shadow: {
     card: {
       shadowColor: '#000000',
-      shadowOffset: { width: 0, height: 10 },
-      shadowOpacity: 0.35,
-      shadowRadius: 20,
-      elevation: 8,
+      shadowOffset: { width: 0, height: 1 },
+      shadowOpacity: 0.06,
+      shadowRadius: 2,
+      elevation: 1,
     },
     button: {
       shadowColor: '#33ADD1',
-      shadowOffset: { width: 0, height: 8 },
-      shadowOpacity: 0.35,
-      shadowRadius: 16,
-      elevation: 6,
+      shadowOffset: { width: 0, height: 1 },
+      shadowOpacity: 0.06,
+      shadowRadius: 2,
+      elevation: 1,
     },
   },
 };

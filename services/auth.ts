@@ -10,8 +10,10 @@ import {
     signOut,
     updateProfile,
   } from 'firebase/auth';
-  import { doc, setDoc, getDoc, serverTimestamp } from 'firebase/firestore';
+  import { doc, setDoc, getDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
   import { auth, db } from './firebase';
+  import { LEGAL } from '../constants/legal';
+  import { clearPushToken } from './notifications';
   import { User, UserRole } from '../types';
   
   // ─── INPUT SANITIZATION ────────────────────────────────────────────────────
@@ -155,6 +157,9 @@ export const resetPassword = async (
         university: university.trim(),
         createdAt: Date.now(),
         isActive: true,
+        // The sign-up screen won't submit without the 18+/terms tick box.
+        termsAcceptedAt: Date.now(),
+        termsVersion: LEGAL.termsUpdated,
       };
   
       // doc(db, 'users', uid) → the document at /users/{uid} in Firestore
@@ -251,6 +256,17 @@ export const resetPassword = async (
   };
   
   // ─── LOGOUT ────────────────────────────────────────────────────────────────
+  // Detach this device's push token first (needs the user still signed in to
+  // write their doc). Before, a normal sign-out left the token attached, so a
+  // signed-out device kept getting that account's order alerts.
   export const logoutUser = async (): Promise<void> => {
+    const uid = auth.currentUser?.uid;
+    if (uid) {
+      await clearPushToken(uid);
+      // Signing out takes a dasher offline, so orders aren't offered to
+      // someone who has left. (Fails harmlessly for students and admins.)
+      await updateDoc(doc(db, 'dashers', uid), { isOnline: false, currentLocation: null })
+        .catch(() => {});
+    }
     await signOut(auth);
   };

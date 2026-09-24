@@ -4,11 +4,12 @@
 
 import { initializeApp, getApps, getApp } from 'firebase/app';
 // @ts-ignore — getReactNativePersistence has a typing gap in the SDK; works at runtime
-import { initializeAuth, getReactNativePersistence, getAuth } from 'firebase/auth';
+import { initializeAuth, getReactNativePersistence, getAuth, type Auth } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 import { getFunctions } from 'firebase/functions';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Platform } from 'react-native';
 
 const firebaseConfig = {
   apiKey:            process.env.EXPO_PUBLIC_FIREBASE_API_KEY,
@@ -27,13 +28,19 @@ const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 
 // Persist auth sessions across app restarts. initializeAuth may only be called
 // once per app instance — on hot reload it throws, so fall back to getAuth.
-let auth;
-try {
-  auth = initializeAuth(app, {
-    persistence: getReactNativePersistence(AsyncStorage),
-  });
-} catch {
+// On web (PWA) the browser SDK is used: getAuth() persists the session in
+// IndexedDB, so students stay signed in after closing the installed app.
+let auth: Auth;
+if (Platform.OS === 'web') {
   auth = getAuth(app);
+} else {
+  try {
+    auth = initializeAuth(app, {
+      persistence: getReactNativePersistence(AsyncStorage),
+    });
+  } catch {
+    auth = getAuth(app);
+  }
 }
 
 const db = getFirestore(app);
@@ -42,4 +49,4 @@ const storage = getStorage(app);
 // Region must match where the functions are deployed (default us-central1).
 const functions = getFunctions(app);
 
-export { auth, db, storage, functions };
+export { app, auth, db, storage, functions };

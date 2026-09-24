@@ -179,7 +179,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
     letterSpacing: 0.8,
-    textTransform: 'uppercase',
     marginBottom: SPACING.xs,
   },
   input: {

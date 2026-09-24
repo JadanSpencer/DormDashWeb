@@ -1,0 +1,204 @@
+rules_version = '2';
+
+// DormDash Firestore security rules.
+//
+// The app talks to Firestore directly from phones, so these rules are the
+// ONLY thing stopping someone with the browser dev tools from reading other
+// people's data or rewriting orders. Cloud Functions use the Admin SDK and
+// are not affected by these rules.
+//
+// Tested in firestore-tests/rules.test.mjs, so run `npm run test:rules`
+// after any change. Deploy with: firebase deploy --only firestore:rules
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ── Helpers ─────────────────────────────────────────────────────────
+    function signedIn() { return request.auth != null; }
+    function me() { return get(/databases/$(database)/documents/users/$(request.auth.uid)).data; }
+    function active() { return signedIn() && me().isActive != false; }
+    function hasRole(r) { return active() && me().role == r; }
+    function isAdmin() { return hasRole('admin'); }
+    function isDasher() { return hasRole('dasher'); }
+    function isStudent() { return hasRole('student'); }
+
+    // Only these keys changed between the old and new document.
+    function onlyChanged(keys) {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(keys);
+    }
+    // Validate only fields being changed, so old documents with odd values
+    // don't block unrelated updates like saving a push token.
+    function changed(k) {
+      return k in request.resource.data.diff(resource.data).affectedKeys();
+    }
+    function str(v, max) { return v is string && v.size() <= max; }
+
+    // ── Users ───────────────────────────────────────────────────────────
+    // Everyone signs up as student or dasher. Admin is only ever set by hand
+    // in the Firebase console, so nobody can make themselves an admin.
+    match /users/{uid} {
+      allow read: if signedIn() && (request.auth.uid == uid || isAdmin());
+
+      allow create: if signedIn()
+        && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(
+             ['uid', 'email', 'name', 'role', 'phone', 'university', 'createdAt', 'isActive',
+              'termsAcceptedAt', 'termsVersion'])
+        && request.resource.data.termsAcceptedAt is number
+        && request.resource.data.uid == uid
+        && request.resource.data.role in ['student', 'dasher']
+        && request.resource.data.isActive == true
+        && str(request.resource.data.name, 100)
+        && str(request.resource.data.phone, 30)
+        && str(request.resource.data.university, 200);
+
+      // Self: profile fields and this device's push token. Never role,
+      // isActive or email.
+      allow update: if signedIn() && request.auth.uid == uid
+        && resource.data.isActive != false
+        && onlyChanged(['name', 'phone', 'university', 'major', 'graduationYear',
+                        'pushToken', 'pushTokenUpdatedAt'])
+        && (!changed('name') || str(request.resource.data.name, 100))
+        && (!changed('phone') || str(request.resource.data.phone, 30))
+        && (!changed('university') || str(request.resource.data.university, 200))
+        && (!changed('major') || str(request.resource.data.major, 200))
+        && (!changed('graduationYear') || str(request.resource.data.graduationYear, 10))
+        && (!changed('pushToken')
+            || request.resource.data.pushToken == null
+            || str(request.resource.data.pushToken, 400));
+
+      // Admin: switch accounts on and off. Deleting goes through the
+      // deleteMyAccount Cloud Function, never the client.
+      allow update: if isAdmin() && request.auth.uid != uid && onlyChanged(['isActive']);
+    }
+
+    // ── Dashers ─────────────────────────────────────────────────────────
+    // Readable by signed-in users so checkout can count who's online.
+    // Nothing sensitive is stored here: no live GPS position.
+    match /dashers/{uid} {
+      allow read: if signedIn();
+
+      allow create: if signedIn() && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(
+             ['uid', 'isOnline', 'rating', 'totalDeliveries', 'totalEarnings', 'vehicleType'])
+        && request.resource.data.uid == uid
+        && request.resource.data.isOnline == false
+        && request.resource.data.totalDeliveries == 0
+        && request.resource.data.totalEarnings == 0
+        && request.resource.data.rating == 5;
+
+      // Go online/offline and heartbeat. Earnings and ratings are
+      // server-only (onDeliveryCompleted).
+      allow update: if isDasher() && request.auth.uid == uid
+        && onlyChanged(['isOnline', 'lastSeenAt', 'currentLocation'])
+        && request.resource.data.isOnline is bool
+        // Older app versions stored a position here; it may only be cleared.
+        && (!changed('currentLocation') || request.resource.data.currentLocation == null);
+    }
+
+    // ── Orders ──────────────────────────────────────────────────────────
+    match /orders/{orderId} {
+      // Student: own orders. Dasher: open orders, and ones assigned to them.
+      allow read: if signedIn() && (
+        resource.data.studentId == request.auth.uid
+        || (isDasher() && (resource.data.status == 'pending'
+                           || resource.data.get('dasherId', null) == request.auth.uid))
+        || isAdmin()
+      );
+
+      // Students create pending orders for themselves. Prices are
+      // re-checked by the verifyNewOrder Cloud Function anyway.
+      allow create: if isStudent()
+        && request.resource.data.keys().hasOnly(
+             ['studentId', 'studentName', 'storeId', 'storeName', 'items', 'status',
+              'totalAmount', 'deliveryFee', 'deliveryAddress', 'createdAt', 'studentNote'])
+        && request.resource.data.studentId == request.auth.uid
+        && request.resource.data.status == 'pending'
+        && request.resource.data.items is list
+        && request.resource.data.items.size() > 0
+        && request.resource.data.items.size() <= 20
+        && request.resource.data.createdAt is number
+        && request.resource.data.deliveryAddress is map
+        && str(request.resource.data.deliveryAddress.label, 200)
+        && (!('studentNote' in request.resource.data) || str(request.resource.data.studentNote, 500));
+
+      // Student cancels while no dasher has taken it.
+      allow update: if signedIn()
+        && resource.data.studentId == request.auth.uid
+        && resource.data.status == 'pending'
+        && request.resource.data.status == 'cancelled'
+        && onlyChanged(['status', 'cancelledAt']);
+
+      // Dasher accepts an open, server-verified order for themselves.
+      allow update: if isDasher()
+        && resource.data.status == 'pending'
+        && resource.data.get('verifiedAt', null) != null
+        && resource.data.get('dasherId', null) == null
+        && resource.data.studentId != request.auth.uid
+        && request.resource.data.status == 'accepted'
+        && request.resource.data.dasherId == request.auth.uid
+        && str(request.resource.data.dasherName, 100)
+        && onlyChanged(['status', 'dasherId', 'dasherName', 'acceptedAt']);
+
+      // The assigned dasher moves the order forward one step at a time.
+      allow update: if isDasher()
+        && resource.data.get('dasherId', null) == request.auth.uid
+        && onlyChanged(['status', 'deliveredAt'])
+        && (
+          (resource.data.status == 'accepted'    && request.resource.data.status == 'picking_up')
+          || (resource.data.status == 'picking_up' && request.resource.data.status == 'on_the_way')
+          || (resource.data.status == 'on_the_way' && request.resource.data.status == 'delivered')
+        )
+        && (request.resource.data.status == 'delivered'
+            || !('deliveredAt' in request.resource.data.diff(resource.data).affectedKeys()));
+
+      // Admin can cancel any unfinished order (e.g. a dasher disappeared).
+      allow update: if isAdmin()
+        && resource.data.status in ['pending', 'accepted', 'picking_up', 'on_the_way']
+        && request.resource.data.status == 'cancelled'
+        && onlyChanged(['status', 'cancelledAt', 'cancelReason']);
+
+      allow delete: if false;
+    }
+
+    // ── Stores and menus ────────────────────────────────────────────────
+    // Admin-only writes, with the same validation as the rules that were
+    // live before (kept so the admin screens behave exactly as they did).
+    function isValidString(value, maxLength) {
+      return value is string && value.size() > 0 && value.size() <= maxLength;
+    }
+    function isValidPrice(value) {
+      return (value is float || value is int) && value >= 0 && value <= 10000;
+    }
+
+    match /stores/{storeId} {
+      allow read: if signedIn();
+
+      allow create: if isAdmin()
+        && isValidString(request.resource.data.name, 100)
+        && isValidString(request.resource.data.description, 500)
+        && isValidPrice(request.resource.data.deliveryFee)
+        && request.resource.data.rating >= 0
+        && request.resource.data.rating <= 5;
+
+      allow update: if isAdmin()
+        && isValidString(request.resource.data.name, 100)
+        && isValidPrice(request.resource.data.deliveryFee);
+
+      allow delete: if isAdmin();
+
+      match /menuItems/{itemId} {
+        allow read: if signedIn();
+        allow create, update: if isAdmin()
+          && isValidString(request.resource.data.name, 100)
+          && isValidPrice(request.resource.data.price);
+        allow delete: if isAdmin();
+      }
+    }
+
+    // Everything else is closed.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
