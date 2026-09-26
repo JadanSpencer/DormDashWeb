@@ -345,8 +345,10 @@ function runDasher(d, stopAt) {
       if (Date.now() > stopAt.value) { unsub(); resolve(); return; }
       if (!busy && pending.length) {
         busy = true;
-        // Pick one of the oldest few, so dashers collide like they do at rush hour.
-        const orderId = pending[Math.floor(Math.random() * Math.min(3, pending.length))];
+        // Pick one of the oldest few, so dashers collide like they do at rush
+        // hour. (8, not 3: with 25 dashers all aiming at the same 3 orders,
+        // nearly every tap lost, which no real campus looks like.)
+        const orderId = pending[Math.floor(Math.random() * Math.min(8, pending.length))];
         const ref = doc(d.db, 'orders', orderId);
         const t = Date.now();
         let outcome;
@@ -361,9 +363,16 @@ function runDasher(d, stopAt) {
             return 'ok';
           });
         } catch (e) {
-          outcome = 'error';
-          // A rejected write here usually means the order changed under us.
-          if (!/permission|precondition|aborted/i.test(e.message)) errors.push(`dasher ${d.i} accept: ${e.message}`);
+          // Another dasher got there first. The rules only let a dasher read
+          // pending orders (or their own), so reading a just-taken order is
+          // "permission denied", and two dashers writing at once is
+          // "aborted"/"failed-precondition". Both are a lost race, exactly
+          // what the app shows as "Order no longer available". Not errors.
+          if (/permission|precondition|aborted|contention/i.test(`${e.code} ${e.message}`)) outcome = 'taken';
+          else {
+            outcome = 'error';
+            errors.push(`dasher ${d.i} accept: ${e.message}`);
+          }
         }
         lat.acceptTx.push(Date.now() - t);
         if (outcome === 'ok') {

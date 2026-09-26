@@ -199,7 +199,11 @@ export async function settleCancelledOrder(orderRef: admin.firestore.DocumentRef
 // and a callable only gets its "anyone signed in may call it" permission on
 // a successful first deploy. Saying it here makes every deploy re-apply it.
 // (Callers still need to be signed-in students; that's checked below.)
-export const payOrderWithTokens = onCall({ invoker: 'public' }, async (request) => {
+// SPEED: kept warm (minInstances 1) and able to take 40 payments at once per
+// copy, so "Pay with tokens" never waits on a cold start.
+export const payOrderWithTokens = onCall({
+  invoker: 'public', cpu: 1, memory: '512MiB', concurrency: 40, minInstances: 1, maxInstances: 20,
+}, async (request) => {
   const uid = request.auth?.uid;
   if (!uid) throw new HttpsError('unauthenticated', 'Sign in first.');
   const me = (await db.collection('users').doc(uid).get()).data();
@@ -258,7 +262,9 @@ export const payOrderWithTokens = onCall({ invoker: 'public' }, async (request) 
 // ─── WiPay: start a payment ────────────────────────────────────────────────
 // purpose 'order': pay for an accepted card order (student only, own order).
 // purpose 'tokens': buy one of the TOKEN_PACKS.
-export const createPayment = onCall({ secrets: [WIPAY_API_KEY] }, async (request) => {
+export const createPayment = onCall({
+  secrets: [WIPAY_API_KEY], cpu: 1, memory: '512MiB', concurrency: 40, maxInstances: 20,
+}, async (request) => {
   const uid = request.auth?.uid;
   if (!uid) throw new HttpsError('unauthenticated', 'Sign in first.');
   const me = (await db.collection('users').doc(uid).get()).data();

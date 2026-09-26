@@ -115,7 +115,7 @@ function RouteGuard({ introDone }: { introDone: boolean }) {
         }}
       />
       {/* Wait for the intro to finish so the install card never covers it. */}
-      {introDone && <InstallPrompt uid={user?.uid ?? null} />}
+      {introDone && <InstallPrompt uid={user?.uid ?? null} role={user?.role} />}
     </>
   );
 }

@@ -22,9 +22,9 @@
 import { onDocumentWritten, onDocumentCreated } from 'firebase-functions/v2/firestore';
 import { logger } from 'firebase-functions/v2';
 import * as admin from 'firebase-admin';
-// FieldValue/FieldPath come from the modular import: the namespace versions
+// FieldValue comes from the modular import: the namespace versions
 // (admin.firestore.FieldValue) are undefined inside the local emulator.
-import { FieldValue, FieldPath } from 'firebase-admin/firestore';
+import { FieldValue } from 'firebase-admin/firestore';
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { onSchedule } from 'firebase-functions/v2/scheduler';
 import {
@@ -80,91 +80,124 @@ function jmd(value: unknown): string {
 // don't need to know which kind they have.
 const WEB_TOKEN_PREFIX = 'web:';
 
-async function sendWebPush(
-  storedToken: string,
-  title: string,
-  body: string,
-  data?: Record<string, string>
-): Promise<void> {
-  const token = storedToken.slice(WEB_TOKEN_PREFIX.length);
-  try {
-    // Data-only message: public/sw.js builds the notification itself, so it
-    // can show the in-app banner instead when DormDash is open.
-    await admin.messaging().send({
-      token,
-      data: { ...(data ?? {}), title, body },
-      webpush: {
-        headers: { Urgency: 'high', TTL: '3600' },
-      },
-    });
-    logger.info('Web push sent', { token: token.slice(0, 16) });
-  } catch (err: any) {
-    const code: string = err?.code ?? '';
-    logger.error('Web push failed', { code, message: err?.message });
-    // Browser unsubscribed or token expired — detach it so we stop trying.
-    if (code === 'messaging/registration-token-not-registered' ||
-        code === 'messaging/invalid-registration-token') {
-      const stale = await db.collection('users').where('pushToken', '==', storedToken).get();
-      // pushTokenDead tells the app "this exact token is dead, make a new
-      // one" — otherwise the browser keeps re-saving its cached dead copy.
-      await Promise.all(stale.docs.map(d => d.ref.update({
-        pushToken: null,
-        pushTokenDead: storedToken,
-        pushTokenUpdatedAt: Date.now(),
+// SPEED: pushes go out in batches. Before, every phone was its own request
+// (1,000 online dashers = 1,000 requests for one new order). Now web pushes
+// go 500 per request and native (Expo) pushes 100 per request, so a new
+// order reaches every dasher in one or two round trips.
+type Push = {
+  token: string;
+  title: string;
+  body: string;
+  data?: Record<string, string>;
+  ttlSeconds?: number; // how long FCM keeps trying if the phone is offline
+};
+
+// Browser unsubscribed or token expired: detach it so we stop trying.
+async function removeDeadWebToken(storedToken: string): Promise<void> {
+  const stale = await db.collection('users').where('pushToken', '==', storedToken).get();
+  // pushTokenDead tells the app "this exact token is dead, make a new
+  // one" — otherwise the browser keeps re-saving its cached dead copy.
+  await Promise.all(stale.docs.map(d => d.ref.update({
+    pushToken: null,
+    pushTokenDead: storedToken,
+    pushTokenUpdatedAt: Date.now(),
+  })));
+  // Say whose alerts just stopped, so the logs are readable. The app puts
+  // a fresh token back next time that person opens DormDash.
+  stale.docs.forEach(d => logger.warn('Dead web push token removed', {
+    uid: d.id,
+    role: d.data()?.role ?? 'unknown',
+    token: storedToken.slice(WEB_TOKEN_PREFIX.length, WEB_TOKEN_PREFIX.length + 16),
+  }));
+}
+
+async function sendWebPushes(pushes: Push[]): Promise<number> {
+  let failed = 0;
+  for (let i = 0; i < pushes.length; i += 500) {
+    const chunk = pushes.slice(i, i + 500);
+    try {
+      // Data-only message: public/sw.js builds the notification itself, so
+      // it can show the in-app banner instead when DormDash is open.
+      const res = await admin.messaging().sendEach(chunk.map(p => ({
+        token: p.token.slice(WEB_TOKEN_PREFIX.length),
+        data: { ...(p.data ?? {}), title: p.title, body: p.body },
+        webpush: { headers: { Urgency: 'high', TTL: String(p.ttlSeconds ?? 3600) } },
       })));
-      // Say whose alerts just stopped, so the logs are readable. The app puts
-      // a fresh token back next time that person opens DormDash.
-      stale.docs.forEach(d => logger.warn('Dead web push token removed', {
-        uid: d.id,
-        role: d.data()?.role ?? 'unknown',
-        token: token.slice(0, 16),
-      }));
+      const dead: string[] = [];
+      res.responses.forEach((r, k) => {
+        if (r.success) return;
+        failed++;
+        const code = r.error?.code ?? '';
+        logger.error('Web push failed', { code, message: r.error?.message });
+        if (code === 'messaging/registration-token-not-registered' ||
+            code === 'messaging/invalid-registration-token') dead.push(chunk[k].token);
+      });
+      await Promise.all(dead.map(removeDeadWebToken));
+    } catch (err: any) {
+      failed += chunk.length;
+      logger.error('Web push batch failed', { code: err?.code, message: err?.message });
     }
   }
+  return failed;
+}
+
+async function sendExpoPushes(pushes: Push[]): Promise<number> {
+  let failed = 0;
+  for (let i = 0; i < pushes.length; i += 100) {
+    const chunk = pushes.slice(i, i + 100);
+    try {
+      const response = await fetch('https://exp.host/--/api/v2/push/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        body: JSON.stringify(chunk.map(p => ({
+          to: p.token, sound: 'default', title: p.title, body: p.body,
+          data: p.data ?? {}, channelId: 'default', priority: 'high',
+          ttl: p.ttlSeconds ?? 3600,
+        }))),
+      });
+      const result: any = await response.json();
+      if (result.errors) {
+        failed += chunk.length;
+        logger.error('Expo push API error', { errors: result.errors });
+        continue;
+      }
+      (Array.isArray(result.data) ? result.data : []).forEach((r: any, k: number) => {
+        if (r?.status !== 'error') return;
+        failed++;
+        logger.error('Push notification failed', {
+          token: chunk[k].token.slice(0, 24), error: r.message, errorType: r.details?.error,
+        });
+      });
+    } catch (err: any) {
+      failed += chunk.length;
+      logger.error('Expo push batch failed', { message: err?.message });
+    }
+  }
+  return failed;
+}
+
+/** Sends every push at once (web and native in parallel) and logs how long it took. */
+async function sendPushes(pushes: Push[], label: string): Promise<void> {
+  const list = pushes.filter(p => !!p.token);
+  if (!list.length) return;
+  const started = Date.now();
+  const web = list.filter(p => p.token.startsWith(WEB_TOKEN_PREFIX));
+  const expo = list.filter(p => !p.token.startsWith(WEB_TOKEN_PREFIX));
+  const [webFailed, expoFailed] = await Promise.all([sendWebPushes(web), sendExpoPushes(expo)]);
+  logger.info('Push sent', {
+    label, sent: list.length - webFailed - expoFailed,
+    failed: webFailed + expoFailed, sendMs: Date.now() - started,
+  });
 }
 
 async function sendPushNotification(
   token: string,
   title: string,
   body: string,
-  data?: Record<string, string>
+  data?: Record<string, string>,
+  label = 'push'
 ): Promise<void> {
-  if (token.startsWith(WEB_TOKEN_PREFIX)) {
-    await sendWebPush(token, title, body, data);
-    return;
-  }
-
-  const message = {
-    to: token,
-    sound: 'default',
-    title,
-    body,
-    data: data ?? {},
-    channelId: 'default',
-  };
-
-  const response = await fetch('https://exp.host/--/api/v2/push/send', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Accept': 'application/json',
-    },
-    body: JSON.stringify(message),
-  });
-
-  const result = await response.json();
-
-  if (result.data?.status === 'error') {
-    logger.error('Push notification failed', {
-      token,
-      error: result.data.message,
-      errorType: result.data.details?.error,
-    });
-  } else if (result.errors) {
-    logger.error('Expo push API error', { errors: result.errors });
-  } else {
-    logger.info('Push sent successfully', { token: token.slice(0, 20) });
-  }
+  await sendPushes([{ token, title, body, data }], label);
 }
 
 // ─── Token lookup for one user ─────────────────────────────────────────────
@@ -178,50 +211,61 @@ async function getUserToken(uid: string): Promise<string | null> {
 }
 
 // ─── Which dashers should actually hear about a new order ──────────────────
+// SPEED: this used to read every active order on campus, then look up
+// dashers 30 at a time, one after another. With 1,000 dashers that was 34
+// round trips in a row plus a read that grew with every order. Now:
+//   1. one query for online dashers (only the activeOrderId field), and
+//   2. one parallel batch read of their user docs (only 3 small fields).
+// "Busy" comes from dashers/{uid}.activeOrderId, which this file keeps up to
+// date when an order is accepted and when it finishes (see setDasherBusy).
 async function getEligibleDasherTokens(excludeUid?: string): Promise<string[]> {
-  // 1. Dashers currently switched online
-  const dasherSnap = await db.collection('dashers').where('isOnline', '==', true).get();
-
-  const candidateUids: string[] = [];
-  dasherSnap.forEach(doc => {
-    const d = doc.data();
-    // No "last seen" cutoff: a dasher stays online until they switch off or
-    // sign out, and gets new orders as push notifications with the app closed.
-    if (excludeUid && doc.id === excludeUid) return; // don't ping the customer
-    candidateUids.push(doc.id);
-  });
-
-  if (candidateUids.length === 0) return [];
-
-  // 2. Drop anyone already mid-delivery — they cannot accept another order
-  const busy = new Set<string>();
-  const activeSnap = await db.collection('orders')
-    .where('status', 'in', ['accepted', 'picking_up', 'on_the_way'])
+  // No "last seen" cutoff: a dasher stays online until they switch off or
+  // sign out, and gets new orders as push notifications with the app closed.
+  const dasherSnap = await db.collection('dashers')
+    .where('isOnline', '==', true)
+    .select('activeOrderId')
     .get();
-  activeSnap.forEach(doc => {
-    const dasherId = doc.data().dasherId;
-    if (dasherId) busy.add(dasherId);
-  });
 
-  const freeUids = candidateUids.filter(uid => !busy.has(uid));
-  if (freeUids.length === 0) return [];
+  const freeRefs = dasherSnap.docs
+    .filter(d => d.id !== excludeUid)          // don't ping the customer
+    .filter(d => !d.get('activeOrderId'))      // mid-delivery: can't accept
+    .map(d => db.collection('users').doc(d.id));
+  if (freeRefs.length === 0) return [];
 
-  // 3. Resolve tokens (chunked — Firestore 'in' queries cap at 30)
+  const chunks: admin.firestore.DocumentReference[][] = [];
+  for (let i = 0; i < freeRefs.length; i += 300) chunks.push(freeRefs.slice(i, i + 300));
+  const results = await Promise.all(chunks.map(c =>
+    db.getAll(...c, { fieldMask: ['pushToken', 'isActive', 'role'] })));
+
   const tokens: string[] = [];
-  for (let i = 0; i < freeUids.length; i += 30) {
-    const chunk = freeUids.slice(i, i + 30);
-    const usersSnap = await db.collection('users')
-      .where(FieldPath.documentId(), 'in', chunk)
-      .get();
-    usersSnap.forEach(doc => {
-      const u = doc.data();
-      if (u.isActive === false) return;
-      if (u.role !== 'dasher') return;          // belt and braces
-      if (u.pushToken) tokens.push(u.pushToken);
-    });
-  }
-
+  results.flat().forEach(doc => {
+    const u = doc.data();
+    if (!u || u.isActive === false) return;
+    if (u.role !== 'dasher') return;          // belt and braces
+    if (u.pushToken) tokens.push(u.pushToken);
+  });
   return [...new Set(tokens)]; // never alert the same device twice
+}
+
+// Marks a dasher busy (orderId) or free (null). Free only clears the order
+// it was told about, so a late "cancelled" can't free a dasher who has
+// since taken another order. A missing dasher doc is ignored.
+async function setDasherBusy(dasherId: string, orderId: string, busy: boolean): Promise<void> {
+  const ref = db.collection('dashers').doc(dasherId);
+  try {
+    if (busy) {
+      await ref.update({ activeOrderId: orderId });
+      return;
+    }
+    await db.runTransaction(async tx => {
+      const snap = await tx.get(ref);
+      if (snap.exists && snap.get('activeOrderId') === orderId) {
+        tx.update(ref, { activeOrderId: null });
+      }
+    });
+  } catch (e: any) {
+    if (e?.code !== 5) logger.warn('Could not update dasher busy flag', { dasherId, orderId, message: e?.message });
+  }
 }
 
 // ─── NEW ORDER VERIFICATION ────────────────────────────────────────────────
@@ -243,6 +287,36 @@ const MAX_ACTIVE_ORDERS = 3;
 const DUPLICATE_WINDOW_MS = 2 * 60 * 1000;
 const ORDER_WINDOW_MS = 10 * 60 * 1000;
 
+// The only orders verifyNewOrder needs to look at: the student's orders that
+// are still in progress, plus ones the server verified in the last
+// ORDER_WINDOW_MS. SPEED: this used to read the student's whole order history,
+// which gets slower every week they use DormDash. Two small queries run in
+// parallel instead. The second needs the index in firestore.indexes.json; if
+// that index is still building, fall back to the old full read so nothing
+// breaks while it finishes.
+const ORDER_FIELDS = ['createdAt', 'verifiedAt', 'status', 'cancelReason', 'storeId', 'items'];
+async function getRecentOrdersForStudent(studentId: string): Promise<admin.firestore.QueryDocumentSnapshot[]> {
+  const orders = db.collection('orders');
+  try {
+    const [activeSnap, recentSnap] = await Promise.all([
+      orders.where('studentId', '==', studentId)
+        .where('status', 'in', ['pending', 'accepted', 'picking_up', 'on_the_way'])
+        .select(...ORDER_FIELDS).get(),
+      orders.where('studentId', '==', studentId)
+        .where('verifiedAt', '>', Date.now() - ORDER_WINDOW_MS)
+        .select(...ORDER_FIELDS).get(),
+    ]);
+    const byId = new Map<string, admin.firestore.QueryDocumentSnapshot>();
+    [...activeSnap.docs, ...recentSnap.docs].forEach(d => byId.set(d.id, d));
+    return [...byId.values()];
+  } catch (e: any) {
+    if (e?.code !== 9) throw e; // 9 = index missing or still building
+    logger.warn('Order index not ready, using full history read', { studentId });
+    const all = await orders.where('studentId', '==', studentId).select(...ORDER_FIELDS).get();
+    return all.docs;
+  }
+}
+
 async function verifyNewOrder(
   ref: admin.firestore.DocumentReference,
   order: admin.firestore.DocumentData
@@ -262,11 +336,7 @@ async function verifyNewOrder(
   const store = storeSnap.data()!;
   if (store.isOpen === false) return cancel('store_closed');
 
-  // Filtered in memory so no composite Firestore index is needed.
-  const mine = await db.collection('orders')
-    .where('studentId', '==', order.studentId)
-    .select('createdAt', 'verifiedAt', 'status', 'cancelReason', 'storeId', 'items')
-    .get();
+  const mine = { docs: await getRecentOrdersForStudent(String(order.studentId ?? '')) };
 
   // Up to MAX_ACTIVE_ORDERS in progress per student, plus duplicate
   // protection (a burst of taps once created 9 identical orders in half a
@@ -326,17 +396,26 @@ async function verifyNewOrder(
   const items: any[] = Array.isArray(order.items) ? order.items : [];
   if (items.length === 0) return cancel('empty_order');
 
-  let count = 0;
-  let subtotal = 0;
-  const cleanItems = [];
   for (const line of items) {
     const qty = Number(line?.quantity);
     const itemId = String(line?.menuItem?.id ?? '');
     if (!Number.isInteger(qty) || qty < 1 || qty > MAX_ITEMS_PER_ORDER || !itemId) {
       return cancel('invalid_item');
     }
-    const itemSnap = await storeSnap.ref.collection('menuItems').doc(itemId).get();
-    if (!itemSnap.exists || itemSnap.data()?.isAvailable === false) return cancel('item_unavailable');
+  }
+  // SPEED: every menu item in one batch read instead of one read per line.
+  const itemIds = [...new Set(items.map(l => String(l.menuItem.id)))];
+  const itemSnaps = await db.getAll(...itemIds.map(id => storeSnap.ref.collection('menuItems').doc(id)));
+  const itemById = new Map(itemSnaps.map(snap => [snap.id, snap]));
+
+  let count = 0;
+  let subtotal = 0;
+  const cleanItems = [];
+  for (const line of items) {
+    const qty = Number(line.quantity);
+    const itemId = String(line.menuItem.id);
+    const itemSnap = itemById.get(itemId);
+    if (!itemSnap || !itemSnap.exists || itemSnap.data()?.isAvailable === false) return cancel('item_unavailable');
     const real = itemSnap.data()!;
     const price = Number(real.price) || 0;
     count += qty;
@@ -385,8 +464,23 @@ async function verifyNewOrder(
 }
 
 // ─── TRIGGER: ORDER WRITTEN ────────────────────────────────────────────────
+// SPEED: this is the hottest function in DormDash (it runs on every order
+// change), so it gets its own settings:
+//   • cpu 1 + concurrency 40: one warm copy handles 40 orders at the same
+//     time instead of starting a new copy (a "cold start", 2–5 s) for each.
+//   • minInstances 1: one copy is always awake, so the first order of the
+//     morning is as fast as the rest. Costs roughly US$10–20 a month.
+//   • maxInstances 20: a ceiling so a runaway loop can't run up a big bill.
+// Every step below that doesn't depend on the one before runs in parallel.
 export const onOrderStatusChanged = onDocumentWritten(
-  'orders/{orderId}',
+  {
+    document: 'orders/{orderId}',
+    cpu: 1,
+    memory: '512MiB',
+    concurrency: 40,
+    minInstances: 1,
+    maxInstances: 20,
+  },
   async (event) => {
     const before = event.data?.before?.data();
     let after = event.data?.after?.data();
@@ -399,22 +493,36 @@ export const onOrderStatusChanged = onDocumentWritten(
 
     const studentId: string = after.studentId;
     const dasherId: string | undefined = after.dasherId;
+    const ref = event.data!.after!.ref;
+
+    // How long Firebase took to hand us this change. If this number climbs,
+    // the function is falling behind (see "Trigger lag" in the logs).
+    const lagMs = event.time ? Date.now() - Date.parse(event.time) : undefined;
+    if (statusChanged) {
+      logger.info('Trigger lag', { orderId, status: after.status, lagMs });
+    }
 
     // ── NEW ORDER: only eligible dashers ──────────────────────────────────
     if (isNewOrder) {
-      const checked = await verifyNewOrder(event.data!.after!.ref, after);
+      const started = Date.now();
+      // Start finding dashers while the order is being checked: both only
+      // read, so neither slows the other down.
+      const tokensPromise = getEligibleDasherTokens(studentId);
+      tokensPromise.catch(() => {}); // avoid an unhandled rejection if we bail early
+      const checked = await verifyNewOrder(ref, after);
       if (!checked) return; // cancelled; the cancel write re-triggers and notifies the student
       after = checked;
-      const tokens = await getEligibleDasherTokens(studentId);
-      await Promise.all(tokens.map(token =>
-        sendPushNotification(
-          token,
-          `${MARK.newOrder} New order available`,
-          `${after.storeName} — ${jmd(after.deliveryFee)} to deliver`,
-          { screen: '/(dasher)/dash', orderId }
-        )
-      ));
-      logger.info(`New order ${orderId}: notified ${tokens.length} eligible dashers`);
+      const tokens = await tokensPromise;
+      await sendPushes(tokens.map(token => ({
+        token,
+        title: `${MARK.newOrder} New order available`,
+        body: `${after!.storeName} — ${jmd(after!.deliveryFee)} to deliver`,
+        data: { screen: '/(dasher)/dash', orderId },
+        ttlSeconds: 600, // an order alert older than 10 minutes is useless
+      })), 'new_order');
+      logger.info(`New order ${orderId}: notified ${tokens.length} eligible dashers`, {
+        orderId, dashers: tokens.length, handleMs: Date.now() - started, lagMs,
+      });
       return;
     }
 
@@ -427,7 +535,8 @@ export const onOrderStatusChanged = onDocumentWritten(
         token,
         `${MARK.assigned} Payment received`,
         `The customer paid for the ${after.storeName} order. Go ahead and pick it up.`,
-        { screen: '/(dasher)/dash', orderId }
+        { screen: '/(dasher)/dash', orderId },
+        'payment_received'
       );
       return;
     }
@@ -436,36 +545,45 @@ export const onOrderStatusChanged = onDocumentWritten(
 
     // ── STATUS UPDATES: the customer only ─────────────────────────────────
     if (after.status === 'accepted') {
-      const ref = event.data!.after!.ref;
-      const token = await getUserToken(studentId);
+      // The dasher is now busy: stop sending them new-order alerts.
+      const busy = dasherId ? setDasherBusy(dasherId, orderId, true) : Promise.resolve();
+      const tokenPromise = getUserToken(studentId);
 
       if (after.paymentMethod === 'tokens') {
-        await chargeTokensOnAccept(ref);
+        const [token] = await Promise.all([tokenPromise, chargeTokensOnAccept(ref), busy]);
         if (token) await sendPushNotification(
           token,
           `${MARK.assigned} Dasher assigned`,
           `${after.dasherName} accepted your order and is heading to ${after.storeName}. Paid with tokens.`,
-          { screen: `/(student)/order/${orderId}`, orderId }
+          { screen: `/(student)/order/${orderId}`, orderId },
+          'accepted'
         );
         return;
       }
 
       if (after.paymentMethod === 'card' && after.paymentStatus === 'unpaid') {
-        await ref.update({ paymentStatus: 'awaiting_payment', payDeadline: Date.now() + PAY_WINDOW_MS });
+        const [token] = await Promise.all([
+          tokenPromise,
+          ref.update({ paymentStatus: 'awaiting_payment', payDeadline: Date.now() + PAY_WINDOW_MS }),
+          busy,
+        ]);
         if (token) await sendPushNotification(
           token,
           `${MARK.assigned} Pay now to confirm`,
           `${after.dasherName} accepted your order. Pay ${jmd(after.totalAmount)} with your tokens or card within 10 minutes, or it will be cancelled.`,
-          { screen: `/(student)/order/${orderId}`, orderId }
+          { screen: `/(student)/order/${orderId}`, orderId },
+          'accepted_pay_now'
         );
         return;
       }
 
+      const [token] = await Promise.all([tokenPromise, busy]);
       if (token) await sendPushNotification(
         token,
         `${MARK.assigned} Dasher assigned`,
         `${after.dasherName} accepted your order and is heading to ${after.storeName}.`,
-        { screen: `/(student)/order/${orderId}`, orderId }
+        { screen: `/(student)/order/${orderId}`, orderId },
+        'accepted'
       );
       return;
     }
@@ -476,7 +594,8 @@ export const onOrderStatusChanged = onDocumentWritten(
         token,
         `${MARK.pickingUp} Picking up your order`,
         `${after.dasherName} is at ${after.storeName} collecting your items.`,
-        { screen: `/(student)/order/${orderId}`, orderId }
+        { screen: `/(student)/order/${orderId}`, orderId },
+        'picking_up'
       );
       return;
     }
@@ -487,18 +606,24 @@ export const onOrderStatusChanged = onDocumentWritten(
         token,
         `${MARK.onTheWay} On the way`,
         `${after.dasherName} is heading to you now.`,
-        { screen: `/(student)/order/${orderId}`, orderId }
+        { screen: `/(student)/order/${orderId}`, orderId },
+        'on_the_way'
       );
       return;
     }
 
     if (after.status === 'delivered') {
-      const token = await getUserToken(studentId);
+      // The dasher is free again: new-order alerts resume.
+      const [token] = await Promise.all([
+        getUserToken(studentId),
+        dasherId ? setDasherBusy(dasherId, orderId, false) : Promise.resolve(),
+      ]);
       if (token) await sendPushNotification(
         token,
         `${MARK.delivered} Delivered`,
         `Your order from ${after.storeName} has arrived. Enjoy.`,
-        { screen: `/(student)/order/${orderId}`, orderId }
+        { screen: `/(student)/order/${orderId}`, orderId },
+        'delivered'
       );
       return;
     }
@@ -510,7 +635,12 @@ export const onOrderStatusChanged = onDocumentWritten(
       // Give back anything the student put in (reserved tokens are released;
       // a paid order is refunded as tokens). Runs for every cancellation.
       const wasPaid = after.paymentStatus === 'paid';
-      await settleCancelledOrder(event.data!.after!.ref);
+      const [studentToken, dasherToken] = await Promise.all([
+        after.cancelReason === 'duplicate_order' ? Promise.resolve(null) : getUserToken(studentId),
+        dasherId ? getUserToken(dasherId) : Promise.resolve(null),
+        settleCancelledOrder(ref),
+        dasherId ? setDasherBusy(dasherId, orderId, false) : Promise.resolve(),
+      ]);
       if (after.cancelReason === 'duplicate_order') return;
 
       const reasonText: Record<string, string> = {
@@ -525,27 +655,26 @@ export const onOrderStatusChanged = onDocumentWritten(
         payment_timeout: `Your order from ${after.storeName} wasn't paid within 10 minutes, so it was cancelled. You were not charged.`,
       };
       const refundNote = wasPaid ? ' Your payment was returned to you as DormDash tokens.' : '';
-      const studentToken = await getUserToken(studentId);
-      if (studentToken) await sendPushNotification(
-        studentToken,
-        `${MARK.cancelled} Order cancelled`,
-        (reasonText[after.cancelReason] ?? `Your order from ${after.storeName} was cancelled.`) + refundNote,
-        { screen: `/(student)/order/${orderId}`, orderId }
-      );
 
-      if (dasherId) {
-        const dasherToken = await getUserToken(dasherId);
-        if (dasherToken) await sendPushNotification(
-          dasherToken,
-          `${MARK.cancelled} Order cancelled`,
-          after.cancelReason === 'payment_timeout'
-            ? `The customer didn't pay for the ${after.storeName} order in time, so it was cancelled. Don't buy it.`
-            : after.cancelReason === 'admin'
-              ? `The ${after.storeName} order was cancelled by DormDash support.`
-              : `The ${after.storeName} order was cancelled by the customer.`,
-          { screen: '/(dasher)/dash' }
-        );
-      }
+      // Both alerts go out in the same round trip.
+      const pushes: Push[] = [];
+      if (studentToken) pushes.push({
+        token: studentToken,
+        title: `${MARK.cancelled} Order cancelled`,
+        body: (reasonText[after.cancelReason] ?? `Your order from ${after.storeName} was cancelled.`) + refundNote,
+        data: { screen: `/(student)/order/${orderId}`, orderId },
+      });
+      if (dasherId && dasherToken) pushes.push({
+        token: dasherToken,
+        title: `${MARK.cancelled} Order cancelled`,
+        body: after.cancelReason === 'payment_timeout'
+          ? `The customer didn't pay for the ${after.storeName} order in time, so it was cancelled. Don't buy it.`
+          : after.cancelReason === 'admin'
+            ? `The ${after.storeName} order was cancelled by DormDash support.`
+            : `The ${after.storeName} order was cancelled by the customer.`,
+        data: { screen: '/(dasher)/dash' },
+      });
+      await sendPushes(pushes, 'cancelled');
       return;
     }
   }
@@ -747,14 +876,13 @@ export const cancelStalePendingOrders = onSchedule('every 5 minutes', async () =
   const cutoff = Date.now() - PENDING_TIMEOUT_MS;
   const snap = await db.collection('orders').where('status', '==', 'pending').get();
   const stale = snap.docs.filter(d => Number(d.get('verifiedAt') ?? d.get('createdAt')) < cutoff);
-  for (const d of stale) {
-    // Transaction: skip it if a dasher accepted it in the meantime.
-    await db.runTransaction(async tx => {
-      const fresh = await tx.get(d.ref);
-      if (fresh.get('status') !== 'pending') return;
-      tx.update(d.ref, { status: 'cancelled', cancelReason: 'no_dasher', cancelledAt: Date.now() });
-    });
-  }
+  // All at once rather than one after another (each is its own transaction:
+  // skipped if a dasher accepted it in the meantime).
+  await Promise.all(stale.map(d => db.runTransaction(async tx => {
+    const fresh = await tx.get(d.ref);
+    if (fresh.get('status') !== 'pending') return;
+    tx.update(d.ref, { status: 'cancelled', cancelReason: 'no_dasher', cancelledAt: Date.now() });
+  }).catch(e => logger.warn('Auto-cancel failed', { orderId: d.id, message: e?.message }))));
   if (stale.length) logger.info(`Auto-cancelled ${stale.length} order(s) nobody accepted in 30 min`);
 
   // Card orders a dasher accepted but the student never paid for.
@@ -763,13 +891,11 @@ export const cancelStalePendingOrders = onSchedule('every 5 minutes', async () =
   const unpaid = accepted.docs.filter(d =>
     d.get('paymentMethod') === 'card' && d.get('paymentStatus') === 'awaiting_payment' &&
     Number(d.get('payDeadline')) > 0 && Number(d.get('payDeadline')) < now);
-  for (const d of unpaid) {
-    await db.runTransaction(async tx => {
-      const fresh = await tx.get(d.ref);
-      if (fresh.get('status') !== 'accepted' || fresh.get('paymentStatus') !== 'awaiting_payment') return;
-      tx.update(d.ref, { status: 'cancelled', cancelReason: 'payment_timeout', cancelledAt: Date.now() });
-    });
-  }
+  await Promise.all(unpaid.map(d => db.runTransaction(async tx => {
+    const fresh = await tx.get(d.ref);
+    if (fresh.get('status') !== 'accepted' || fresh.get('paymentStatus') !== 'awaiting_payment') return;
+    tx.update(d.ref, { status: 'cancelled', cancelReason: 'payment_timeout', cancelledAt: Date.now() });
+  }).catch(e => logger.warn('Payment-timeout cancel failed', { orderId: d.id, message: e?.message }))));
   if (unpaid.length) logger.info(`Cancelled ${unpaid.length} accepted order(s) not paid in time`);
 });
 

@@ -1,7 +1,6 @@
 // components/InstallPrompt.web.tsx
-// The PWA's one-time setup card, shown to signed-in users only (so it never
-// covers the sign-in button), a few seconds after they land. Same card, three
-// stages:
+// The PWA's setup card, shown to signed-in users only (so it never covers the
+// sign-in button), a few seconds after they land. Same card, four stages:
 //
 //   1. "Install DormDash?"  Yes, show me / Not now
 //      • Yes + the browser can install directly (Chrome, Edge, Samsung
@@ -9,13 +8,24 @@
 //      • Yes + no direct install (iPhone, iPad, Safari on Mac, Firefox…):
 //        the card switches to the steps for THIS device, with
 //        "Other devices" to show every option.
-//   2. "Turn on order alerts" (browser tab or installed app, any device where
-//      web push works). Browsers only allow the permission prompt from a
-//      tap, which is why this is a button. Calls enableWebPush().
-//      iPhone/iPad only allow alerts once DormDash is on the Home Screen, so
-//      there the install steps say so.
+//   2. "Turn on order alerts" while the browser hasn't been asked yet.
+//      Browsers only allow the permission prompt from a tap, which is why
+//      this is a button. Calls enableWebPush().
+//   3. "Alerts are blocked" when the person said no to alerts before: steps
+//      to switch them back on for this device. Dashers see this every visit
+//      (no alerts = missed orders); students once a day.
 //
-// Each stage is hidden for 14 days after "Not now".
+// WHEN IT SHOWS: every visit, for as long as DormDash isn't installed (or
+// alerts aren't on). "Not now" only hides it for SNOOZE_MS, so ignoring it
+// once doesn't hide it for good. It never shows inside the installed app's
+// install stage, and stops for good once we know it's installed:
+//   • opened from the home screen (display-mode: standalone), or
+//   • the browser says it's installed (appinstalled event, or
+//     getInstalledRelatedApps on Android Chrome), or
+//   • the person tapped "I already installed it" (iPhone Safari can't tell
+//     us, because the Home Screen app and Safari keep separate storage).
+// If the browser later offers to install again (beforeinstallprompt), that
+// means it was uninstalled, so the card comes back.
 import React, { useEffect, useState } from 'react';
 import { View, Text, Pressable, StyleSheet, Image, ScrollView } from 'react-native';
 import { T } from '../constants/theme';
@@ -23,10 +33,22 @@ import { enableWebPush, webPushPermission } from '../services/notifications';
 
 const INSTALL_KEY = 'dd_install_dismissed_at';
 const ALERTS_KEY = 'dd_alerts_dismissed_at';
-const SNOOZE_MS = 14 * 24 * 60 * 60 * 1000;
+const INSTALLED_KEY = 'dd_installed';
+const SNOOZE_MS = 4 * 60 * 60 * 1000;            // "Not now" = not for 4 hours
+const STUDENT_BLOCKED_SNOOZE_MS = 24 * 60 * 60 * 1000;
 const SHOW_AFTER_MS = 6000; // let the user land first
 
-type Mode = 'hidden' | 'ask' | 'steps' | 'alerts';
+type Mode = 'hidden' | 'ask' | 'steps' | 'alerts' | 'blocked';
+
+function store(key: string, value: string | null) {
+  try {
+    if (value === null) localStorage.removeItem(key);
+    else localStorage.setItem(key, value);
+  } catch {}
+}
+function read(key: string): string | null {
+  try { return localStorage.getItem(key); } catch { return null; }
+}
 
 let deferredPrompt: any = null;
 const promptListeners = new Set<() => void>();
@@ -34,10 +56,13 @@ if (typeof window !== 'undefined') {
   window.addEventListener('beforeinstallprompt', (e) => {
     e.preventDefault();
     deferredPrompt = e;
+    // The browser only offers this when DormDash is NOT installed.
+    store(INSTALLED_KEY, null);
     promptListeners.forEach(fn => fn());
   });
   window.addEventListener('appinstalled', () => {
     deferredPrompt = null;
+    store(INSTALLED_KEY, '1');
     promptListeners.forEach(fn => fn());
   });
 }
@@ -45,6 +70,8 @@ if (typeof window !== 'undefined') {
 function isStandalone() {
   return (
     window.matchMedia?.('(display-mode: standalone)').matches ||
+    window.matchMedia?.('(display-mode: fullscreen)').matches ||
+    window.matchMedia?.('(display-mode: minimal-ui)').matches ||
     (navigator as any).standalone === true
   );
 }
@@ -55,27 +82,52 @@ function isIOS() {
     (ua.includes('Macintosh') && navigator.maxTouchPoints > 1);
 }
 
+async function isInstalled(): Promise<boolean> {
+  if (isStandalone()) {
+    store(INSTALLED_KEY, '1');
+    return true;
+  }
+  if (deferredPrompt) return false; // the browser is offering to install it
+  try {
+    const nav: any = navigator;
+    if (typeof nav.getInstalledRelatedApps === 'function') {
+      const apps = await nav.getInstalledRelatedApps();
+      if (Array.isArray(apps) && apps.length > 0) return true;
+    }
+  } catch {}
+  return read(INSTALLED_KEY) === '1';
+}
+
 // Install steps for every platform. `detect` picks the one for this device.
-type Guide = { key: string; label: string; steps: string };
+type Guide = { key: string; label: string; steps: string; unblock: string };
 const GUIDES: Guide[] = [
   { key: 'ios-safari', label: 'iPhone / iPad (Safari)',
-    steps: 'Tap the Share button (square with an arrow), then "Add to Home Screen", then Add. Open DormDash from your Home Screen to get order alerts.' },
+    steps: 'Tap the Share button (square with an arrow), then "Add to Home Screen", then Add. Open DormDash from your Home Screen to get order alerts.',
+    unblock: 'Open the Settings app, tap Notifications, find DormDash and turn on Allow Notifications.' },
   { key: 'ios-other', label: 'iPhone / iPad (Chrome, Edge)',
-    steps: 'Tap the Share button in the address bar, then "Add to Home Screen". If you don\'t see it, open this page in Safari instead.' },
+    steps: 'Tap the Share button in the address bar, then "Add to Home Screen". If you don\'t see it, open this page in Safari instead.',
+    unblock: 'Open the Settings app, tap Notifications, find DormDash and turn on Allow Notifications.' },
   { key: 'android-chrome', label: 'Android (Chrome)',
-    steps: 'Tap the ⋮ menu at the top right, then "Install app" or "Add to Home screen".' },
+    steps: 'Tap the ⋮ menu at the top right, then "Install app" or "Add to Home screen".',
+    unblock: 'Tap the icon to the left of the address bar, then Permissions (or Site settings), then Notifications, then Allow. In the installed app: press and hold the DormDash icon, tap App info, then Notifications, and turn them on.' },
   { key: 'android-samsung', label: 'Samsung Internet',
-    steps: 'Tap the ≡ menu at the bottom, then "Add page to", then "Home screen".' },
+    steps: 'Tap the ≡ menu at the bottom, then "Add page to", then "Home screen".',
+    unblock: 'Tap the ≡ menu, then Settings, then Sites and downloads, then Notifications, and allow DormDash.' },
   { key: 'android-firefox', label: 'Android (Firefox)',
-    steps: 'Tap the ⋮ menu, then "Install".' },
+    steps: 'Tap the ⋮ menu, then "Install".',
+    unblock: 'Tap the lock icon in the address bar, then turn Notifications on.' },
   { key: 'mac-safari', label: 'Mac (Safari)',
-    steps: 'In the menu bar, choose File, then "Add to Dock".' },
+    steps: 'In the menu bar, choose File, then "Add to Dock".',
+    unblock: 'In the menu bar choose Safari, then Settings, then Websites, then Notifications, and set DormDash to Allow.' },
   { key: 'desktop-chrome', label: 'Mac / Windows (Chrome)',
-    steps: 'Click the install icon at the right end of the address bar, or ⋮ menu → "Cast, save and share" → "Install page as app".' },
+    steps: 'Click the install icon at the right end of the address bar, or ⋮ menu → "Cast, save and share" → "Install page as app".',
+    unblock: 'Click the icon to the left of the address bar, then Site settings, and set Notifications to Allow. Then reload this page.' },
   { key: 'desktop-edge', label: 'Mac / Windows (Edge)',
-    steps: 'Click the … menu, then Apps, then "Install this site as an app".' },
+    steps: 'Click the … menu, then Apps, then "Install this site as an app".',
+    unblock: 'Click the lock icon to the left of the address bar, then Permissions for this site, and set Notifications to Allow. Then reload this page.' },
   { key: 'desktop-firefox', label: 'Mac / Windows (Firefox)',
-    steps: 'Firefox on computers can\'t install web apps. Keep this tab pinned, or open DormDash in Chrome, Edge or Safari to install it.' },
+    steps: 'Firefox on computers can\'t install web apps. Keep this tab pinned, or open DormDash in Chrome, Edge or Safari to install it.',
+    unblock: 'Click the lock icon in the address bar, then clear the "Blocked" setting next to Notifications. Then reload this page.' },
 ];
 
 function detectGuide(): Guide {
@@ -94,29 +146,35 @@ function detectGuide(): Guide {
   return pick('desktop-chrome');
 }
 
-function snoozed(key: string) {
-  try {
-    return Date.now() - Number(localStorage.getItem(key) || 0) < SNOOZE_MS;
-  } catch {
-    return false;
-  }
+function snoozed(key: string, ms = SNOOZE_MS) {
+  return Date.now() - Number(read(key) || 0) < ms;
 }
 
 function snooze(key: string) {
-  try { localStorage.setItem(key, String(Date.now())); } catch {}
+  store(key, String(Date.now()));
 }
 
-export function InstallPrompt({ uid }: { uid?: string | null }) {
+export function InstallPrompt({ uid, role }: { uid?: string | null; role?: string }) {
   const [mode, setMode] = useState<Mode>('hidden');
   const [busy, setBusy] = useState(false);
   const [showAll, setShowAll] = useState(false);
   const [alertsResult, setAlertsResult] = useState<'on' | 'blocked' | null>(null);
 
+  const blockedSnooze = role === 'student' ? STUDENT_BLOCKED_SNOOZE_MS : SNOOZE_MS;
+
+  // Which alerts card (if any) this device needs right now.
+  const alertsMode = async (): Promise<Mode> => {
+    const perm = await webPushPermission();
+    if (perm === 'default' && !snoozed(ALERTS_KEY)) return 'alerts';
+    if (perm === 'denied' && !snoozed(ALERTS_KEY, blockedSnooze)) return 'blocked';
+    return 'hidden';
+  };
+
   const nextAfterInstall = async () => {
     // Offer alerts right away if this browser can do them (not in an iPhone
     // Safari tab: there they only work from the Home Screen app).
-    if (!snoozed(ALERTS_KEY) && (await webPushPermission()) === 'default') setMode('alerts');
-    else setMode('hidden');
+    setAlertsResult(null);
+    setMode(await alertsMode());
   };
 
   useEffect(() => {
@@ -124,29 +182,49 @@ export function InstallPrompt({ uid }: { uid?: string | null }) {
     let cancelled = false;
 
     const decide = async () => {
-      if (!isStandalone() && !snoozed(INSTALL_KEY)) {
+      if (!(await isInstalled()) && !snoozed(INSTALL_KEY)) {
         return !cancelled && setMode(m => (m === 'steps' ? m : 'ask'));
       }
-      if (!snoozed(ALERTS_KEY) && (await webPushPermission()) === 'default') {
-        return !cancelled && setMode('alerts');
-      }
-      if (!cancelled) setMode('hidden');
+      const next = await alertsMode();
+      if (cancelled) return;
+      setAlertsResult(null);
+      // Keep the install steps open if they're reading them.
+      setMode(m => (next === 'hidden' && m === 'steps' ? m : next));
     };
 
     const timer = setTimeout(decide, SHOW_AFTER_MS);
-    const onPromptChange = () => { if (isStandalone()) decide(); };
+    // Installed or uninstalled while the page is open: think again.
+    const onPromptChange = () => { decide(); };
     promptListeners.add(onPromptChange);
+    // Coming back to DormDash after a while counts as a new visit.
+    let hiddenAt = 0;
+    const onVisibility = () => {
+      if (document.visibilityState === 'hidden') { hiddenAt = Date.now(); return; }
+      if (hiddenAt && Date.now() - hiddenAt > 60 * 1000) decide();
+    };
+    document.addEventListener('visibilitychange', onVisibility);
 
     return () => {
       cancelled = true;
       clearTimeout(timer);
       promptListeners.delete(onPromptChange);
+      document.removeEventListener('visibilitychange', onVisibility);
     };
-  }, [uid]);
+  }, [uid, role]);
 
-  const dismiss = () => {
-    snooze(mode === 'alerts' ? ALERTS_KEY : INSTALL_KEY);
+  const dismiss = async () => {
+    if (mode === 'ask') {
+      snooze(INSTALL_KEY);
+      // Alerts matter even if they don't want to install (dashers above all).
+      return nextAfterInstall();
+    }
+    snooze(ALERTS_KEY);
     setMode('hidden');
+  };
+
+  const alreadyInstalled = () => {
+    store(INSTALLED_KEY, '1');
+    nextAfterInstall();
   };
 
   const yesInstall = async () => {
@@ -156,8 +234,11 @@ export function InstallPrompt({ uid }: { uid?: string | null }) {
       deferredPrompt = null;
       evt.prompt();
       const choice = await evt.userChoice.catch(() => null);
-      snooze(INSTALL_KEY);
-      if (choice?.outcome === 'accepted') { setMode('hidden'); return; }
+      if (choice?.outcome === 'accepted') {
+        store(INSTALLED_KEY, '1');
+      } else {
+        snooze(INSTALL_KEY); // said no in the browser's own dialog: ask again next visit
+      }
       nextAfterInstall();
       return;
     }
@@ -166,6 +247,8 @@ export function InstallPrompt({ uid }: { uid?: string | null }) {
   };
 
   const doneSteps = () => {
+    // We can't be sure they finished the steps, so this is a snooze, not
+    // "installed": if they didn't, the card comes back next visit.
     snooze(INSTALL_KEY);
     nextAfterInstall();
   };
@@ -176,13 +259,14 @@ export function InstallPrompt({ uid }: { uid?: string | null }) {
     const ok = await enableWebPush(uid);
     setBusy(false);
     setAlertsResult(ok ? 'on' : 'blocked');
-    snooze(ALERTS_KEY);
+    if (!ok) snooze(ALERTS_KEY);
     setTimeout(() => setMode('hidden'), 2600);
   };
 
   if (!uid || mode === 'hidden') return null;
 
   const guide = typeof window !== 'undefined' ? detectGuide() : GUIDES[0];
+  const canInstallDirectly = !!deferredPrompt;
 
   let title = 'Install DormDash?';
   let text = 'It opens full screen like a normal app, right from your home screen, and order alerts work best. No app store needed.';
@@ -192,9 +276,18 @@ export function InstallPrompt({ uid }: { uid?: string | null }) {
   }
   if (mode === 'alerts') {
     title = 'Turn on order alerts';
-    text = 'Get a notification when a dasher accepts your order, picks it up and arrives.';
+    text = role === 'dasher'
+      ? 'Get a notification the moment a new order comes in, even with DormDash closed.'
+      : 'Get a notification when a dasher accepts your order, picks it up and arrives.';
     if (alertsResult === 'on') text = 'Order alerts are on.';
     if (alertsResult === 'blocked') text = 'Alerts are blocked. You can allow them later in your browser\'s site settings.';
+  }
+  if (mode === 'blocked') {
+    title = 'Order alerts are blocked';
+    text = (role === 'dasher'
+      ? 'You won\'t hear about new orders until you allow notifications. '
+      : 'You won\'t be told when your order is on the way until you allow notifications. ')
+      + guide.unblock;
   }
 
   return (
@@ -237,16 +330,26 @@ export function InstallPrompt({ uid }: { uid?: string | null }) {
                   <Text style={styles.primaryText}>{busy ? 'Turning on…' : 'Turn on alerts'}</Text>
                 </Pressable>
               )}
+              {mode === 'blocked' && (
+                <Pressable onPress={dismiss} style={({ pressed }) => [styles.primary, pressed && { opacity: 0.85 }]}>
+                  <Text style={styles.primaryText}>Got it</Text>
+                </Pressable>
+              )}
               {mode === 'steps' ? (
                 <Pressable onPress={() => setShowAll(v => !v)} style={styles.secondary}>
                   <Text style={styles.secondaryText}>{showAll ? 'Hide other devices' : 'Other devices'}</Text>
                 </Pressable>
-              ) : (
+              ) : mode !== 'blocked' && (
                 <Pressable onPress={dismiss} style={styles.secondary}>
                   <Text style={styles.secondaryText}>Not now</Text>
                 </Pressable>
               )}
             </View>
+          )}
+          {(mode === 'ask' || mode === 'steps') && !canInstallDirectly && (
+            <Pressable onPress={alreadyInstalled} style={styles.link}>
+              <Text style={styles.linkText}>I already installed it</Text>
+            </Pressable>
           )}
         </View>
       </View>
@@ -280,4 +383,6 @@ const styles = StyleSheet.create({
   allList: { maxHeight: 220, marginTop: T.space.sm },
   allItem: { marginTop: T.space.xs },
   allLabel: { fontSize: 13, fontWeight: '800', color: T.color.ink, marginTop: 4 },
+  link: { alignSelf: 'flex-start', paddingVertical: 4, marginTop: 2 },
+  linkText: { color: T.color.inkSoft, fontSize: 12, textDecorationLine: 'underline' },
 });
