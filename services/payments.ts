@@ -80,3 +80,16 @@ export async function adminAdjustFloat(kind: 'store' | 'dasher', id: string, amo
     throw new Error(errorText(e, 'Could not change the float.'));
   }
 }
+
+/**
+ * Admin: the store's ntfy topic for order alerts.
+ * action 'get' (made on first use), 'new' (replace it), 'test' (send a test alert).
+ */
+export async function adminStoreAlerts(storeId: string, action: 'get' | 'new' | 'test') {
+  try {
+    const res: any = await httpsCallable(functions, 'storeAlertsAdmin')({ storeId, action });
+    return res.data as { topic: string; server: string; link: string };
+  } catch (e: any) {
+    throw new Error(errorText(e, 'Could not load store alerts. Try again.'));
+  }
+}

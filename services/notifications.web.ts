@@ -14,6 +14,8 @@
 //   • Needs EXPO_PUBLIC_FIREBASE_VAPID_KEY in .env (Firebase Console →
 //     Project settings → Cloud Messaging → Web Push certificates).
 //     Without it, everything here quietly does nothing.
+//   • Signed out = no alerts. Sign-out (or losing the session any other way)
+//     turns off this browser's push subscription; see dropSubscription().
 //   • Browsers — Safari especially — only allow the permission prompt from a
 //     tap, so registerForPushNotifications() never prompts. The prompt comes
 //     from the "Turn on order alerts" card (components/InstallPrompt.web.tsx),
@@ -190,13 +192,42 @@ export async function enableWebPush(uid: string): Promise<boolean> {
   }
 }
 
+// NO ALERTS WHEN SIGNED OUT. Turning off this browser's push subscription
+// means push services have nowhere to deliver to, so nothing can arrive here
+// even if the server still has an old token on file (for example, sign-out
+// happened offline). The next sign-in makes a brand-new subscription and
+// token automatically (saveToken → getToken), the same repair used for dead
+// tokens above.
+async function dropSubscription(): Promise<void> {
+  try {
+    if (!hasNotificationApi()) return;
+    const registration = await navigator.serviceWorker.getRegistration('/');
+    const sub = await registration?.pushManager.getSubscription();
+    await sub?.unsubscribe();
+  } catch {
+    // Nothing to turn off.
+  }
+}
+
+// Also covers sign-outs that don't go through logoutUser: an expired
+// session, an account disabled by support, or a sign-out that ran out of
+// time. Whenever nobody is signed in, this browser stops receiving alerts.
+if (typeof window !== 'undefined' && hasNotificationApi()) {
+  onAuthStateChanged(auth, (user) => {
+    if (user) return;
+    stopWatching?.();
+    myToken = null;
+    dropSubscription();
+  });
+}
+
 /**
- * Call BEFORE signing out (services/auth.ts → logoutUser does this). Detaches
- * this browser from the account, but only if the account still points at
- * this browser. If the person has since signed in on their phone, the phone
- * keeps its alerts.
+ * Call BEFORE signing out (services/auth.ts → logoutUser does this). Turns
+ * off alerts on this browser, then detaches it from the account, but only
+ * if the account still points at this browser. If the person has since
+ * signed in on their phone, the phone keeps its alerts.
  *
- * It no longer calls deleteToken(). Deleting killed the token on Firebase's
+ * It doesn't call deleteToken(). Deleting killed the token on Firebase's
  * side while a sign-in on the same device could still pick up the cached
  * copy, which left the next account holding a dead token.
  */
@@ -205,8 +236,14 @@ export async function clearPushToken(uid: string): Promise<void> {
   try {
     let mine = myToken;
     if (!mine && (await webPushAvailable()) && Notification.permission === 'granted') {
-      mine = await currentToken();
+      const registration = await navigator.serviceWorker.getRegistration('/');
+      // Only look up the token if a subscription exists; getToken() would
+      // otherwise make a new one just to throw it away.
+      if (await registration?.pushManager.getSubscription()) mine = await currentToken();
     }
+    myToken = null;
+    // Local and instant, so it happens even if the database write below is slow.
+    await dropSubscription();
     if (!mine) return;
     const ref = doc(db, 'users', uid);
     const snap = await getDoc(ref);

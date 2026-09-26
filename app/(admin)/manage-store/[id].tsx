@@ -21,6 +21,7 @@ import {
 import { db } from '../../../services/firebase';
 import { MenuItem, Store } from '../../../types';
 import { formatJMD } from '../../../constants';
+import { adminStoreAlerts } from '../../../services/payments';
 import { S } from '../../../constants/themeMid';
 
 const blankItem = () => ({
@@ -182,6 +183,99 @@ const Field: React.FC<{
   </View>
 );
 
+// ─── STORE ORDER ALERTS (ntfy) ──────────────────────────────────────
+// The store gets confirmed orders on its own phone through the free ntfy
+// app. The topic is secret (anyone with it can read the alerts), so it's
+// fetched from a Cloud Function, never stored where the app can read it.
+const StoreAlertsCard: React.FC<{ storeId: string }> = ({ storeId }) => {
+  const [topic, setTopic] = useState('');
+  const [server, setServer] = useState('');
+  const [busy, setBusy] = useState<'' | 'get' | 'new' | 'test'>('get');
+  const [note, setNote] = useState('');
+  const [open, setOpen] = useState(false);
+
+  const run = async (action: 'get' | 'new' | 'test') => {
+    setBusy(action);
+    setNote('');
+    try {
+      const r = await adminStoreAlerts(storeId, action);
+      setTopic(r.topic);
+      setServer(r.server);
+      if (action === 'test') setNote('Test sent. It should ring on the store\'s phone within a few seconds.');
+      if (action === 'new') setNote('New topic made. The store must subscribe to it again.');
+    } catch (e: any) {
+      setNote(e.message);
+    } finally {
+      setBusy('');
+    }
+  };
+
+  useEffect(() => { if (storeId) run('get'); }, [storeId]);
+
+  const confirmNew = () => {
+    const go = () => run('new');
+    const text = 'The store\'s phone will stop getting orders until it subscribes to the new topic. Only do this if the old topic was shared with the wrong person.';
+    if (typeof window !== 'undefined' && typeof window.confirm === 'function') {
+      if (window.confirm(text)) go();
+    } else {
+      Alert.alert('Make a new topic?', text, [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Make new topic', style: 'destructive', onPress: go },
+      ]);
+    }
+  };
+
+  const customServer = server && server !== 'https://ntfy.sh';
+
+  return (
+    <View style={a.card}>
+      <Pressable style={a.headRow} onPress={() => setOpen(o => !o)}>
+        <View style={{ flex: 1 }}>
+          <Text style={a.title}>Store order alerts</Text>
+          <Text style={a.sub}>Paid orders ring on the store's phone (ntfy app)</Text>
+        </View>
+        <Text style={a.chev}>{open ? '▴' : '▾'}</Text>
+      </Pressable>
+
+      {open && (
+        <View style={{ marginTop: S.space.md, gap: S.space.sm }}>
+          <Text style={a.label}>Topic</Text>
+          {busy === 'get' && !topic
+            ? <ActivityIndicator color={S.color.cerulean} />
+            : <Text style={a.topic} selectable>{topic || '—'}</Text>}
+
+          <Text style={a.steps}>
+            {'On the store\'s phone:\n'}
+            {'1. Install "ntfy" from the App Store or Google Play (free).\n'}
+            {'2. Tap +, type the topic above exactly, tap Subscribe.\n'}
+            {customServer ? `3. Turn on "Use another server" and enter ${server}\n` : ''}
+            {`${customServer ? '4' : '3'}. Allow notifications, then tap "Send test" here.`}
+          </Text>
+          <Text style={a.warn}>Keep the topic private. Anyone who has it can see this store's orders.</Text>
+
+          <View style={a.btnRow}>
+            <Pressable
+              style={({ pressed }) => [a.btn, (!!busy || !topic) && { opacity: 0.6 }, pressed && { opacity: 0.8 }]}
+              onPress={() => run('test')}
+              disabled={!!busy || !topic}
+            >
+              {busy === 'test' ? <ActivityIndicator color={S.color.card} /> : <Text style={a.btnText}>Send test</Text>}
+            </Pressable>
+            <Pressable
+              style={({ pressed }) => [a.btnGhost, !!busy && { opacity: 0.6 }, pressed && { opacity: 0.8 }]}
+              onPress={confirmNew}
+              disabled={!!busy}
+            >
+              <Text style={a.btnGhostText}>{busy === 'new' ? 'Working…' : 'New topic'}</Text>
+            </Pressable>
+          </View>
+          {note ? <Text style={a.note}>{note}</Text> : null}
+        </View>
+      )}
+    </View>
+  );
+};
+
 // ─── MAIN SCREEN ────────────────────────────────────────────────────
 export default function StoreMenuItems() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -256,6 +350,8 @@ export default function StoreMenuItems() {
           <Text style={styles.addBtnText}>＋ Add</Text>
         </Pressable>
       </View>
+
+      {id ? <StoreAlertsCard storeId={id} /> : null}
 
       {loading ? (
         <View style={styles.loading}><ActivityIndicator color={S.color.ceruleanBright} size="large" /></View>
@@ -435,4 +531,37 @@ const m = StyleSheet.create({
     height: 52, justifyContent: 'center', alignItems: 'center',
   },
   saveBtnText: { color: S.color.card, fontSize: 14, fontWeight: '800', letterSpacing: 0.3 },
+});
+
+const a = StyleSheet.create({
+  card: {
+    backgroundColor: S.color.card, borderRadius: S.radius.lg,
+    padding: S.space.md, marginHorizontal: S.space.lg, marginBottom: S.space.sm,
+    ...S.shadow.card,
+  },
+  headRow: { flexDirection: 'row', alignItems: 'center', gap: S.space.sm },
+  title: { fontSize: 15, fontWeight: '800', color: S.color.ink, letterSpacing: -0.2 },
+  sub: { fontSize: 11, fontWeight: '600', color: S.color.inkSoft, marginTop: 2 },
+  chev: { fontSize: 16, fontWeight: '800', color: S.color.inkSoft },
+  label: { ...S.type.label, color: S.color.inkSoft },
+  topic: {
+    fontSize: 15, fontWeight: '800', color: S.color.cerulean,
+    backgroundColor: S.color.ceruleanTint, borderRadius: S.radius.sm,
+    paddingHorizontal: S.space.sm, paddingVertical: 8, overflow: 'hidden',
+  },
+  steps: { fontSize: 12, fontWeight: '600', color: S.color.ink, lineHeight: 18 },
+  warn: { fontSize: 11, fontWeight: '700', color: S.color.danger },
+  btnRow: { flexDirection: 'row', gap: S.space.sm, marginTop: 4 },
+  btn: {
+    flex: 1, backgroundColor: S.color.cerulean, borderRadius: S.radius.pill,
+    height: 40, justifyContent: 'center', alignItems: 'center',
+  },
+  btnText: { color: S.color.card, fontSize: 13, fontWeight: '800' },
+  btnGhost: {
+    flex: 1, backgroundColor: S.color.cardMuted, borderRadius: S.radius.pill,
+    height: 40, justifyContent: 'center', alignItems: 'center',
+    borderWidth: 1, borderColor: S.color.lineOnCard,
+  },
+  btnGhostText: { color: S.color.ink, fontSize: 13, fontWeight: '800' },
+  note: { fontSize: 11, fontWeight: '700', color: S.color.inkSoft },
 });

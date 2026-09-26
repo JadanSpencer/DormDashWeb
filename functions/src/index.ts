@@ -31,6 +31,8 @@ import {
   reserveTokensAndVerify, chargeTokensOnAccept, settleCancelledOrder, PAY_WINDOW_MS,
 } from './payments';
 export { createPayment, wipayReturn, adminAdjustTokens, adminAdjustFloat, payOrderWithTokens } from './payments';
+import { alertStore } from './storeAlerts';
+export { storeAlertsAdmin } from './storeAlerts';
  
 const CHUNK = 400; // Firestore batches cap at 500 writes
 
@@ -530,6 +532,8 @@ export const onOrderStatusChanged = onDocumentWritten(
     //    dasher to go ahead ─────────────────────────────────────────────────
     if (!statusChanged && before?.paymentStatus === 'awaiting_payment' && after.paymentStatus === 'paid' &&
         dasherId) {
+      // The order is now confirmed: the store starts making it.
+      const storeAlert = alertStore(after, orderId, 'confirmed');
       const token = await getUserToken(dasherId);
       if (token) await sendPushNotification(
         token,
@@ -538,6 +542,7 @@ export const onOrderStatusChanged = onDocumentWritten(
         { screen: '/(dasher)/dash', orderId },
         'payment_received'
       );
+      await storeAlert;
       return;
     }
 
@@ -550,7 +555,9 @@ export const onOrderStatusChanged = onDocumentWritten(
       const tokenPromise = getUserToken(studentId);
 
       if (after.paymentMethod === 'tokens') {
-        const [token] = await Promise.all([tokenPromise, chargeTokensOnAccept(ref), busy]);
+        const [token, charged] = await Promise.all([tokenPromise, chargeTokensOnAccept(ref), busy]);
+        // Paid with tokens the moment the dasher accepted: tell the store.
+        const storeAlert = charged ? alertStore(after, orderId, 'confirmed') : Promise.resolve();
         if (token) await sendPushNotification(
           token,
           `${MARK.assigned} Dasher assigned`,
@@ -558,6 +565,7 @@ export const onOrderStatusChanged = onDocumentWritten(
           { screen: `/(student)/order/${orderId}`, orderId },
           'accepted'
         );
+        await storeAlert;
         return;
       }
 
@@ -635,7 +643,12 @@ export const onOrderStatusChanged = onDocumentWritten(
       // Give back anything the student put in (reserved tokens are released;
       // a paid order is refunded as tokens). Runs for every cancellation.
       const wasPaid = after.paymentStatus === 'paid';
-      const [studentToken, dasherToken] = await Promise.all([
+      // The store only heard about orders that were paid and had a dasher,
+      // so only those get a "don't make it" alert.
+      const storeWasTold = before?.paymentStatus === 'paid' &&
+        ['accepted', 'picking_up', 'on_the_way'].includes(before?.status);
+      const [, studentToken, dasherToken] = await Promise.all([
+        storeWasTold ? alertStore(after, orderId, 'cancelled') : Promise.resolve(),
         after.cancelReason === 'duplicate_order' ? Promise.resolve(null) : getUserToken(studentId),
         dasherId ? getUserToken(dasherId) : Promise.resolve(null),
         settleCancelledOrder(ref),

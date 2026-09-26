@@ -62,6 +62,7 @@ const sections: Section[] = [
         ['WiPay', 'Card payments. When you pay by card, you enter your card details on WiPay\'s page and WiPay receives your name, email, the amount and your card details. WiPay\'s own privacy policy applies to that.'],
         ['Google Maps (Google LLC)', 'Shows delivery maps. When a map is displayed, Google receives the coordinates being shown and may set its own cookies. Google\'s privacy policy applies to that content.'],
         ['Expo (650 Industries, Inc.)', 'Delivers push notifications to the DormDash app for iPhone and Android. Receives your device token and the text of the notification.'],
+        ['ntfy (ntfy.sh)', 'Sends order alerts to the stores we work with. When a dasher accepts your paid order, the store receives the order code, the items and the dasher\'s first name. Your name, room and phone number are never sent.'],
         ['Apple, Google and browser push services', 'Deliver notifications to your device, as with any app or website that sends notifications.'],
       ] },
       { p: 'We do not use Google Analytics, advertising networks, data brokers or social media trackers.' },
