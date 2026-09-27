@@ -1,7 +1,7 @@
 # CI: runs on every push and pull request (including Dependabot's).
 # Fails if the app or Cloud Functions don't type-check, the web build
-# breaks, the payment (money) tests fail, or the Firestore security rules
-# tests fail. The dependency audit is reported but doesn't fail the build,
+# breaks, the payment (money) tests fail, the Firestore security rules
+# tests fail, or the Cloud Functions tests in the emulators fail. The dependency audit is reported but doesn't fail the build,
 # because most findings are in Expo's build tools and are fixed by
 # upgrading the Expo SDK, not by us.
 name: CI
@@ -68,3 +68,31 @@ jobs:
           key: firebase-emulators-${{ hashFiles('firestore-tests/package-lock.json') }}
       - run: npm ci
       - run: npm test
+
+  # The real Cloud Functions in the emulators (firestore-tests/triggers.test.mjs):
+  # order checking, duplicates and limits, delivery credit, the user trigger
+  # and the scheduler. functions/.env.demo-dormdash supplies the (public,
+  # sandbox) settings the emulator would otherwise stop and ask for.
+  triggers:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            functions/package-lock.json
+            firestore-tests/package-lock.json
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: '21' }
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/firebase/emulators
+          key: firebase-emulators-${{ hashFiles('firestore-tests/package-lock.json') }}
+      - run: npm ci
+        working-directory: functions
+      - run: npm ci
+        working-directory: firestore-tests
+      - run: npm run test:triggers
+        working-directory: firestore-tests

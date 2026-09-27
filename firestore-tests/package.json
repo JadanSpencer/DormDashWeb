@@ -3,11 +3,13 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "firebase emulators:exec --only firestore --project demo-dormdash --config ../firebase.json \"node --test rules.test.mjs\""
+    "test": "firebase emulators:exec --only firestore --project demo-dormdash --config ../firebase.json \"node --test rules.test.mjs\"",
+    "test:triggers": "npm --prefix ../functions run build && node -e \"const f='../functions/.secret.local';require('fs').existsSync(f)||require('fs').writeFileSync(f,'WIPAY_API_KEY=emulator-test\\n')\" && firebase emulators:exec --only functions,firestore,auth --project demo-dormdash --config ../firebase.json \"node --test --test-concurrency=1 triggers.test.mjs\""
   },
   "devDependencies": {
     "@firebase/rules-unit-testing": "^4.0.1",
     "firebase": "^11.0.0",
+    "firebase-admin": "^12.7.0",
     "firebase-tools": "^14.0.0"
   }
 }

@@ -37,6 +37,7 @@ import {
 } from './shared';
 export { createPayment, wipayReturn, adminAdjustTokens, adminAdjustFloat, payOrderWithTokens } from './payments';
 import { alertStore } from './storeAlerts';
+import { APP_CHECK } from './appCheck';
 export { storeAlertsAdmin } from './storeAlerts';
  
 const CHUNK = 400; // Firestore batches cap at 500 writes
@@ -797,7 +798,7 @@ export const onUserWritten = onDocumentWritten('users/{uid}', async (event) => {
   });
 });
 
-export const deactivateMyAccount = onCall(async (request) => {
+export const deactivateMyAccount = onCall({ ...APP_CHECK }, async (request) => {
   const uid = request.auth?.uid;
   if (!uid) throw new HttpsError('unauthenticated', 'Sign in first.');
  
@@ -818,7 +819,7 @@ export const deactivateMyAccount = onCall(async (request) => {
 });
  
 // Permanent deletion.
-export const deleteMyAccount = onCall(async (request) => {
+export const deleteMyAccount = onCall({ ...APP_CHECK }, async (request) => {
   const uid = request.auth?.uid;
   if (!uid) throw new HttpsError('unauthenticated', 'Sign in first.');
  

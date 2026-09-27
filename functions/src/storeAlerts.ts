@@ -25,6 +25,7 @@ import * as admin from 'firebase-admin';
 import { logger } from 'firebase-functions/v2';
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { randomBytes } from 'crypto';
+import { APP_CHECK } from './appCheck';
 
 if (!admin.apps.length) admin.initializeApp();
 const db = admin.firestore();
@@ -146,7 +147,7 @@ async function requireAdmin(uid: string | undefined) {
  *            this if a topic was shared with the wrong person.
  *   'test' → send a test alert to the store's phone
  */
-export const storeAlertsAdmin = onCall(async (request) => {
+export const storeAlertsAdmin = onCall({ ...APP_CHECK }, async (request) => {
   await requireAdmin(request.auth?.uid);
   const storeId = String(request.data?.storeId ?? '');
   const action = String(request.data?.action ?? 'get');

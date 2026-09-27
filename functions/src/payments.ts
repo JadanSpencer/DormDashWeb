@@ -41,6 +41,7 @@ import { logger } from 'firebase-functions/v2';
 import { onCall, onRequest, HttpsError } from 'firebase-functions/v2/https';
 import { defineSecret, defineString } from 'firebase-functions/params';
 import { TOKEN_JMD, TOKEN_PACKS, PAY_WINDOW_MS, minutes } from './shared';
+import { APP_CHECK } from './appCheck';
 
 // ES imports run before index.ts's own code, so this module can load first:
 // initialise the app here if nobody has yet (index.ts uses the same guard).
@@ -240,7 +241,7 @@ export async function settleCancelledOrder(orderRef: admin.firestore.DocumentRef
 // SPEED: kept warm (minInstances 1) and able to take 40 payments at once per
 // copy, so "Pay with tokens" never waits on a cold start.
 export const payOrderWithTokens = onCall({
-  invoker: 'public', cpu: 1, memory: '512MiB', concurrency: 40, minInstances: 1, maxInstances: 20,
+  ...APP_CHECK, invoker: 'public', cpu: 1, memory: '512MiB', concurrency: 40, minInstances: 1, maxInstances: 20,
 }, async (request) => {
   const uid = request.auth?.uid;
   if (!uid) throw new HttpsError('unauthenticated', 'Sign in first.');
@@ -301,7 +302,7 @@ export const payOrderWithTokens = onCall({
 // purpose 'order': pay for an accepted card order (student only, own order).
 // purpose 'tokens': buy one of the TOKEN_PACKS.
 export const createPayment = onCall({
-  secrets: [WIPAY_API_KEY], cpu: 1, memory: '512MiB', concurrency: 40, maxInstances: 20,
+  ...APP_CHECK, secrets: [WIPAY_API_KEY], cpu: 1, memory: '512MiB', concurrency: 40, maxInstances: 20,
 }, async (request) => {
   const uid = request.auth?.uid;
   if (!uid) throw new HttpsError('unauthenticated', 'Sign in first.');
@@ -470,7 +471,7 @@ export const wipayReturn = onRequest({ secrets: [WIPAY_API_KEY], invoker: 'publi
 
 // ─── Admin: tokens and floats ──────────────────────────────────────────────
 /** Add (positive) or remove (negative) tokens for a student. Up to 2 decimals. */
-export const adminAdjustTokens = onCall(async (request) => {
+export const adminAdjustTokens = onCall({ ...APP_CHECK }, async (request) => {
   await requireAdmin(request.auth?.uid);
   const uid = String(request.data?.uid ?? '');
   const tokens = Number(request.data?.tokens);
@@ -502,7 +503,7 @@ export const adminAdjustTokens = onCall(async (request) => {
 });
 
 /** Top up (positive) or reduce (negative) a store's or dasher's float, in J$. */
-export const adminAdjustFloat = onCall(async (request) => {
+export const adminAdjustFloat = onCall({ ...APP_CHECK }, async (request) => {
   await requireAdmin(request.auth?.uid);
   const kind = request.data?.kind;
   const id = String(request.data?.id ?? '');

@@ -432,3 +432,21 @@ Symptom: a dasher got the new-order notification but the order didn't appear unt
 - This is **line work only**: it doesn't conflict with "no orbs/blobs". Don't turn it into filled shapes, gradients or animation, and don't raise the opacities (cream 0.09, dark 0.11, mid 0.06) without checking contrast on real screens.
 - Screens keep their own opaque background colour. Don't make screens transparent to share one background: the native stack keeps the previous screen mounted underneath.
 - New screens: add `<TopoBackground tone="…" />` as the first child of the root view.
+
+### Cloud Functions tests in CI (2026-09-27)
+`firestore-tests/triggers.test.mjs` runs the real compiled functions in the emulators (functions + firestore + auth): re-pricing, closed store, unavailable item, tap-burst duplicates, the 3-active-order limit, the rate limit, delivery credited once, push-token detach, deactivation disabling sign-in, and the scheduler (including wrong phone clocks). Run with `cd firestore-tests && npm run test:triggers`; CI job `triggers` runs it on every push.
+- `functions/.env.demo-dormdash` (committed, public sandbox values only) is loaded only for the `demo-dormdash` test project. Without it the emulator stops and asks for `WIPAY_ACCOUNT_NUMBER`, which hangs CI. Production still uses the untracked `functions/.env`.
+- Mutation-checked: raising `MAX_ACTIVE_ORDERS` makes the limit test fail.
+
+### App Check (2026-09-27): stage 1 shipped, owner steps needed
+Proves requests come from the real web app, not a script using someone's login. reCAPTCHA Enterprise runs invisibly (no puzzles).
+- **App:** `services/firebase.ts` starts App Check on web only when `EXPO_PUBLIC_RECAPTCHA_SITE_KEY` is set. No key = exactly the old behaviour. Native apps will need App Attest / Play Integrity (not in the JS SDK).
+- **Functions:** every callable has `...APP_CHECK` (`functions/src/appCheck.ts`). Off by default; `APP_CHECK_ENFORCE=true` in `functions/.env` + functions deploy turns enforcement on. Verified in the emulator: with it on, a call without a token is rejected before our code runs.
+- **CSP:** reCAPTCHA hosts added to `firebase.json` and `vercel.json`. **Privacy policy:** reCAPTCHA listed (27 Sep 2026).
+
+**Owner steps:**
+1. Google Cloud console (project dormdash-71035) → reCAPTCHA Enterprise → enable the API → create a **website** key (score-based, no checkbox) for `dormdash-71035.web.app` (+ any custom domain, + `localhost` for development).
+2. Firebase console → App Check → Apps → the web app → **reCAPTCHA Enterprise** → paste the site key → Save. Do **not** click "Enforce" yet.
+3. Add `EXPO_PUBLIC_RECAPTCHA_SITE_KEY=<site key>` to `.env` (and Vercel env if used), then `npm run deploy:web`.
+4. Watch Firebase console → App Check → metrics, and function logs (`"verifications":{"app":"VALID"}`) for a few days after launch.
+5. Stage 2, when ~100% of requests are verified: set `APP_CHECK_ENFORCE=true` in `functions/.env`, `firebase deploy --only functions`, and click **Enforce** for Cloud Firestore in the App Check console. Roll back by reversing either step.
