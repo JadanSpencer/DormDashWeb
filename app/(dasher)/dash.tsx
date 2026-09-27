@@ -33,6 +33,7 @@ import { Order, OrderStatus } from '../../types';
 import { formatJMD, LOCATION_UPDATE_INTERVAL_MS, PAY_WINDOW_MIN } from '../../constants';
 import { D } from '../../constants/themeDark';
 import MapView, { Marker, PROVIDER_GOOGLE } from '../../components/MapView';
+import { TopoBackground } from '../../components/TopoBackground';
 
 const NEXT_STATUS_LABEL: Partial<Record<OrderStatus, string>> = {
   accepted:   'Mark as picked up',
@@ -212,6 +213,7 @@ export default function DasherHome() {
 
   return (
     <View style={styles.root}>
+      <TopoBackground tone="dark" />
       <FlatList
         data={isOnline && !activeOrder ? pendingOrders : []}
         keyExtractor={item => item.id}

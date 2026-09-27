@@ -35,6 +35,7 @@ import { payOrderByCard, payOrderWithTokens, formatTokens } from '../../../servi
 import { useWallet } from '../../../hooks/useWallet';
 import { useAuth } from '../../../hooks/useAuth';
 import { serverNow } from '../../../services/serverClock';
+import { TopoBackground } from '../../../components/TopoBackground';
 
 const STATUS_CONFIG: Record<OrderStatus, { label: string; color: string; description: string }> = {
   pending:    { label: 'Finding a dasher', color: T.color.warning,  description: 'Waiting for a dasher to accept your order' },
@@ -260,6 +261,7 @@ export default function OrderTracking() {
 
   return (
     <View style={styles.root}>
+      <TopoBackground tone="cream" />
       <ScrollView
         contentContainerStyle={{ paddingBottom: 60 + insets.bottom }}
         showsVerticalScrollIndicator={false}

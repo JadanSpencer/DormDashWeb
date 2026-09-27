@@ -426,3 +426,9 @@ Symptom: a dasher got the new-order notification but the order didn't appear unt
 - `public/sw.js` (**dd-v7**) now posts `dd-sync` to every open page for every push, including iPhone/Safari where the push must be shown as a system notification (before, the page was never told).
 - `usePendingOrders({ watchdog })`: while a dasher is online with no active delivery, every 30 s it counts pending orders on the server (1 read, outside the live connection); a mismatch with the list triggers a reconnect. Worst case for a missed order is now ~30 s instead of "never".
 - Tested: preview fake can simulate a dead connection (`window.__ddPreview.freezeListeners()`); in headless Chrome the order stays hidden without the fix and appears via push (ms), foreground (ms), and watchdog (≤30 s); accept still works. The real Firestore SDK was checked against the emulator: a reconnect delivers the missed update (~50 ms). Rules test covers the watchdog count (dashers yes, students no).
+
+### Topographic background (2026-09-27)
+`components/TopoBackground.tsx` draws thin contour lines (like a campus map) behind every screen: student, sign-in and legal (`tone="cream"`), dasher (`"dark"`), admin (`"mid"`). It is the first child of each screen's root view (absolute fill, ignores touches, fixed while content scrolls), static SVG computed once, deterministic.
+- This is **line work only**: it doesn't conflict with "no orbs/blobs". Don't turn it into filled shapes, gradients or animation, and don't raise the opacities (cream 0.09, dark 0.11, mid 0.06) without checking contrast on real screens.
+- Screens keep their own opaque background colour. Don't make screens transparent to share one background: the native stack keeps the previous screen mounted underneath.
+- New screens: add `<TopoBackground tone="…" />` as the first child of the root view.

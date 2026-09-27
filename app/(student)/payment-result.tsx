@@ -12,6 +12,7 @@ import { usePayment } from '../../hooks/useWallet';
 import { T, useReducedMotion } from '../../constants/theme';
 import { formatTokens } from '../../services/payments';
 import { formatJMD } from '../../constants';
+import { TopoBackground } from '../../components/TopoBackground';
 
 type Pay = { status: string; purpose: 'order' | 'tokens'; amountJmd: number; tokens?: number; orderId?: string | null };
 
@@ -98,6 +99,7 @@ export default function PaymentResult() {
 
   return (
     <View style={[styles.root, { paddingTop: insets.top + T.space.xl, paddingBottom: insets.bottom + T.space.lg }]}>
+      <TopoBackground tone="cream" />
       {ok && !reduced && <Confetti />}
       <View style={styles.body}>
         <View style={[styles.mark, ok ? styles.markOk : styles.markBad]}>

@@ -18,6 +18,7 @@ import { usePriceUnit } from '../../../hooks/usePriceUnit';
 import { PriceUnitToggle } from '../../../components/PriceUnitToggle';
 import { T, useReducedMotion } from '../../../constants/theme';
 import { Watermark } from '../../../components/Watermark';
+import { TopoBackground } from '../../../components/TopoBackground';
 
 // Fallback-safe navigation. When a user lands on a store via notification
 // or fresh app boot, there's no back stack — pop would leave a black screen.
@@ -130,6 +131,7 @@ export default function StoreMenuScreen() {
 
   return (
     <View style={styles.root}>
+      <TopoBackground tone="cream" />
       {/* Sticky rail */}
       <Animated.View
         pointerEvents={stickyActive ? 'auto' : 'none'}

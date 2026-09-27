@@ -25,6 +25,7 @@ import { registerUser } from '../../services/auth';
 import { requestPushPermissionFromGesture } from '../../services/notifications';
 import { T } from '../../constants/theme';
 import { UserRole } from '../../types';
+import { TopoBackground } from '../../components/TopoBackground';
 import { Icon } from '../../components/TabIcon'; // SVG icons: no icon font to fail loading
 
 const ROLES: { role: UserRole; label: string; description: string; icon: string; iconSet: string; color: string }[] = [
@@ -159,6 +160,7 @@ export default function RegisterScreen() {
 
   return (
     <SafeAreaView style={styles.safe}>
+      <TopoBackground tone="cream" />
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.flex}

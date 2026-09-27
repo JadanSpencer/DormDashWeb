@@ -20,6 +20,7 @@ import { isValidPassword } from '../../../services/sanitize';
 import { T } from '../../../constants/theme';
 import { WalletCard } from '../../../components/WalletCard';
 import { AccountActions } from '../../../components/AccountActions';
+import { TopoBackground } from '../../../components/TopoBackground';
 
 interface UserProfile {
   name: string; email: string; phone: string;
@@ -146,6 +147,7 @@ export default function StudentProfile() {
   if (!user) {
     return (
       <View style={styles.root}>
+        <TopoBackground tone="cream" />
         <View style={styles.loading}>
           <ActivityIndicator size="large" color={T.color.cerulean} />
           <Text style={styles.loadingText}>Loading profile…</Text>
@@ -156,6 +158,7 @@ export default function StudentProfile() {
 
   return (
     <View style={styles.root}>
+      <TopoBackground tone="cream" />
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: 120 + insets.bottom }}

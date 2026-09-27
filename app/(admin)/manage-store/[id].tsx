@@ -20,6 +20,7 @@ import { MenuItem } from '../../../types';
 import { formatJMD } from '../../../constants';
 import { adminStoreAlerts } from '../../../services/payments';
 import { S } from '../../../constants/themeMid';
+import { TopoBackground } from '../../../components/TopoBackground';
 
 const blankItem = () => ({
   name: '', description: '', price: '',
@@ -306,6 +307,7 @@ export default function StoreMenuItems() {
 
   return (
     <View style={styles.root}>
+      <TopoBackground tone="mid" />
       {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top + S.space.md }]}>
         <TouchableOpacity onPress={safeGoBack} style={styles.backBtn} hitSlop={12}>

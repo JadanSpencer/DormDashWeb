@@ -28,6 +28,7 @@ import { loginUser, resetPassword } from '../../services/auth';
 import { requestPushPermissionFromGesture } from '../../services/notifications';
 import { T } from '../../constants/theme';
 import { Logo } from '../../components/Logo';
+import { TopoBackground } from '../../components/TopoBackground';
 
 // Small-screen handling: compact the hero + spacing under 700px tall
 const SMALL = Dimensions.get('window').height < 700;
@@ -118,6 +119,7 @@ export default function LoginScreen() {
 
   return (
     <SafeAreaView style={styles.safe}>
+      <TopoBackground tone="cream" />
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.flex}

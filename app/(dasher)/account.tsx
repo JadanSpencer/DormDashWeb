@@ -28,6 +28,7 @@ import { logoutUser } from '../../services/auth';
 import { formatJMD } from '../../constants';
 import { D } from '../../constants/themeDark';
 import { AccountActions } from '../../components/AccountActions';
+import { TopoBackground } from '../../components/TopoBackground';
 
 
 const formatDate = (ts: number) => {
@@ -78,6 +79,7 @@ export default function DasherProfile() {
 
   return (
     <View style={styles.root}>
+      <TopoBackground tone="dark" />
       <FlatList
         data={recentOrders}
         keyExtractor={item => item.id}

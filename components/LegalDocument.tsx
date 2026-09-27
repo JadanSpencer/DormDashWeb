@@ -10,6 +10,7 @@ import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Icon } from './TabIcon'; // SVG icons: no icon font to fail loading
 import { T } from '../constants/theme';
+import { TopoBackground } from './TopoBackground';
 
 export type Block =
   | { p: string }
@@ -25,8 +26,10 @@ export function LegalDocument({ title, updated, intro, sections }: {
   const back = () => (router.canGoBack() ? router.back() : router.replace('/'));
 
   return (
+    <View style={styles.root}>
+    <TopoBackground tone="cream" />
     <ScrollView
-      style={styles.root}
+      style={styles.scroll}
       contentContainerStyle={[styles.content, { paddingTop: insets.top + 12, paddingBottom: insets.bottom + 48 }]}
     >
       <View style={styles.column}>
@@ -71,6 +74,7 @@ export function LegalDocument({ title, updated, intro, sections }: {
         ))}
       </View>
     </ScrollView>
+    </View>
   );
 }
 
@@ -91,6 +95,7 @@ function linkify(text: string): React.ReactNode {
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: T.color.cream },
+  scroll: { flex: 1 },
   content: { paddingHorizontal: 20 },
   column: { width: '100%', maxWidth: 680, alignSelf: 'center' },
   back: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', gap: 2, paddingVertical: 6, marginBottom: 16 },

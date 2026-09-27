@@ -18,6 +18,7 @@ import { formatJMD } from '../../../constants';
 import { S } from '../../../constants/themeMid';
 import { AmountPrompt } from '../../../components/AmountPrompt';
 import { adminAdjustFloat } from '../../../services/payments';
+import { TopoBackground } from '../../../components/TopoBackground';
 
 const CATEGORIES = ['Fast Food', 'Grocery', 'Pharmacy', 'Drinks', 'Snacks', 'Other'];
 
@@ -245,6 +246,7 @@ export default function AdminStores() {
 
   return (
     <View style={styles.root}>
+      <TopoBackground tone="mid" />
       <View style={[styles.header, { paddingTop: insets.top + S.space.md }]}>
         <View>
           <Text style={styles.title}>Stores</Text>
