@@ -24,12 +24,11 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
-import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
-import { db } from '../../../services/firebase';
+import { useStores } from '../../../hooks/useStores';
 import { useAuth } from '../../../hooks/useAuth';
 import { Store } from '../../../types';
 import { formatJMD } from '../../../constants';
-import { T, useReducedMotion } from '../../../constants/theme';
+import { T } from '../../../constants/theme';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -148,11 +147,9 @@ const StoreRow: React.FC<{ store: Store; onPress: () => void }> = ({ store, onPr
 export default function StudentHome() {
   const { user } = useAuth();
   const insets = useSafeAreaInsets();
-  const reduced = useReducedMotion();
 
-  const [stores, setStores] = useState<Store[]>([]);
-  const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const { stores, loading, refresh, refreshedAt } = useStores();
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
   const [searchFocused, setSearchFocused] = useState(false);
@@ -168,24 +165,10 @@ export default function StudentHome() {
     ]).start();
   }, []);
 
-  useEffect(() => {
-    const q = query(collection(db, 'stores'), orderBy('name', 'asc'));
-    const unsub = onSnapshot(q,
-      (snap) => {
-        const list: Store[] = snap.docs.map(d => ({ id: d.id, ...d.data() } as Store));
-        setStores(list);
-        setLoading(false);
-        setRefreshing(false);
-      },
-      () => {
-        setLoading(false);
-        setRefreshing(false);
-      }
-    );
-    return unsub;
-  }, []);
-
-  const onRefresh = useCallback(() => { setRefreshing(true); }, []);
+  // Pull-to-refresh re-opens the live listener (useStores); the spinner
+  // stops when fresh data arrives (it used to spin until a store changed).
+  useEffect(() => { setRefreshing(false); }, [refreshedAt]);
+  const onRefresh = useCallback(() => { setRefreshing(true); refresh(); }, [refresh]);
 
   const filtered = stores.filter(s => {
     const matchCat = selectedCategory === 'All' || s.category === selectedCategory;

@@ -1,6 +1,7 @@
 # CI: runs on every push and pull request (including Dependabot's).
-# Fails if the app or Cloud Functions don't type-check or the web build
-# breaks. The dependency audit is reported but doesn't fail the build,
+# Fails if the app or Cloud Functions don't type-check, the web build
+# breaks, the payment (money) tests fail, or the Firestore security rules
+# tests fail. The dependency audit is reported but doesn't fail the build,
 # because most findings are in Expo's build tools and are fixed by
 # upgrading the Expo SDK, not by us.
 name: CI
@@ -43,6 +44,27 @@ jobs:
         with: { node-version: 22, cache: npm, cache-dependency-path: functions/package-lock.json }
       - run: npm ci
       - run: npx tsc --noEmit
+      # In-memory tests of every money path (functions/test/payments.test.js).
+      - run: npm run test:payments
       - name: Dependency audit
         run: npm audit --omit=dev --audit-level=high
         continue-on-error: true
+
+  # firestore.rules against the Firestore emulator (firestore-tests/).
+  # The rules are the only thing between the app and other people's data,
+  # so a change that breaks them must not merge.
+  rules:
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: firestore-tests } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm, cache-dependency-path: firestore-tests/package-lock.json }
+      - uses: actions/setup-java@v4   # the Firestore emulator runs on Java
+        with: { distribution: temurin, java-version: '21' }
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/firebase/emulators
+          key: firebase-emulators-${{ hashFiles('firestore-tests/package-lock.json') }}
+      - run: npm ci
+      - run: npm test

@@ -11,11 +11,8 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
-import {
-  collection, onSnapshot, addDoc, updateDoc, deleteDoc,
-  doc, query, orderBy,
-} from 'firebase/firestore';
-import { db } from '../../../services/firebase';
+import { saveStore, deleteStore, setStoreOpen } from '../../../services/stores';
+import { useStores, useStoreFloats } from '../../../hooks/useStores';
 import { Store } from '../../../types';
 import { formatJMD } from '../../../constants';
 import { S } from '../../../constants/themeMid';
@@ -96,11 +93,7 @@ const StoreFormModal: React.FC<{
     };
 
     try {
-      if (isEdit && initialData) {
-        await updateDoc(doc(db, 'stores', initialData.id), data);
-      } else {
-        await addDoc(collection(db, 'stores'), { ...data, createdAt: Date.now() });
-      }
+      await saveStore(isEdit && initialData ? initialData.id : null, data);
       onClose();
     } catch (e: any) {
       setError('Save failed: ' + e.message);
@@ -218,29 +211,14 @@ const StoreFormModal: React.FC<{
 // ─── Main screen ────────────────────────────────────────────────────
 export default function AdminStores() {
   const insets = useSafeAreaInsets();
-  const [stores, setStores] = useState<Store[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { stores, loading } = useStores();
   const [modalVisible, setModalVisible] = useState(false);
   const [editTarget, setEditTarget] = useState<Store | null>(null);
   const [floatTarget, setFloatTarget] = useState<Store | null>(null);
 
-  useEffect(() => {
-    const q = query(collection(db, 'stores'), orderBy('name', 'asc'));
-    const unsub = onSnapshot(q, (snap) => {
-      setStores(snap.docs.map(d => ({ id: d.id, ...d.data() } as Store)));
-      setLoading(false);
-    });
-    return unsub;
-  }, []);
-
   // Store floats are admin-only (storeFloats/{storeId}), not on the public
   // store doc. The old floatJmd field is shown until the server moves it.
-  const [floats, setFloats] = useState<Record<string, number>>({});
-  useEffect(() => onSnapshot(collection(db, 'storeFloats'), snap => {
-    const m: Record<string, number> = {};
-    snap.forEach(d => { m[d.id] = Number(d.data().floatJmd) || 0; });
-    setFloats(m);
-  }), []);
+  const floats = useStoreFloats();
   const floatOf = (store: Store): number | undefined => {
     if (store.id in floats) return floats[store.id];
     const legacy = (store as any).floatJmd;
@@ -253,7 +231,7 @@ export default function AdminStores() {
       {
         text: 'Delete', style: 'destructive',
         onPress: async () => {
-          try { await deleteDoc(doc(db, 'stores', store.id)); }
+          try { await deleteStore(store.id); }
           catch (e: any) { Alert.alert('Error', 'Could not delete: ' + e.message); }
         },
       },
@@ -261,7 +239,7 @@ export default function AdminStores() {
   };
 
   const handleToggleOpen = async (store: Store) => {
-    await updateDoc(doc(db, 'stores', store.id), { isOpen: !store.isOpen });
+    await setStoreOpen(store.id, !store.isOpen);
   };
 
 

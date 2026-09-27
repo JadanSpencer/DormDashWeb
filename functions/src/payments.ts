@@ -40,15 +40,13 @@ import * as crypto from 'crypto';
 import { logger } from 'firebase-functions/v2';
 import { onCall, onRequest, HttpsError } from 'firebase-functions/v2/https';
 import { defineSecret, defineString } from 'firebase-functions/params';
+import { TOKEN_JMD, TOKEN_PACKS, PAY_WINDOW_MS, minutes } from './shared';
 
 // ES imports run before index.ts's own code, so this module can load first:
 // initialise the app here if nobody has yet (index.ts uses the same guard).
 if (!admin.apps.length) admin.initializeApp();
 const db = admin.firestore();
 
-export const TOKEN_JMD = 100;
-export const PAY_WINDOW_MS = 10 * 60 * 1000;
-const TOKEN_PACKS = [5, 10, 20, 50]; // tokens a student can buy by card
 const APP_URL = 'https://dormdash-71035.web.app';
 const RETURN_URL = `${APP_URL}/api/wipay-return`;
 
@@ -264,7 +262,7 @@ export const payOrderWithTokens = onCall({
       throw new HttpsError('failed-precondition', 'You can pay once a dasher accepts your order.');
     }
     if (Number(order.payDeadline) > 0 && Date.now() > Number(order.payDeadline)) {
-      throw new HttpsError('deadline-exceeded', 'The 10 minutes to pay are up, so this order is being cancelled.');
+      throw new HttpsError('deadline-exceeded', `The ${minutes(PAY_WINDOW_MS)} minutes to pay are up, so this order is being cancelled.`);
     }
     const total = Number(order.totalAmount) || 0;
     if (!(total > 0)) throw new HttpsError('failed-precondition', 'Nothing to pay.');

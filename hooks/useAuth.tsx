@@ -5,8 +5,8 @@
 
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { onAuthStateChanged } from 'firebase/auth';
-import { doc, getDoc } from 'firebase/firestore';
-import { auth, db } from '../services/firebase';
+import { auth } from '../services/firebase';
+import { getUserProfile } from '../services/users';
 import { User } from '../types';
 
 // ─── CONTEXT SHAPE ─────────────────────────────────────────────────────────
@@ -32,11 +32,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // fetchUserProfile takes a Firebase uid and loads the full profile from Firestore
   const fetchUserProfile = async (uid: string): Promise<User | null> => {
     try {
-      const userDoc = await getDoc(doc(db, 'users', uid));
-      if (userDoc.exists()) {
-        return userDoc.data() as User;
-      }
-      return null;
+      return await getUserProfile(uid);
     } catch {
       return null;
     }

@@ -47,15 +47,10 @@ interface CacheEntry<T> {
   
   // Cache key constants — prevents typos
   export const CACHE_KEYS = {
-    STORES: 'stores_list',
     STORE: (id: string) => `store_${id}`,
-    MENU_ITEMS: (storeId: string) => `menu_${storeId}`,
-    USER_PROFILE: (uid: string) => `user_${uid}`,
   };
   
   // Cache TTL constants
   export const CACHE_TTL = {
     STORES: 5 * 60 * 1000,       // 5 minutes — stores don't change often
-    MENU_ITEMS: 3 * 60 * 1000,   // 3 minutes
-    USER_PROFILE: 10 * 60 * 1000, // 10 minutes
   };

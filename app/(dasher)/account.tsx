@@ -12,32 +12,23 @@
 //     stays a clean month.
 //   3. ACCOUNT — identity, member since, sign out.
 //
-// Data notes: history comes from hooks/useDasherOrders (bounded by
+// Data notes: history comes from useDasherOrders in hooks/useOrders.ts (bounded by
 // acceptedAt, index dasherId + acceptedAt), not the whole order history.
 
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import {
   View, Text, StyleSheet, FlatList,
   Pressable, Alert, ActivityIndicator,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { onSnapshot, doc } from 'firebase/firestore';
-import { db } from '../../services/firebase';
+import { useDasherStats } from '../../hooks/useUsers';
 import { useAuth } from '../../hooks/useAuth';
-import { useDasherOrders, startOfDay } from '../../hooks/useDasherOrders';
+import { useDasherOrders, startOfDay } from '../../hooks/useOrders';
 import { logoutUser } from '../../services/auth';
-import { Order } from '../../types';
 import { formatJMD } from '../../constants';
 import { D } from '../../constants/themeDark';
 import { AccountActions } from '../../components/AccountActions';
 
-
-interface DasherStats {
-  rating: number;
-  totalDeliveries: number;
-  totalEarnings: number;
-  floatJmd?: number; // money DormDash gave you to buy orders with
-}
 
 const formatDate = (ts: number) => {
   const d = new Date(ts);
@@ -53,25 +44,10 @@ export default function DasherProfile() {
   const { user } = useAuth();
   const insets = useSafeAreaInsets();
 
-  const [stats, setStats] = useState<DasherStats | null>(null);
   const [loggingOut, setLoggingOut] = useState(false);
 
-  // Lifetime stats — live from the dashers doc (server-written only)
-  useEffect(() => {
-    if (!user) return;
-    const unsub = onSnapshot(doc(db, 'dashers', user.uid), snap => {
-      if (snap.exists()) {
-        const d = snap.data();
-        setStats({
-          rating: Number(d.rating) || 0,
-          totalDeliveries: Number(d.totalDeliveries) || 0,
-          totalEarnings: Number(d.totalEarnings) || 0,
-          floatJmd: Number(d.floatJmd) || 0,
-        });
-      }
-    });
-    return unsub;
-  }, [user]);
+  // Lifetime stats: live from dashers/{uid}, written only by Cloud Functions.
+  const stats = useDasherStats(user?.uid);
 
   // Rolling 30-day history (finished orders), bounded by acceptedAt.
   const { orders: last30Days, loading } = useDasherOrders(user?.uid, startOfDay(30));

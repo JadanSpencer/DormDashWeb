@@ -1,8 +1,8 @@
 // app/(admin)/(tabs)/dashboard.tsx
 // DormDash — Admin dashboard (mid-tone "slate" Route identity).
 // Stats (revenue = delivered fees, GMV, avg delivery mins, completion rate)
-// come from Firestore aggregation queries: the server counts and sums, and
-// each one costs one read per 1,000 matching docs. Before, this screen
+// come from Firestore aggregation queries (services/adminStats.ts): the
+// server counts and sums, and each one costs one read per 1,000 matching docs. Before, this screen
 // downloaded every user and order and re-downloaded on every change, which
 // grew with the business. Refreshed on focus, every minute while open, and
 // on pull-to-refresh. Stores stay a live listener (a handful of docs).
@@ -12,57 +12,14 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Pressable, Refres
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Icon } from '../../../components/TabIcon'; // SVG icons: no icon font to fail loading
 import { router, useFocusEffect } from 'expo-router';
-import {
-  collection, onSnapshot, query, where, getAggregateFromServer, count, sum, average, Query,
-} from 'firebase/firestore';
-import { db } from '../../../services/firebase';
+import { loadAdminStats } from '../../../services/adminStats';
+import { useStores } from '../../../hooks/useStores';
 import { useAuth } from '../../../hooks/useAuth';
 import { logoutUser } from '../../../services/auth';
 import { formatJMD } from '../../../constants';
 import { S } from '../../../constants/themeMid';
 
 const REFRESH_MS = 60 * 1000;
-
-async function loadOrderAndUserStats() {
-  const users = collection(db, 'users');
-  const orders = collection(db, 'orders');
-  const countOf = (q: Query) => getAggregateFromServer(q, { n: count() }).then(s => s.data().n);
-  const dayStart = new Date().setHours(0, 0, 0, 0);
-  const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
-
-  const [
-    totalUsers, totalStudents, totalDashers,
-    totalOrders, pendingOrders, activeOrders, cancelledOrders,
-    ordersToday, ordersThisWeek, delivered,
-  ] = await Promise.all([
-    countOf(users),
-    countOf(query(users, where('role', '==', 'student'))),
-    countOf(query(users, where('role', '==', 'dasher'))),
-    countOf(orders),
-    countOf(query(orders, where('status', '==', 'pending'))),
-    countOf(query(orders, where('status', 'in', ['accepted', 'picking_up', 'on_the_way']))),
-    countOf(query(orders, where('status', '==', 'cancelled'))),
-    countOf(query(orders, where('createdAt', '>=', dayStart))),
-    countOf(query(orders, where('createdAt', '>=', weekAgo))),
-    getAggregateFromServer(query(orders, where('status', '==', 'delivered')), {
-      n: count(),
-      revenue: sum('deliveryFee'),
-      gmv: sum('totalAmount'),
-      // deliveryMins is written by the server on delivery (onDeliveryCompleted).
-      avgMins: average('deliveryMins'),
-    }).then(s => s.data()),
-  ]);
-
-  return {
-    totalUsers, totalStudents, totalDashers,
-    totalOrders, pendingOrders, activeOrders, cancelledOrders,
-    ordersToday, ordersThisWeek,
-    deliveredOrders: delivered.n,
-    revenue: delivered.revenue ?? 0,
-    gmv: delivered.gmv ?? 0,
-    avgDeliveryMins: delivered.avgMins == null ? 0 : Math.round(delivered.avgMins),
-  };
-}
 
 export default function AdminDashboard() {
   const { user } = useAuth();
@@ -82,7 +39,7 @@ export default function AdminDashboard() {
 
   const refresh = useCallback(async () => {
     try {
-      const next = await loadOrderAndUserStats();
+      const next = await loadAdminStats();
       setStats(prev => ({ ...prev, ...next }));
       setUpdatedAt(Date.now());
       setLoadFailed(false);
@@ -109,14 +66,14 @@ export default function AdminDashboard() {
     setRefreshing(false);
   };
 
-  useEffect(() => onSnapshot(collection(db, 'stores'), (snap) => {
-    const stores = snap.docs.map(d => d.data());
+  const { stores } = useStores();
+  useEffect(() => {
     setStats(prev => ({
       ...prev,
       totalStores: stores.length,
       activeStores: stores.filter(s => s.isOpen).length,
     }));
-  }), []);
+  }, [stores]);
 
   const handleLogout = async () => { await logoutUser(); };
 

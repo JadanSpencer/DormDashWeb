@@ -1,6 +1,9 @@
 // constants/legal.ts
 // One place for the facts the Privacy Policy and Terms depend on.
 // CHECK THESE BEFORE LAUNCH. Changing a value here updates both documents.
+// The token value and pay window come from the shared business rules
+// (functions/src/shared.ts): if you change those, bump termsUpdated too.
+import { TOKEN_JMD, PAY_WINDOW_MIN } from './index';
 
 export const LEGAL = {
   operator: 'Jcommerce & Tech',           // who runs DormDash
@@ -15,6 +18,6 @@ export const LEGAL = {
   // How fast personal data is removed after an account is deleted.
   deletionDays: 30,
   // How students pay. Payments: functions/src/payments.ts.
-  paymentMethod: 'You pay only after a dasher accepts your order. You then choose to pay with your DormDash tokens or by card, and have 10 minutes to pay, or the order is cancelled. Card payments are made on the secure payment page of our payment provider, WiPay.',
-  tokenValueJmd: 100,
+  paymentMethod: `You pay only after a dasher accepts your order. You then choose to pay with your DormDash tokens or by card, and have ${PAY_WINDOW_MIN} minutes to pay, or the order is cancelled. Card payments are made on the secure payment page of our payment provider, WiPay.`,
+  tokenValueJmd: TOKEN_JMD,
 };

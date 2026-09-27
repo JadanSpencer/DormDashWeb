@@ -137,7 +137,7 @@ active in real builds. Use it to screenshot every screen on any device size.
   `app/(student)/order/[id].tsx`. Runs before dashers are notified.
 - Rate limit: more than 5 orders in 10 minutes per student → cancelled
   (`rate_limited`). Filtered in memory so no Firestore index is needed.
-- `onUserActiveChanged`: mirrors `users/{uid}.isActive` into Firebase Auth
+- `onUserActiveChanged` (now part of `onUserWritten`): mirrors `users/{uid}.isActive` into Firebase Auth
   (disables sign-in, revokes refresh tokens). Deactivated users are signed
   out everywhere within an hour (ID tokens live max 1 h).
 - `deleteMyAccount` also deletes Storage files under `users/{uid}/`.
@@ -176,7 +176,7 @@ active in real builds. Use it to screenshot every screen on any device size.
   allow the permission prompt during a tap, before any `await`. Once
   granted, the FCM token is saved as soon as the user is signed in.
 - Existing signed-in users still get the "Turn on order alerts" card.
-- `onPushTokenChanged` (functions): a device's token belongs to one account
+- `onPushTokenChanged` (now part of `onUserWritten`): a device's token belongs to one account
   only. Saving a token removes it from every other user, so a shared phone
   never receives the previous account's alerts.
 - Verified in Chromium: Sign in tap triggers the prompt; a push delivered
@@ -357,7 +357,7 @@ See **LAUNCH_CHECKLIST.md** for deploy order, smoke test, console settings, lega
 - Rules for AIs: any new Firestore field the client writes must be added to `firestore.rules` (the rules use `hasOnly` key lists) with a test. Otherwise the write is silently denied in production.
 
 ### Up to 3 orders, tab icons, paging (2026-09-23)
-- Students can have **3 orders in progress** at once (`MAX_ACTIVE_ORDERS` in `constants/index.ts` and in `functions/src/index.ts`; keep them the same). `verifyNewOrder` cancels a 4th as `too_many_active`. An identical order (same store and items) placed within 2 minutes of an earlier active one is cancelled silently as `duplicate_order`, which is the tap-burst protection. The Orders tab lists every active order, each with its own Cancel button.
+- Students can have **3 orders in progress** at once (`MAX_ACTIVE_ORDERS`, now defined once in `functions/src/shared.ts`). `verifyNewOrder` cancels a 4th as `too_many_active`. An identical order (same store and items) placed within 2 minutes of an earlier active one is cancelled silently as `duplicate_order`, which is the tap-burst protection. The Orders tab lists every active order, each with its own Cancel button.
 - **Tab bar icons are SVG** (`components/TabIcon.tsx`, Ionicons 7 paths, MIT). On some devices the inactive tabs rendered the icon font as a crossed-out box. `GlassTabBar` falls back to the Ionicons font only for names not in `TabIcon`. If you add a tab icon, add its paths there.
 - **Past orders page on the phone**: the first 10 show, then a "Show N more" button adds 10 more each tap. The listener is unchanged, so no new Firestore index is needed.
 - Preview mode: the fake Firestore now has `runTransaction`, and the fixtures include a second active order and 12 extra past orders.
@@ -396,3 +396,26 @@ No screen listens to a user's whole order history any more:
 
 ### Scheduler reads only overdue orders (2026-09-26)
 `cancelStalePendingOrders` (every 5 min) no longer reads every pending and accepted order. It queries pending orders with `createdAt < cutoff` or `verifiedAt < cutoff` (both, so a wrong phone clock can't hide an order), and `paymentStatus == 'awaiting_payment'` with `payDeadline < now`, then re-checks each inside its transaction as before. **Two new indexes** in `firestore.indexes.json` (`status + verifiedAt`, `paymentStatus + payDeadline`); while they build, it falls back to the old full reads and logs `Index for … not ready`.
+
+### Data access lives in hooks/ and services/ (2026-09-26)
+Screens and components no longer import `firebase/firestore` or `firebase/functions`. All data access goes through:
+
+| Area | Live reads (hooks) | Writes / one-off calls (services) |
+|---|---|---|
+| Orders | `hooks/useOrders.ts`: `useOrder`, `useStudentActiveOrders`, `useStudentOrderHistory`, `usePendingOrders`, `useActiveDelivery`, `useDasherOrders`, `useOnlineDasherCount` | `services/orders.ts`: `placeOrder`, `cancelOrder`, `acceptOrder`, `advanceOrder`, `NEXT_STATUS`, `canStudentCancel` |
+| Stores & menus | `hooks/useStores.ts`: `useStores`, `useStore`, `useMenu`, `useStoreFloats` | `services/stores.ts`: `saveStore`, `deleteStore`, `setStoreOpen`, `saveMenuItem`, `deleteMenuItem`, `setMenuItemAvailable` |
+| People | `hooks/useUsers.ts`: `useDasherStats`, `useAllUsers`, `useAllWallets`, `useDasherFloats` | `services/users.ts` (profile, `setUserActive`, account deactivate/delete), `services/dasher.ts` (online switch) |
+| Money | `hooks/useWallet.ts`: `useWallet`, `useWalletHistory`, `usePayment` | `services/payments.ts` (callables) |
+| Admin stats | — | `services/adminStats.ts`: `loadAdminStats` (aggregations) |
+
+**Rule for AIs:** don't add Firestore calls to screens. Add or extend a hook/service here, and keep queries bounded (a doc, a page, a date window, or an aggregation).
+
+### Shared business rules (2026-09-26)
+`functions/src/shared.ts` is the single copy of the rules the app and server must agree on: `MAX_ACTIVE_ORDERS`, `MAX_ITEMS_PER_ORDER`, `TOKEN_JMD`, `TOKEN_PACKS`, `PAY_WINDOW_MS`, `PENDING_TIMEOUT_MS`, the status lists (`ACTIVE_STATUSES`, `IN_DELIVERY_STATUSES`, `STATUS_STEPS`) and the types `OrderStatus`, `PaymentMethod`, `PaymentStatus`, `CancelReason`. The server imports it directly; the app gets it through `constants/index.ts` and `types/index.ts`. User-facing text (push messages, cancel reasons, "pay within N minutes", the Terms' token value and pay window) is built from these values.
+- It lives inside `functions/` because `firebase deploy` uploads only that folder. Keep it free of imports (no firebase-admin, no React Native).
+- Changing a limit or price there changes both sides; redeploy functions **and** the web app together, and bump `termsUpdated` in `constants/legal.ts` if the Terms wording changes.
+
+### Fewer triggers, dead code removed (2026-09-26)
+- One trigger per document path: `onOrderStatusChanged` (orders; now also credits the dasher on delivery, idempotent via `dasherCreditedAt`), `onUserWritten` (users; new-user admin alert, Auth enable/disable, one-device-one-account token detach), `onDasherOnlineChanged` (dashers). Replaced `onDeliveryCompleted`, `onNewUserRegistered`, `onUserActiveChanged`, `onPushTokenChanged`. Every order write now starts 1 function instead of 2, and every user write 1 instead of 3.
+- Removed: stale `functions/index.ts` (an old copy that broke the app type-check), unused `components/ui.tsx` and its legacy `COLORS`/`SPACING`/`RADIUS` palette, unused `services/config.ts`, unused types and constants. `tsconfig.json` now has `noUnusedLocals`, so dead imports fail the type-check.
+

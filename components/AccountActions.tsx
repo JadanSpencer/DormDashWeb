@@ -17,8 +17,8 @@ import {
   ActivityIndicator, Alert, ScrollView, KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { EmailAuthProvider, reauthenticateWithCredential } from 'firebase/auth';
-import { httpsCallable } from 'firebase/functions';
-import { auth, functions } from '../services/firebase';
+import { auth } from '../services/firebase';
+import { deactivateMyAccount, deleteMyAccount } from '../services/users';
 import { logoutUser } from '../services/auth';
 import { clearPushToken } from '../services/notifications';
 import { router } from 'expo-router';
@@ -85,15 +85,13 @@ export const AccountActions: React.FC<{ dark?: boolean }> = ({ dark }) => {
       await clearPushToken(uid);
 
       if (action === 'delete') {
-        const fn = httpsCallable(functions, 'deleteMyAccount');
-        await fn();
+        await deleteMyAccount();
         Alert.alert(
           'Account deleted',
           'Your account and personal information have been removed. Thanks for using DormDash.'
         );
       } else {
-        const fn = httpsCallable(functions, 'deactivateMyAccount');
-        await fn();
+        await deactivateMyAccount();
         Alert.alert(
           'Account deactivated',
           'You will not be able to sign in until it is restored. Message support to come back.'

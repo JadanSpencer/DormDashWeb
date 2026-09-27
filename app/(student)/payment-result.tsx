@@ -4,12 +4,11 @@
 // the payment before redirecting here; this screen shows the result, reading
 // the payment record itself from Firestore rather than trusting the URL.
 
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
 import { View, Text, StyleSheet, Pressable, Animated, Easing, ActivityIndicator, Dimensions } from 'react-native';
 import { useLocalSearchParams, router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { doc, onSnapshot } from 'firebase/firestore';
-import { db } from '../../services/firebase';
+import { usePayment } from '../../hooks/useWallet';
 import { T, useReducedMotion } from '../../constants/theme';
 import { formatTokens } from '../../services/payments';
 import { formatJMD } from '../../constants';
@@ -64,16 +63,8 @@ export default function PaymentResult() {
   const { pid, status: urlStatus } = useLocalSearchParams<{ pid?: string; status?: string }>();
   const insets = useSafeAreaInsets();
   const reduced = useReducedMotion();
-  const [pay, setPay] = useState<Pay | null>(null);
-  const [loaded, setLoaded] = useState(false);
-
-  useEffect(() => {
-    if (!pid) { setLoaded(true); return; }
-    return onSnapshot(doc(db, 'payments', String(pid)), snap => {
-      setPay(snap.exists() ? (snap.data() as Pay) : null);
-      setLoaded(true);
-    }, () => setLoaded(true));
-  }, [pid]);
+  // Live until the server has applied the payment (hooks/useWallet.ts).
+  const { pay, loaded } = usePayment<Pay>(pid ? String(pid) : undefined);
 
   if (!loaded) {
     return <View style={styles.center}><ActivityIndicator color={T.color.cerulean} size="large" /></View>;

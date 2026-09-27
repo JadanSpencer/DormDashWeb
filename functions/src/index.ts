@@ -17,9 +17,9 @@
 // PRESENTATION FIXES:
 //   • No emoji in titles.
 //   • Currency rendered as J$ with thousands separators, no decimals.
-//   • channelId 'default' + cerulean accent so Android styles it as ours.
+//   • channelId 'default' so Android styles it as ours.
 
-import { onDocumentWritten, onDocumentCreated } from 'firebase-functions/v2/firestore';
+import { onDocumentWritten } from 'firebase-functions/v2/firestore';
 import { logger } from 'firebase-functions/v2';
 import * as admin from 'firebase-admin';
 // FieldValue comes from the modular import: the namespace versions
@@ -28,9 +28,13 @@ import { FieldValue } from 'firebase-admin/firestore';
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { onSchedule } from 'firebase-functions/v2/scheduler';
 import {
-  reserveTokensAndVerify, chargeTokensOnAccept, settleCancelledOrder, PAY_WINDOW_MS,
+  reserveTokensAndVerify, chargeTokensOnAccept, settleCancelledOrder,
   migrateLegacyStoreFloats,
 } from './payments';
+import {
+  MAX_ACTIVE_ORDERS, MAX_ITEMS_PER_ORDER, PAY_WINDOW_MS, PENDING_TIMEOUT_MS, minutes,
+  ACTIVE_STATUSES, IN_DELIVERY_STATUSES, CancelReason,
+} from './shared';
 export { createPayment, wipayReturn, adminAdjustTokens, adminAdjustFloat, payOrderWithTokens } from './payments';
 import { alertStore } from './storeAlerts';
 export { storeAlertsAdmin } from './storeAlerts';
@@ -40,8 +44,6 @@ const CHUNK = 400; // Firestore batches cap at 500 writes
 if (!admin.apps.length) admin.initializeApp(); // payments.ts may have done it already
 
 const db = admin.firestore();
-
-const CERULEAN = '#0E8FB5';
 
 // ─── Notification marks ────────────────────────────────────────────────────
 // These are the SAME geometric glyphs the app uses in its UI (◇ delivery fee,
@@ -279,10 +281,9 @@ async function setDasherBusy(dasherId: string, orderId: string, busy: boolean): 
 //     ORDER_WINDOW_MS, which stops scripted spam
 // Invalid orders are cancelled with a cancelReason. Returns the corrected
 // order data, or null if the order was cancelled.
-const MAX_ITEMS_PER_ORDER = 20;
+// MAX_ITEMS_PER_ORDER and MAX_ACTIVE_ORDERS come from ./shared (the app uses
+// the same values). The rest are server-only.
 const MAX_ORDERS_PER_WINDOW = 5;
-// Keep in sync with MAX_ACTIVE_ORDERS in constants/index.ts (the app).
-const MAX_ACTIVE_ORDERS = 3;
 const DUPLICATE_WINDOW_MS = 2 * 60 * 1000;
 const ORDER_WINDOW_MS = 10 * 60 * 1000;
 
@@ -299,7 +300,7 @@ async function getRecentOrdersForStudent(studentId: string): Promise<admin.fires
   try {
     const [activeSnap, recentSnap] = await Promise.all([
       orders.where('studentId', '==', studentId)
-        .where('status', 'in', ['pending', 'accepted', 'picking_up', 'on_the_way'])
+        .where('status', 'in', ACTIVE_STATUSES)
         .select(...ORDER_FIELDS).get(),
       orders.where('studentId', '==', studentId)
         .where('verifiedAt', '>', Date.now() - ORDER_WINDOW_MS)
@@ -320,7 +321,7 @@ async function verifyNewOrder(
   ref: admin.firestore.DocumentReference,
   order: admin.firestore.DocumentData
 ): Promise<admin.firestore.DocumentData | null> {
-  const cancel = async (reason: string) => {
+  const cancel = async (reason: CancelReason) => {
     logger.warn(`Order ${ref.id} rejected: ${reason}`, { studentId: order.studentId });
     await ref.update({ status: 'cancelled', cancelReason: reason, cancelledAt: Date.now() });
     return null;
@@ -341,14 +342,13 @@ async function verifyNewOrder(
   // protection (a burst of taps once created 9 identical orders in half a
   // second). Every copy of this function sees the same set of orders and
   // uses the same ordering (createdAt, then id), so they all agree.
-  const ACTIVE = ['pending', 'accepted', 'picking_up', 'on_the_way'];
   const myCreated = Number(order.createdAt) || 0;
   const isEarlier = (d: admin.firestore.QueryDocumentSnapshot) => {
     const c = Number(d.get('createdAt')) || 0;
     return c < myCreated || (c === myCreated && d.id < ref.id);
   };
   const isActive = (d: admin.firestore.QueryDocumentSnapshot) =>
-    ACTIVE.includes(String(d.get('status')));
+    ACTIVE_STATUSES.includes(d.get('status'));
   // Same store + same items (ids and quantities) = same order.
   const signature = (storeId: unknown, items: unknown) =>
     String(storeId ?? '') + '|' + (Array.isArray(items) ? items : [])
@@ -584,7 +584,7 @@ export const onOrderStatusChanged = onDocumentWritten(
         if (token) await sendPushNotification(
           token,
           `${MARK.assigned} Pay now to confirm`,
-          `${after.dasherName} accepted your order. Pay ${jmd(after.totalAmount)} with your tokens or card within 10 minutes, or it will be cancelled.`,
+          `${after.dasherName} accepted your order. Pay ${jmd(after.totalAmount)} with your tokens or card within ${minutes(PAY_WINDOW_MS)} minutes, or it will be cancelled.`,
           { screen: `/(student)/order/${orderId}`, orderId },
           'accepted_pay_now'
         );
@@ -627,10 +627,12 @@ export const onOrderStatusChanged = onDocumentWritten(
     }
 
     if (after.status === 'delivered') {
-      // The dasher is free again: new-order alerts resume.
+      // The dasher is free again (new-order alerts resume) and is credited
+      // for the delivery (once, see creditDasherForDelivery).
       const [token] = await Promise.all([
         getUserToken(studentId),
         dasherId ? setDasherBusy(dasherId, orderId, false) : Promise.resolve(),
+        dasherId ? creditDasherForDelivery(ref, dasherId) : Promise.resolve(),
       ]);
       if (token) await sendPushNotification(
         token,
@@ -652,7 +654,7 @@ export const onOrderStatusChanged = onDocumentWritten(
       // The store only heard about orders that were paid and had a dasher,
       // so only those get a "don't make it" alert.
       const storeWasTold = before?.paymentStatus === 'paid' &&
-        ['accepted', 'picking_up', 'on_the_way'].includes(before?.status);
+        IN_DELIVERY_STATUSES.includes(before?.status);
       const [, studentToken, dasherToken] = await Promise.all([
         storeWasTold ? alertStore(after, orderId, 'cancelled') : Promise.resolve(),
         after.cancelReason === 'duplicate_order' ? Promise.resolve(null) : getUserToken(studentId),
@@ -667,11 +669,11 @@ export const onOrderStatusChanged = onDocumentWritten(
         store_closed: `${after.storeName} closed before your order went through. You were not charged.`,
         item_unavailable: 'An item in your order is no longer available. You were not charged.',
         account_inactive: 'Your account is paused. Contact support to restore it.',
-        too_many_active: 'You already have 3 orders in progress. Wait for one to arrive, then order again.',
+        too_many_active: `You already have ${MAX_ACTIVE_ORDERS} orders in progress. Wait for one to arrive, then order again.`,
         no_dasher: 'No dasher was free to take it in time. You were not charged. Please try again later.',
         admin: `Your order from ${after.storeName} was cancelled by DormDash support.`,
         insufficient_tokens: 'You don\'t have enough tokens for this order. You were not charged.',
-        payment_timeout: `Your order from ${after.storeName} wasn't paid within 10 minutes, so it was cancelled. You were not charged.`,
+        payment_timeout: `Your order from ${after.storeName} wasn't paid within ${minutes(PAY_WINDOW_MS)} minutes, so it was cancelled. You were not charged.`,
       };
       const refundNote = wasPaid ? ' Your payment was returned to you as DormDash tokens.' : '';
 
@@ -706,100 +708,93 @@ function deliveryMinsOf(order: admin.firestore.DocumentData): { deliveryMins?: n
   return Number.isFinite(ms) && ms >= 0 ? { deliveryMins: Math.round(ms / 60000) } : {};
 }
 
-// ─── TRIGGER: DELIVERY COMPLETED → credit the dasher ───────────────────────
-// (Kept from the existing deployment: server-written stats are tamper-proof.)
-// Firestore triggers are delivered at least once, so a retry could run this
-// twice for the same delivery. The credit and a dasherCreditedAt mark on the
-// order are written in one transaction: a second run sees the mark and stops.
-export const onDeliveryCompleted = onDocumentWritten(
-  'orders/{orderId}',
-  async (event) => {
-    const before = event.data?.before?.data();
-    const after = event.data?.after?.data();
-    if (!after || !before) return;
-    if (before.status === 'delivered' || after.status !== 'delivered') return;
-    if (!after.dasherId) return;
+// ─── DELIVERY COMPLETED → credit the dasher ────────────────────────────────
+// Called from onOrderStatusChanged's delivered branch (server-written stats
+// are tamper-proof). Triggers are delivered at least once, so a retry could
+// run this twice for the same delivery: the credit and a dasherCreditedAt
+// mark on the order are written in one transaction, and a second run sees
+// the mark and stops. The mark's write re-triggers onOrderStatusChanged,
+// which ignores it (status unchanged).
+async function creditDasherForDelivery(orderRef: admin.firestore.DocumentReference, dasherId: string): Promise<void> {
+  const credited = await db.runTransaction(async tx => {
+    const fresh = (await tx.get(orderRef)).data();
+    if (!fresh || fresh.status !== 'delivered' || fresh.dasherCreditedAt) return false;
+    tx.set(db.collection('dashers').doc(dasherId), {
+      totalDeliveries: FieldValue.increment(1),
+      totalEarnings: FieldValue.increment(Number(fresh.deliveryFee) || 0),
+    }, { merge: true });
+    tx.update(orderRef, { dasherCreditedAt: Date.now(), ...deliveryMinsOf(fresh) });
+    return true;
+  });
+  if (credited) logger.info(`Credited dasher ${dasherId} for order ${orderRef.id}`);
+  else logger.info(`Dasher already credited for order ${orderRef.id}, skipped`);
+}
 
-    const orderRef = event.data!.after!.ref;
-    const credited = await db.runTransaction(async tx => {
-      const fresh = (await tx.get(orderRef)).data();
-      if (!fresh || fresh.status !== 'delivered' || fresh.dasherCreditedAt) return false;
-      tx.set(db.collection('dashers').doc(after.dasherId), {
-        totalDeliveries: FieldValue.increment(1),
-        totalEarnings: FieldValue.increment(Number(fresh.deliveryFee) || 0),
-      }, { merge: true });
-      tx.update(orderRef, { dasherCreditedAt: Date.now(), ...deliveryMinsOf(fresh) });
-      return true;
+// ─── TRIGGER: USER WRITTEN ─────────────────────────────────────────────────
+// One trigger for users/{uid} (it used to be three functions, each started
+// on every user write). Each job checks whether its field changed and
+// returns at once if not; one failing doesn't stop the others.
+
+// New user → admins only.
+async function notifyAdminsOfNewUser(uid: string, user: admin.firestore.DocumentData): Promise<void> {
+  const adminSnapshot = await db.collection('users').where('role', '==', 'admin').get();
+  const pushes: Push[] = [];
+  adminSnapshot.forEach(doc => {
+    if (doc.id === uid) return;   // don't notify yourself
+    const token = doc.data().pushToken;
+    if (token) pushes.push({
+      token,
+      title: `${MARK.newUser} New user joined`,
+      body: `${user.name} registered as a ${user.role}.`,
+      data: { screen: '/(admin)/(tabs)/users' },
     });
+  });
+  await sendPushes(pushes, 'new_user');
+}
 
-    if (credited) logger.info(`Credited dasher ${after.dasherId} for order ${event.params.orderId}`);
-    else logger.info(`Dasher already credited for order ${event.params.orderId}, skipped`);
-  }
-);
+// Session enforcement. isActive in Firestore is what admins toggle. This
+// mirrors it into Firebase Auth: deactivated accounts are disabled (can't
+// sign in or refresh a session) and their existing sessions are revoked, so
+// a deactivated user is signed out within the hour on every device.
+async function syncAuthActive(uid: string, isActive: boolean): Promise<void> {
+  await admin.auth().updateUser(uid, { disabled: !isActive });
+  if (!isActive) await admin.auth().revokeRefreshTokens(uid);
+  logger.info(`Auth ${isActive ? 'enabled' : 'disabled'} for ${uid}`);
+}
 
-// ─── TRIGGER: NEW USER → admins only ───────────────────────────────────────
-export const onNewUserRegistered = onDocumentCreated(
-  'users/{userId}',
-  async (event) => {
-    const user = event.data?.data();
-    if (!user) return;
-
-    const adminSnapshot = await db.collection('users').where('role', '==', 'admin').get();
-
-    const sends: Promise<void>[] = [];
-    adminSnapshot.forEach(doc => {
-      if (doc.id === event.params.userId) return;   // don't notify yourself
-      const token = doc.data().pushToken;
-      if (token) sends.push(
-        sendPushNotification(
-          token,
-          `${MARK.newUser} New user joined`,
-          `${user.name} registered as a ${user.role}.`,
-          { screen: '/(admin)/(tabs)/users' }
-        )
-      );
-    });
-
-    await Promise.all(sends);
-  }
-);
-
-// ─── SESSION ENFORCEMENT ────────────────────────────────────────────────────
-// isActive in Firestore is what admins toggle. This mirrors it into Firebase
-// Auth: deactivated accounts are disabled (can't sign in or refresh a
-// session) and their existing sessions are revoked, so a deactivated user is
-// signed out within the hour on every device, not just on the next login.
-export const onUserActiveChanged = onDocumentWritten('users/{uid}', async (event) => {
-  const before = event.data?.before?.data();
-  const after = event.data?.after?.data();
-  if (!after) return;
-  const wasActive = before ? before.isActive !== false : true;
-  const isActive = after.isActive !== false;
-  if (wasActive === isActive) return;
-  const uid = event.params.uid;
-  try {
-    await admin.auth().updateUser(uid, { disabled: !isActive });
-    if (!isActive) await admin.auth().revokeRefreshTokens(uid);
-    logger.info(`Auth ${isActive ? 'enabled' : 'disabled'} for ${uid}`);
-  } catch (e) {
-    logger.error(`Could not sync auth state for ${uid}`, e);
-  }
-});
-
-// ─── ONE DEVICE, ONE ACCOUNT ───────────────────────────────────────────────
-// A phone or browser has one push token. If someone signs in on a device
-// where another account was used and never signed out, both user docs would
-// hold the same token and the new person would receive the old account's
-// order alerts. Whenever a token is saved, remove it from every other user.
-export const onPushTokenChanged = onDocumentWritten('users/{uid}', async (event) => {
-  const token = event.data?.after?.data()?.pushToken;
-  const previous = event.data?.before?.data()?.pushToken;
-  if (!token || token === previous) return;
-  const uid = event.params.uid;
+// One device, one account. A phone or browser has one push token. If
+// someone signs in on a device where another account was used and never
+// signed out, both user docs would hold the same token and the new person
+// would receive the old account's order alerts. Whenever a token is saved,
+// remove it from every other user.
+async function detachTokenFromOtherUsers(uid: string, token: string): Promise<void> {
   const others = await db.collection('users').where('pushToken', '==', token).get();
   const stale = others.docs.filter(d => d.id !== uid);
   await Promise.all(stale.map(d => d.ref.update({ pushToken: null, pushTokenUpdatedAt: Date.now() })));
   if (stale.length) logger.info(`Push token moved to ${uid}; detached from ${stale.length} other account(s)`);
+}
+
+export const onUserWritten = onDocumentWritten('users/{uid}', async (event) => {
+  const before = event.data?.before?.data();
+  const after = event.data?.after?.data();
+  if (!after) return; // deleted
+  const uid = event.params.uid;
+
+  const jobs: Promise<void>[] = [];
+  if (!before) jobs.push(notifyAdminsOfNewUser(uid, after));
+
+  const wasActive = before ? before.isActive !== false : true;
+  const isActive = after.isActive !== false;
+  if (wasActive !== isActive) jobs.push(syncAuthActive(uid, isActive));
+
+  if (after.pushToken && after.pushToken !== before?.pushToken) {
+    jobs.push(detachTokenFromOtherUsers(uid, after.pushToken));
+  }
+
+  const results = await Promise.allSettled(jobs);
+  results.forEach(r => {
+    if (r.status === 'rejected') logger.error(`User trigger job failed for ${uid}`, { message: r.reason?.message });
+  });
 });
 
 export const deactivateMyAccount = onCall(async (request) => {
@@ -830,12 +825,12 @@ export const deleteMyAccount = onCall(async (request) => {
   // Refuse while an order is in flight — money and food are mid-transit.
   const liveAsStudent = await db.collection('orders')
     .where('studentId', '==', uid)
-    .where('status', 'in', ['pending', 'accepted', 'picking_up', 'on_the_way'])
+    .where('status', 'in', ACTIVE_STATUSES)
     .limit(1).get();
  
   const liveAsDasher = await db.collection('orders')
     .where('dasherId', '==', uid)
-    .where('status', 'in', ['accepted', 'picking_up', 'on_the_way'])
+    .where('status', 'in', IN_DELIVERY_STATUSES)
     .limit(1).get();
  
   if (!liveAsStudent.empty || !liveAsDasher.empty) {
@@ -955,7 +950,6 @@ export const runMigrations = onSchedule('every 10 minutes', async () => {
 // An order nobody accepts would otherwise sit on "Finding a dasher" forever.
 // Every 5 minutes, cancel pending orders older than PENDING_TIMEOUT_MS. The
 // cancel write triggers onOrderStatusChanged, which tells the student why.
-const PENDING_TIMEOUT_MS = 30 * 60 * 1000;
 
 // SPEED: only overdue orders are read. This used to read every pending and
 // every accepted order every 5 minutes and filter them here. Each query
@@ -998,7 +992,7 @@ async function cancelOverdueOrders(now = Date.now()): Promise<{ noDasher: number
     if (fresh.get('status') !== 'pending') return;
     tx.update(d.ref, { status: 'cancelled', cancelReason: 'no_dasher', cancelledAt: Date.now() });
   }).catch(e => logger.warn('Auto-cancel failed', { orderId: d.id, message: e?.message }))));
-  if (stale.length) logger.info(`Auto-cancelled ${stale.length} order(s) nobody accepted in 30 min`);
+  if (stale.length) logger.info(`Auto-cancelled ${stale.length} order(s) nobody accepted in ${minutes(PENDING_TIMEOUT_MS)} min`);
 
   // Card orders a dasher accepted but the student never paid for.
   const isUnpaid = (d: Snap) =>

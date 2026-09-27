@@ -26,7 +26,7 @@ import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { loginUser, resetPassword } from '../../services/auth';
 import { requestPushPermissionFromGesture } from '../../services/notifications';
-import { T, useReducedMotion } from '../../constants/theme';
+import { T } from '../../constants/theme';
 import { Logo } from '../../components/Logo';
 
 // Small-screen handling: compact the hero + spacing under 700px tall
@@ -41,7 +41,6 @@ export default function LoginScreen() {
   const [resetting, setResetting] = useState(false);
   const [focused, setFocused] = useState<'email' | 'password' | null>(null);
 
-  const reduced = useReducedMotion();
 
   // ── Orchestrated entrance ────────────────────────────────────────────
   const heroFade = useRef(new Animated.Value(0)).current;

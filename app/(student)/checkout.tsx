@@ -24,11 +24,11 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, router } from 'expo-router';
-import { collection, doc, addDoc, getDocs, query, where, onSnapshot } from 'firebase/firestore';
-import { db } from '../../services/firebase';
+import { placeOrder } from '../../services/orders';
+import { useOnlineDasherCount } from '../../hooks/useOrders';
 import { useAuth } from '../../hooks/useAuth';
 import { CartItem, Order } from '../../types';
-import { formatJMD, CAMPUS_CENTER, MAX_ACTIVE_ORDERS } from '../../constants';
+import { CAMPUS_CENTER, MAX_ACTIVE_ORDERS, PAY_WINDOW_MIN } from '../../constants';
 import { serverNow } from '../../services/serverClock';
 import { usePriceUnit } from '../../hooks/usePriceUnit';
 import { PriceUnitToggle } from '../../components/PriceUnitToggle';
@@ -67,7 +67,7 @@ export default function CheckoutScreen() {
   // through before it did, and one tap-burst created 9 orders at once.
   const placingRef = useRef(false);
   const [coords, setCoords] = useState<{ latitude: number; longitude: number } | null>(null);
-  const [onlineDashers, setOnlineDashers] = useState<number | null>(null);
+  const onlineDashers = useOnlineDasherCount();
   const [focused, setFocused] = useState<'address' | 'note' | null>(null);
 
   // Motion — press feedback on the CTA
@@ -90,12 +90,6 @@ export default function CheckoutScreen() {
     return () => { cancelled = true; };
   }, []);
 
-  // dashers/* is private, so the server keeps a public count
-  // (onDasherOnlineChanged). Missing doc = unknown, so no warning is shown.
-  useEffect(() => onSnapshot(doc(db, 'publicStats', 'app'), snap => {
-    const n = snap.data()?.onlineDashers;
-    setOnlineDashers(typeof n === 'number' ? n : null);
-  }, () => setOnlineDashers(null)), []);
 
   const handlePlaceOrder = async () => {
     const cleanLabel = sanitizeAddress(deliveryLabel);
@@ -116,21 +110,6 @@ export default function CheckoutScreen() {
     placingRef.current = true;
     setPlacing(true);
     try {
-      // Up to MAX_ACTIVE_ORDERS in progress at once (the server enforces
-      // the same limit in verifyNewOrder).
-      const activeSnap = await getDocs(query(
-        collection(db, 'orders'),
-        where('studentId', '==', user.uid),
-        where('status', 'in', ['pending', 'accepted', 'picking_up', 'on_the_way'])
-      ));
-      if (activeSnap.size >= MAX_ACTIVE_ORDERS) {
-        Alert.alert(
-          'Order limit reached',
-          `You can have up to ${MAX_ACTIVE_ORDERS} orders in progress at once. Wait for one to arrive, then order again.`
-        );
-        return;
-      }
-
       // Firestore rejects `undefined` field values outright, which is why an
       // empty note used to throw "Function addDoc() called with invalid data".
       // The note is optional, so when it's blank the key is simply not written.
@@ -156,8 +135,17 @@ export default function CheckoutScreen() {
         ...(cleanNote ? { studentNote: cleanNote } : {}),
       };
 
-      const docRef = await addDoc(collection(db, 'orders'), order);
-      router.replace({ pathname: '/(student)/order/[id]', params: { id: docRef.id } });
+      // placeOrder checks the MAX_ACTIVE_ORDERS limit first (the server
+      // enforces the same limit in verifyNewOrder).
+      const result = await placeOrder(order);
+      if (!result.ok) {
+        Alert.alert(
+          'Order limit reached',
+          `You can have up to ${MAX_ACTIVE_ORDERS} orders in progress at once. Wait for one to arrive, then order again.`
+        );
+        return;
+      }
+      router.replace({ pathname: '/(student)/order/[id]', params: { id: result.id } });
     } catch (e: any) {
       Alert.alert('Order Failed', e.message ?? 'Could not place order. Try again.');
     } finally {
@@ -245,7 +233,7 @@ export default function CheckoutScreen() {
         <View style={styles.card}>
           <Text style={styles.payTitle}>Pay after a dasher accepts</Text>
           <Text style={styles.paySub}>
-            Nothing is charged now. When a dasher accepts, you'll get a notification and choose how to pay: with your DormDash tokens or by card. You then have 10 minutes to pay.
+            Nothing is charged now. When a dasher accepts, you'll get a notification and choose how to pay: with your DormDash tokens or by card. You then have {PAY_WINDOW_MIN} minutes to pay.
           </Text>
         </View>
 

@@ -11,14 +11,12 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, router } from 'expo-router';
-import { doc, getDoc, collection, onSnapshot, query, orderBy } from 'firebase/firestore';
-import { db } from '../../../services/firebase';
-import { Store, MenuItem, CartItem } from '../../../types';
-import { MAX_ORDER_ITEMS, formatJMD } from '../../../constants';
+import { useStore, useMenu } from '../../../hooks/useStores';
+import { MenuItem, CartItem } from '../../../types';
+import { MAX_ITEMS_PER_ORDER } from '../../../constants';
 import { usePriceUnit } from '../../../hooks/usePriceUnit';
 import { PriceUnitToggle } from '../../../components/PriceUnitToggle';
 import { T, useReducedMotion } from '../../../constants/theme';
-import { appCache, CACHE_KEYS, CACHE_TTL } from '../../../services/cache';
 import { Watermark } from '../../../components/Watermark';
 
 // Fallback-safe navigation. When a user lands on a store via notification
@@ -47,9 +45,11 @@ export default function StoreMenuScreen() {
   const reduced = useReducedMotion();
 
   const { fmt } = usePriceUnit();
-  const [store, setStore] = useState<Store | null>(null);
-  const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
-  const [loading, setLoading] = useState(true);
+  // Store details are reused from a short-lived cache; the menu is live and
+  // hides switched-off items (hooks/useStores.ts).
+  const store = useStore(id, { cached: true });
+  const { items: menuItems, loading } = useMenu(id, { availableOnly: true });
+
   const [cart, setCart] = useState<CartItem[]>([]);
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [addedItemId, setAddedItemId] = useState<string | null>(null);
@@ -67,40 +67,10 @@ export default function StoreMenuScreen() {
     ]).start();
   }, []);
 
-  useEffect(() => {
-    if (!id) return;
-    const cached = appCache.get<Store>(CACHE_KEYS.STORE(id));
-    if (cached) { setStore(cached); return; }
-    getDoc(doc(db, 'stores', id)).then(snap => {
-      if (snap.exists()) {
-        const storeData = { id: snap.id, ...snap.data() } as Store;
-        setStore(storeData);
-        appCache.set(CACHE_KEYS.STORE(id), storeData, CACHE_TTL.STORES);
-      }
-    });
-  }, [id]);
-
-  useEffect(() => {
-    if (!id) return;
-    const q = query(
-      collection(db, 'stores', id, 'menuItems'),
-      orderBy('category', 'asc')
-    );
-    const unsub = onSnapshot(q, snap => {
-      setMenuItems(
-        snap.docs
-          .map(d => ({ id: d.id, ...d.data() } as MenuItem))
-          .filter(item => item.isAvailable)
-      );
-      setLoading(false);
-    });
-    return unsub;
-  }, [id]);
-
   const addToCart = (item: MenuItem) => {
     const totalItems = cart.reduce((sum, c) => sum + c.quantity, 0);
-    if (totalItems >= MAX_ORDER_ITEMS) {
-      Alert.alert('Cart Full', `Maximum ${MAX_ORDER_ITEMS} items per order.`);
+    if (totalItems >= MAX_ITEMS_PER_ORDER) {
+      Alert.alert('Cart Full', `Maximum ${MAX_ITEMS_PER_ORDER} items per order.`);
       return;
     }
     setCart(prev => {

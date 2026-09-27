@@ -25,22 +25,6 @@ export interface User {
     termsVersion?: string;    // which Terms/Privacy date they agreed to
 }
 
-// ---- Dasher Profile ------------------------------------------------------
-// Stored in firestore at: /dahsers/{userId}
-// separate from User - a dasher has extra fields
-export interface DasherProfile {
-    uid: string;
-    isOnline: boolean;
-    currentLocation?: {
-        latitude: number;
-        longitude: number;
-    };
-    rating: number;
-    totalDeliveries: number;
-    vehicleType: 'walking' | 'bicycle' | 'bike' | 'car';
-}
-
-
 // ---- Store --------------------------------------------------------------
 // Stored in firstore at: /stores/{storeId}
 // Admin creates and manages these
@@ -88,8 +72,9 @@ export interface CartItem {
 
 // ---- Order Status ------------------------------------------------------
 // The lifecycle of every order - it can ONLY be in one of these states
-export type OrderStatus = 
-| 'pending' | 'accepted' | 'picking_up' | 'on_the_way' | 'delivered' | 'cancelled';
+// Defined once in functions/src/shared.ts (shared with the server).
+import type { OrderStatus, PaymentMethod, PaymentStatus, CancelReason } from '../functions/src/shared';
+export type { OrderStatus, PaymentMethod, PaymentStatus, CancelReason };
 
 // ---- Order -------------------------------------------------------------
 // Stored in firestore at: /orders/{orderId}
@@ -116,27 +101,14 @@ export interface Order {
     acceptedAt?: number;
     deliveredAt?: number;
     studentRating?: number;
-    cancelReason?: string;   // set by the server when it rejects an order
+    cancelReason?: CancelReason; // set by the server (or admin); none = the student cancelled
     verifiedAt?: number;     // set by the server after re-pricing the order
     dasherCreditedAt?: number; // set by the server once the dasher's stats are credited
     deliveryMins?: number;   // set by the server on delivery (admin dashboard average)
     // Payments (functions/src/payments.ts). Missing on orders from before payments.
-    paymentMethod?: 'card' | 'tokens';
-    paymentStatus?: 'unpaid' | 'reserved' | 'awaiting_payment' | 'paid' | 'released' | 'refunded_tokens';
+    paymentMethod?: PaymentMethod;
+    paymentStatus?: PaymentStatus;
     payDeadline?: number;    // card: pay by this time after a dasher accepts
     paidAt?: number;
     studentNote?: string;
 }
-
-// ─── NOTIFICATION ──────────────────────────────────────────────────────────
-// Stored in Firestore at: /notifications/{notificationId}
-export interface Notification {
-    id: string;
-    userId: string;
-    title: string;
-    body: string;
-    type: 'order_update' | 'new_order' | 'system';
-    orderId?: string;
-    read: boolean;
-    createdAt: number;
-  }

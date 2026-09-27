@@ -4,52 +4,32 @@
 // soft-ban toggle with confirm Alert. Role colors remapped into the
 // palette: student = cerulean, dasher = teal, admin = danger.
 
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import {
-  View, Text, StyleSheet, FlatList, TouchableOpacity, Pressable,
+  View, Text, StyleSheet, FlatList, Pressable,
   Alert, ActivityIndicator, TextInput,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { collection, onSnapshot, updateDoc, doc, query, orderBy } from 'firebase/firestore';
-import { db } from '../../../services/firebase';
+import { useAllUsers, useAllWallets, useDasherFloats } from '../../../hooks/useUsers';
+import { setUserActive } from '../../../services/users';
 import { User } from '../../../types';
 import { S } from '../../../constants/themeMid';
-import { formatJMD } from '../../../constants';
+import { formatJMD, TOKEN_JMD } from '../../../constants';
 import { AmountPrompt } from '../../../components/AmountPrompt';
 import { adminAdjustTokens, adminAdjustFloat, formatTokens } from '../../../services/payments';
 
 export default function AdminUsers() {
   const insets = useSafeAreaInsets();
-  const [users, setUsers] = useState<User[]>([]);
-  const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState<'all' | 'student' | 'dasher' | 'admin'>('all');
   const [searchFocused, setSearchFocused] = useState(false);
 
   // Money: students' token balances and dashers' floats (read-only here;
   // changes go through Cloud Functions so every change is in the ledger).
-  const [wallets, setWallets] = useState<Record<string, { balanceJmd: number; reservedJmd: number }>>({});
-  const [floats, setFloats] = useState<Record<string, number>>({});
+  const wallets = useAllWallets();
+  const floats = useDasherFloats();
   const [adjust, setAdjust] = useState<{ user: User; kind: 'tokens' | 'float' } | null>(null);
-  useEffect(() => onSnapshot(collection(db, 'wallets'), snap => {
-    const m: Record<string, { balanceJmd: number; reservedJmd: number }> = {};
-    snap.forEach(d => { const w = d.data(); m[d.id] = { balanceJmd: Number(w.balanceJmd) || 0, reservedJmd: Number(w.reservedJmd) || 0 }; });
-    setWallets(m);
-  }, () => {}), []);
-  useEffect(() => onSnapshot(collection(db, 'dashers'), snap => {
-    const m: Record<string, number> = {};
-    snap.forEach(d => { m[d.id] = Number(d.data().floatJmd) || 0; });
-    setFloats(m);
-  }, () => {}), []);
-
-  useEffect(() => {
-    const q = query(collection(db, 'users'), orderBy('createdAt', 'desc'));
-    const unsub = onSnapshot(q, snap => {
-      setUsers(snap.docs.map(d => ({ uid: d.id, ...d.data() } as User)));
-      setLoading(false);
-    });
-    return unsub;
-  }, []);
+  const { users, loading } = useAllUsers();
 
   const handleToggleActive = (user: User) => {
     const action = user.isActive ? 'Deactivate' : 'Reactivate';
@@ -63,7 +43,7 @@ export default function AdminUsers() {
         text: action,
         style: user.isActive ? 'destructive' : 'default',
         onPress: async () => {
-          await updateDoc(doc(db, 'users', user.uid), { isActive: !user.isActive });
+          await setUserActive(user.uid, !user.isActive);
         },
       },
     ]);
@@ -226,7 +206,7 @@ export default function AdminUsers() {
         title={adjust?.kind === 'float' ? `Float for ${adjust?.user.name}` : `Tokens for ${adjust?.user.name}`}
         hint={adjust?.kind === 'float'
           ? 'J$ to add to this dasher\'s float (money you gave them to buy orders). Use a minus sign to reduce it.'
-          : 'Tokens to add (1 token = J$100), e.g. after they pay you cash. Use a minus sign to remove.'}
+          : `Tokens to add (1 token = J$${TOKEN_JMD}), e.g. after they pay you cash. Use a minus sign to remove.`}
         unitLabel={adjust?.kind === 'float' ? 'J$' : 'tokens'}
         onCancel={() => setAdjust(null)}
         onSubmit={async (amount, note) => {

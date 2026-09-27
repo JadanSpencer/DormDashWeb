@@ -19,29 +19,20 @@
 import React, { useEffect, useState, useRef } from 'react';
 import {
   View, Text, StyleSheet, FlatList, Pressable,
-  Switch, Alert, ActivityIndicator, Animated, Easing, Platform
+  Switch, Alert, Animated, Easing, Platform
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import {
-  collection, query, where, onSnapshot,
-  updateDoc, doc, orderBy, runTransaction, getDoc,
-} from 'firebase/firestore';
 import * as Location from 'expo-location';
-import { db } from '../../services/firebase';
+import { goOnline, goOffline, isDasherOnline } from '../../services/dasher';
 import { serverNow, syncServerClock } from '../../services/serverClock';
 import { useAuth } from '../../hooks/useAuth';
 import { useWakeLock } from '../../hooks/useWakeLock';
-import { useDasherOrders, startOfDay } from '../../hooks/useDasherOrders';
+import { usePendingOrders, useActiveDelivery, useDasherOrders, startOfDay } from '../../hooks/useOrders';
+import { acceptOrder, advanceOrder, NEXT_STATUS } from '../../services/orders';
 import { Order, OrderStatus } from '../../types';
-import { formatJMD, LOCATION_UPDATE_INTERVAL_MS } from '../../constants';
+import { formatJMD, LOCATION_UPDATE_INTERVAL_MS, PAY_WINDOW_MIN } from '../../constants';
 import { D } from '../../constants/themeDark';
 import MapView, { Marker, PROVIDER_GOOGLE } from '../../components/MapView';
-
-const NEXT_STATUS: Partial<Record<OrderStatus, OrderStatus>> = {
-  accepted:   'picking_up',
-  picking_up: 'on_the_way',
-  on_the_way: 'delivered',
-};
 
 const NEXT_STATUS_LABEL: Partial<Record<OrderStatus, string>> = {
   accepted:   'Mark as picked up',
@@ -69,11 +60,14 @@ export default function DasherHome() {
   const insets = useSafeAreaInsets();
 
   const [isOnline, setIsOnline] = useState(false);
-  const [pendingOrders, setPendingOrders] = useState<Order[]>([]);
-  const [activeOrder, setActiveOrder] = useState<Order | null>(null);
-  const [loading, setLoading] = useState(true);
   const [location, setLocation] = useState<{ latitude: number; longitude: number } | null>(null);
   const locationInterval = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // ── Listeners (hooks/useOrders.ts) ────────────────────────────────
+  // Verified open orders; re-subscribes after errors and when the web app
+  // comes back on screen.
+  const { orders: pendingOrders, loading, refresh: refreshPending, dismiss: dismissPending } = usePendingOrders();
+  const activeOrder = useActiveDelivery(user?.uid);
 
   // PWA: keep the screen on only during an active delivery (map and status
   // buttons in use). Being online no longer needs the app open.
@@ -106,10 +100,7 @@ export default function DasherHome() {
   const startLocationTracking = async () => {
     if (!user) return false;
     try {
-      await updateDoc(doc(db, 'dashers', user.uid), {
-        isOnline: true,
-        lastSeenAt: serverNow(),
-      });
+      await goOnline(user.uid);
     } catch {
       Alert.alert('Could not go online', 'Check your connection and try again.');
       return false;
@@ -139,11 +130,7 @@ export default function DasherHome() {
       locationInterval.current = null;
     }
     if (user) {
-      updateDoc(doc(db, 'dashers', user.uid), {
-        isOnline: false,
-        currentLocation: null, // clears positions stored by older versions
-        lastSeenAt: serverNow(),
-      }).catch(() => {});
+      goOffline(user.uid).catch(() => {});
     }
   };
 
@@ -165,8 +152,8 @@ export default function DasherHome() {
     syncServerClock();
     if (!user) return;
     let cancelled = false;
-    getDoc(doc(db, 'dashers', user.uid)).then(snap => {
-      if (!cancelled && snap.data()?.isOnline === true) {
+    isDasherOnline(user.uid).then(online => {
+      if (!cancelled && online) {
         startLocationTracking().then(ok => { if (ok && !cancelled) setIsOnline(true); });
       }
     }).catch(() => {});
@@ -180,111 +167,34 @@ export default function DasherHome() {
     };
   }, [user?.uid]);
 
-  // ── Listeners (unchanged) ──────────────────────────────────────────
-  // Bumping this re-opens the order listener. A listener that errors, or
-  // that the phone froze while DormDash was in the background, used to stop
-  // updating silently: cancelled orders stayed on screen, "X mins ago" kept
-  // climbing, and accepting them failed.
-  const [listenKey, setListenKey] = useState(0);
-  useEffect(() => {
-    if (Platform.OS !== 'web' || typeof document === 'undefined') return;
-    const onVisible = () => {
-      if (document.visibilityState === 'visible') setListenKey(k => k + 1);
-    };
-    document.addEventListener('visibilitychange', onVisible);
-    return () => document.removeEventListener('visibilitychange', onVisible);
-  }, []);
-
-  useEffect(() => {
-    const q = query(
-      collection(db, 'orders'),
-      where('status', '==', 'pending'),
-      orderBy('createdAt', 'asc')
-    );
-    let retry: ReturnType<typeof setTimeout> | undefined;
-    const unsub = onSnapshot(q, snap => {
-      // Only orders the server has checked (verifyNewOrder sets verifiedAt).
-      // Unchecked ones may be about to be rejected: duplicates, rate limits.
-      setPendingOrders(
-        snap.docs
-          .map(d => ({ id: d.id, ...d.data() } as Order))
-          .filter(o => !!o.verifiedAt)
-      );
-      setLoading(false);
-    }, err => {
-      console.log('Pending orders listener failed, retrying:', err?.message);
-      retry = setTimeout(() => setListenKey(k => k + 1), 3000);
-    });
-    return () => { unsub(); if (retry) clearTimeout(retry); };
-  }, [listenKey]);
-
-  useEffect(() => {
-    if (!user) return;
-    const q = query(
-      collection(db, 'orders'),
-      where('dasherId', '==', user.uid),
-      where('status', 'in', ['accepted', 'picking_up', 'on_the_way'])
-    );
-    const unsub = onSnapshot(q, snap => {
-      if (!snap.empty) {
-        setActiveOrder({ id: snap.docs[0].id, ...snap.docs[0].data() } as Order);
-      } else {
-        setActiveOrder(null);
-      }
-    });
-    return unsub;
-  }, [user]);
-
   // Today strip: orders accepted since yesterday's midnight (so a delivery
   // accepted just before midnight still counts today), not the whole history.
   const { orders: myOrders } = useDasherOrders(user?.uid, startOfDay(1));
 
-  // ── Accept / status (unchanged handlers) ───────────────────────────
+  // ── Accept / status (writes in services/orders.ts) ────────────────
   const handleAccept = async (order: Order) => {
     if (!user) return;
     if (activeOrder) {
       Alert.alert('Active Order', 'Finish your current delivery before accepting a new one.');
       return;
     }
-    const ref = doc(db, 'orders', order.id);
-    const drop = () => setPendingOrders(list => list.filter(o => o.id !== order.id));
     try {
-      // Read and claim in one step, so the message says what really happened
-      // instead of always blaming "another dasher".
-      const outcome = await runTransaction(db, async tx => {
-        const snap = await tx.get(ref);
-        const cur = snap.data();
-        if (!snap.exists() || !cur) return 'gone';
-        if (cur.status === 'cancelled') return 'cancelled';
-        if (cur.status !== 'pending' || cur.dasherId) return 'taken';
-        tx.update(ref, {
-          dasherId: user.uid,
-          dasherName: user.name,
-          status: 'accepted',
-          acceptedAt: serverNow(),
-        });
-        return 'ok';
-      });
+      const outcome = await acceptOrder(order.id, { uid: user.uid, name: user.name });
       if (outcome === 'ok') return;
-      drop();
+      dismissPending(order.id);
       if (outcome === 'taken') Alert.alert('Too slow!', 'Another dasher just took this order.');
       else Alert.alert('Order no longer available', 'The customer cancelled this order, or it was a duplicate. It has been removed from your list.');
     } catch (e: any) {
-      drop();
-      setListenKey(k => k + 1); // refresh the list from the server
+      dismissPending(order.id);
+      refreshPending(); // refresh the list from the server
       Alert.alert('Order no longer available', 'This order was cancelled or already taken. Your list has been refreshed.');
     }
   };
 
   const handleStatusUpdate = async () => {
     if (!activeOrder) return;
-    const next = NEXT_STATUS[activeOrder.status];
-    if (!next) return;
-
-    const update: any = { status: next };
-    if (next === 'delivered') update.deliveredAt = serverNow();
     try {
-      await updateDoc(doc(db, 'orders', activeOrder.id), update);
+      await advanceOrder(activeOrder);
     } catch (e) {
       Alert.alert('Update Failed', 'Could not update the order status. Check your connection and try again.');
     }
@@ -439,7 +349,7 @@ export default function DasherHome() {
                     <Text style={styles.payWaitText}>
                       {activeOrder.paymentMethod === 'tokens'
                         ? 'This takes a few seconds.'
-                        : 'Don\'t buy anything yet. You\'ll get a notification when they pay. If they don\'t pay within 10 minutes, the order is cancelled.'}
+                        : `Don't buy anything yet. You'll get a notification when they pay. If they don't pay within ${PAY_WINDOW_MIN} minutes, the order is cancelled.`}
                     </Text>
                   </View>
                 )}

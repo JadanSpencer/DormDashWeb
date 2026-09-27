@@ -10,15 +10,12 @@ import {
   Alert, ActivityIndicator, Animated, Easing,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import {
-  collection, query, where, onSnapshot, orderBy, limit,
-  updateDoc, doc, getAggregateFromServer, count, sum,
-} from 'firebase/firestore';
 import { router } from 'expo-router';
-import { db } from '../../../services/firebase';
+import { cancelOrder, canStudentCancel } from '../../../services/orders';
+import { useStudentActiveOrders, useStudentOrderHistory } from '../../../hooks/useOrders';
 import { useAuth } from '../../../hooks/useAuth';
 import { Order, OrderStatus } from '../../../types';
-import { formatJMD, MAX_ACTIVE_ORDERS } from '../../../constants';
+import { formatJMD, STATUS_STEPS, PAY_WINDOW_MIN } from '../../../constants';
 import { usePriceUnit } from '../../../hooks/usePriceUnit';
 import { T, useReducedMotion } from '../../../constants/theme';
 
@@ -39,7 +36,6 @@ const STATUS_CONFIG: Record<OrderStatus, { label: string; description: string; c
   cancelled:  { label: 'Cancelled',  description: 'This order was cancelled',         color: T.color.danger },
 };
 
-const STATUS_STEPS: OrderStatus[] = ['pending', 'accepted', 'picking_up', 'on_the_way', 'delivered'];
 
 const formatDate = (ts: number) => {
   const d = new Date(ts);
@@ -162,12 +158,6 @@ const rail = StyleSheet.create({
   labelActive: { color: T.color.cerulean, fontWeight: '800' },
 });
 
-// Same condition as the student cancel rule in firestore.rules: before a
-// dasher accepts, or after they accept but before anything is paid.
-const canStudentCancel = (order: Order) =>
-  order.status === 'pending' ||
-  (order.status === 'accepted' && order.paymentStatus === 'awaiting_payment');
-
 // ─── ACTIVE ORDER CARD ──────────────────────────────────────────────
 const ActiveOrderCard: React.FC<{ order: Order; onCancel: () => void; reduced: boolean }> = ({ order, onCancel, reduced }) => {
   const { fmt } = usePriceUnit();
@@ -216,7 +206,7 @@ const ActiveOrderCard: React.FC<{ order: Order; onCancel: () => void; reduced: b
 
       {order.paymentMethod === 'card' && order.paymentStatus === 'awaiting_payment' && (
         <View style={active.payNeeded}>
-          <Text style={active.payNeededText}>Payment needed. Tap to pay within 10 minutes.</Text>
+          <Text style={active.payNeededText}>{`Payment needed. Tap to pay within ${PAY_WINDOW_MIN} minutes.`}</Text>
         </View>
       )}
 
@@ -432,70 +422,11 @@ export default function StudentOrders() {
   const insets = useSafeAreaInsets();
   const reduced = useReducedMotion();
 
-  const [activeOrders, setActiveOrders] = useState<Order[]>([]);
-  const [pastOrders, setPastOrders] = useState<Order[]>([]);
-  const [loading, setLoading] = useState(true);
   // Past orders are shown PAGE_SIZE at a time, and only that many are loaded:
-  // "Show more" widens the live query. Before, this listened to the
-  // student's whole history, which got slower and costlier every week.
+  // "Show more" widens the live query (hooks/useOrders.ts).
   const [visiblePast, setVisiblePast] = useState(PAGE_SIZE);
-  // Delivered count, total spent and how many past orders exist, counted by
-  // Firestore (aggregation queries) instead of by loading every order.
-  const [totals, setTotals] = useState<{ delivered: number; spent: number; past: number } | null>(null);
-
-  useEffect(() => {
-    if (!user) return;
-    const q = query(
-      collection(db, 'orders'),
-      where('studentId', '==', user.uid),
-      where('status', 'in', ['pending', 'accepted', 'picking_up', 'on_the_way'])
-    );
-    return onSnapshot(q, snap => {
-      // Up to MAX_ACTIVE_ORDERS at once; oldest first.
-      const docs = snap.docs.map(d => ({ id: d.id, ...d.data() } as Order));
-      setActiveOrders(docs.sort((a, b) => a.createdAt - b.createdAt));
-    });
-  }, [user]);
-
-  useEffect(() => {
-    if (!user) return;
-    // Newest first over the studentId + createdAt index (no status filter,
-    // so no extra index). Up to MAX_ACTIVE_ORDERS of the newest can be
-    // in progress, so fetch that many extra and one more to know if there
-    // are older ones.
-    const q = query(
-      collection(db, 'orders'),
-      where('studentId', '==', user.uid),
-      orderBy('createdAt', 'desc'),
-      limit(visiblePast + MAX_ACTIVE_ORDERS + 1)
-    );
-    return onSnapshot(q, snap => {
-      setPastOrders(snap.docs
-        .map(d => ({ id: d.id, ...d.data() } as Order))
-        .filter(o => o.status === 'delivered' || o.status === 'cancelled'));
-      setLoading(false);
-    }, err => {
-      console.log('Past orders listener failed:', err?.message);
-      setLoading(false);
-    });
-  }, [user, visiblePast]);
-
-  // Recount when an order finishes (the newest past order changes).
-  const newestPast = pastOrders[0] ? `${pastOrders[0].id}:${pastOrders[0].status}` : '';
-  useEffect(() => {
-    if (!user) return;
-    let alive = true;
-    const mine = where('studentId', '==', user.uid);
-    Promise.all([
-      getAggregateFromServer(query(collection(db, 'orders'), mine, where('status', '==', 'delivered')),
-        { n: count(), spent: sum('totalAmount') }),
-      getAggregateFromServer(query(collection(db, 'orders'), mine, where('status', 'in', ['delivered', 'cancelled'])),
-        { n: count() }),
-    ]).then(([delivered, past]) => {
-      if (alive) setTotals({ delivered: delivered.data().n, spent: delivered.data().spent ?? 0, past: past.data().n });
-    }).catch(e => console.log('Order totals failed:', e?.message));
-    return () => { alive = false; };
-  }, [user, newestPast]);
+  const activeOrders = useStudentActiveOrders(user?.uid);
+  const { pastOrders, loading, totals } = useStudentOrderHistory(user?.uid, visiblePast);
 
   const handleCancel = (activeOrder: Order) => {
     const accepted = activeOrder.status === 'accepted';
@@ -511,10 +442,7 @@ export default function StudentOrders() {
           style: 'destructive',
           onPress: async () => {
             try {
-              await updateDoc(doc(db, 'orders', activeOrder.id), {
-                status: 'cancelled',
-                cancelledAt: Date.now(),
-              });
+              await cancelOrder(activeOrder.id);
             } catch (e) {
               Alert.alert(
                 'Too Late to Cancel',

@@ -10,10 +10,11 @@ import {
     signOut,
     updateProfile,
   } from 'firebase/auth';
-  import { doc, setDoc, getDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
+  import { doc, setDoc, getDoc } from 'firebase/firestore';
   import { auth, db } from './firebase';
   import { LEGAL } from '../constants/legal';
   import { clearPushToken } from './notifications';
+  import { goOffline } from './dasher';
   import { User, UserRole } from '../types';
   
   // ─── INPUT SANITIZATION ────────────────────────────────────────────────────
@@ -285,7 +286,7 @@ export const resetPassword = async (
             clearPushToken(uid),
             // Signing out takes a dasher offline, so orders aren't offered to
             // someone who has left. (Fails harmlessly for students and admins.)
-            updateDoc(doc(db, 'dashers', uid), { isOnline: false, currentLocation: null }),
+            goOffline(uid),
           ]), CLEANUP_LIMIT_MS);
         }
       } finally {

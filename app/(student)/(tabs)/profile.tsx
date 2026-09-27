@@ -7,13 +7,13 @@
 import React, { useState, useEffect } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, Pressable,
-  TouchableOpacity, Alert, TextInput, Modal, ActivityIndicator,
+  Alert, TextInput, Modal, ActivityIndicator,
   KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { doc, updateDoc, getDoc } from 'firebase/firestore';
+import { getUserProfile, updateMyProfileField, EditableProfileField } from '../../../services/users';
 import { updatePassword, EmailAuthProvider, reauthenticateWithCredential } from 'firebase/auth';
-import { db, auth } from '../../../services/firebase';
+import { auth } from '../../../services/firebase';
 import { useAuth } from '../../../hooks/useAuth';
 import { logoutUser } from '../../../services/auth';
 import { isValidPassword } from '../../../services/sanitize';
@@ -55,9 +55,8 @@ export default function StudentProfile() {
   const loadUserProfile = async () => {
     if (!user) return;
     try {
-      const userDoc = await getDoc(doc(db, 'users', user.uid));
-      if (userDoc.exists()) {
-        const data = userDoc.data();
+      const data = await getUserProfile(user.uid);
+      if (data) {
         setProfile({
           name: data.name || '',
           email: user.email || '',
@@ -79,7 +78,7 @@ export default function StudentProfile() {
     if (!user) return;
     setLoading(true);
     try {
-      await updateDoc(doc(db, 'users', user.uid), { [field]: value });
+      await updateMyProfileField(user.uid, field as EditableProfileField, value);
       setProfile(prev => ({ ...prev, [field]: value }));
       Alert.alert('Saved', `${field.replace(/([A-Z])/g, ' $1').trim()} updated.`);
     } catch (error) {

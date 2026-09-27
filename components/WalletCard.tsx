@@ -3,13 +3,11 @@
 // get tokens with cash, recent token activity, and the J$ / Tokens switch.
 // Read-only view of data that only Cloud Functions can change.
 
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { View, Text, StyleSheet, Pressable, ActivityIndicator, Alert } from 'react-native';
-import { collection, onSnapshot, query, where } from 'firebase/firestore';
-import { db } from '../services/firebase';
 import { T } from '../constants/theme';
 import { formatJMD } from '../constants';
-import { useWallet } from '../hooks/useWallet';
+import { useWallet, useWalletHistory } from '../hooks/useWallet';
 import { buyTokens, formatTokens, TOKEN_JMD, TOKEN_PACKS } from '../services/payments';
 import { PriceUnitToggle } from './PriceUnitToggle';
 
@@ -27,18 +25,7 @@ const TX_LABEL: Record<string, string> = {
 export function WalletCard({ uid }: { uid: string }) {
   const wallet = useWallet(uid);
   const [busyPack, setBusyPack] = useState<number | null>(null);
-  const [tx, setTx] = useState<any[]>([]);
-
-  useEffect(() => {
-    // Single where clause: no composite index needed. Sorted on the phone.
-    return onSnapshot(query(collection(db, 'walletTx'), where('uid', '==', uid)), snap => {
-      const rows = snap.docs.map(d => ({ id: d.id, ...d.data() }))
-        .filter((r: any) => r.type !== 'order_charge')
-        .sort((a: any, b: any) => (b.createdAt || 0) - (a.createdAt || 0))
-        .slice(0, 8);
-      setTx(rows);
-    }, () => {});
-  }, [uid]);
+  const tx = useWalletHistory(uid, 8);
 
   const buy = async (tokens: number) => {
     if (busyPack) return;

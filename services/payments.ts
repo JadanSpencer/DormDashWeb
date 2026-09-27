@@ -7,10 +7,9 @@ import { Platform, Linking } from 'react-native';
 import { httpsCallable } from 'firebase/functions';
 import { functions } from './firebase';
 
-/** 1 DormDash token = J$100. Keep in sync with functions/src/payments.ts. */
-export const TOKEN_JMD = 100;
-/** Token packs a student can buy by card. Keep in sync with the server. */
-export const TOKEN_PACKS = [5, 10, 20, 50];
+// 1 token = J$100 and the token packs: one copy, shared with the server.
+import { TOKEN_JMD, TOKEN_PACKS } from '../constants';
+export { TOKEN_JMD, TOKEN_PACKS };
 
 export const jmdToTokens = (jmd: number) => (Number(jmd) || 0) / TOKEN_JMD;
 

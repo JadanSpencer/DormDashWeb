@@ -24,10 +24,9 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, router } from 'expo-router';
-import { doc, onSnapshot } from 'firebase/firestore';
-import { db } from '../../../services/firebase';
-import { Order, OrderStatus } from '../../../types';
-import { formatJMD } from '../../../constants';
+import { useOrder } from '../../../hooks/useOrders';
+import { Order, OrderStatus, CancelReason } from '../../../types';
+import { STATUS_STEPS, MAX_ACTIVE_ORDERS, PAY_WINDOW_MIN, PENDING_TIMEOUT_MIN } from '../../../constants';
 import { T, useReducedMotion } from '../../../constants/theme';
 import { Watermark } from '../../../components/Watermark';
 import MapView, { Marker, PROVIDER_GOOGLE } from '../../../components/MapView';
@@ -46,20 +45,19 @@ const STATUS_CONFIG: Record<OrderStatus, { label: string; color: string; descrip
   cancelled:  { label: 'Cancelled',        color: T.color.danger,   description: 'This order was cancelled' },
 };
 
-const STATUS_ORDER: OrderStatus[] = ['pending', 'accepted', 'picking_up', 'on_the_way', 'delivered'];
 
 const goHome = () => router.replace('/(student)/(tabs)/home');
 
 // Shown when the server rejects an order (functions/src/index.ts verifyNewOrder).
-const CANCEL_REASONS: Record<string, string> = {
+const CANCEL_REASONS: Partial<Record<CancelReason, string>> = {
   store_closed: 'This store closed before your order went through. You were not charged.',
   item_unavailable: 'An item in your order is no longer available. You were not charged.',
   rate_limited: 'Too many orders in a short time. Wait a few minutes and try again.',
   account_inactive: 'Your account is paused. Contact support to restore it.',
-  too_many_active: 'You already had 3 orders in progress. You were not charged. Wait for one to arrive, then order again.',
+  too_many_active: `You already had ${MAX_ACTIVE_ORDERS} orders in progress. You were not charged. Wait for one to arrive, then order again.`,
   insufficient_tokens: 'You didn\'t have enough tokens for this order. You were not charged.',
-  payment_timeout: 'The order wasn\'t paid within 10 minutes of a dasher accepting, so it was cancelled. You were not charged.',
-  no_dasher: 'No dasher was free to take it within 30 minutes. You were not charged. Please try again later.',
+  payment_timeout: `The order wasn't paid within ${PAY_WINDOW_MIN} minutes of a dasher accepting, so it was cancelled. You were not charged.`,
+  no_dasher: `No dasher was free to take it within ${PENDING_TIMEOUT_MIN} minutes. You were not charged. Please try again later.`,
   admin: 'DormDash support cancelled this order. You were not charged. Email us if you have questions.',
   duplicate_order: 'This was an accidental repeat of an order you had just placed. Only the first one goes through, and you were not charged twice.',
 };
@@ -67,7 +65,7 @@ const CANCEL_REASONS: Record<string, string> = {
 // ─── PAYMENT PANEL ───────────────────────────────────────────────────
 // Nothing is paid until a dasher accepts. Then the student chooses: their
 // DormDash tokens (taken at once) or their card (WiPay's secure page), and
-// has 10 minutes. The server makes sure an order can only be paid once.
+// has PAY_WINDOW_MIN minutes. The server makes sure an order can only be paid once.
 // Orders placed with tokens on older app versions show "Tokens held".
 const PaymentPanel: React.FC<{ order: Order }> = ({ order }) => {
   const { fmt } = usePriceUnit();
@@ -208,8 +206,7 @@ export default function OrderTracking() {
   const insets = useSafeAreaInsets();
   const reduced = useReducedMotion();
 
-  const [order, setOrder] = useState<Order | null>(null);
-  const [loading, setLoading] = useState(true);
+  const { order, loading } = useOrder(id);
   const { fmt } = usePriceUnit();
 
   // Live pulse on the status dot
@@ -226,16 +223,6 @@ export default function OrderTracking() {
     return () => loop.stop();
   }, [reduced]);
 
-  useEffect(() => {
-    if (!id) return;
-    const unsub = onSnapshot(doc(db, 'orders', id), snap => {
-      if (snap.exists()) {
-        setOrder({ id: snap.id, ...snap.data() } as Order);
-      }
-      setLoading(false);
-    });
-    return unsub;
-  }, [id]);
 
   if (loading) {
     return (
@@ -261,7 +248,7 @@ export default function OrderTracking() {
   }
 
   const config = STATUS_CONFIG[order.status];
-  const currentStepIndex = STATUS_ORDER.indexOf(order.status);
+  const currentStepIndex = STATUS_STEPS.indexOf(order.status);
   const isDelivered = order.status === 'delivered';
   const isCancelled = order.status === 'cancelled';
   const showMap =
@@ -308,7 +295,7 @@ export default function OrderTracking() {
             </View>
             <Text style={styles.cancelledTitle}>Order cancelled</Text>
             <Text style={styles.cancelledSub}>
-              {CANCEL_REASONS[order.cancelReason ?? ''] ?? 'You were not charged. You can order again anytime.'}
+              {(order.cancelReason && CANCEL_REASONS[order.cancelReason]) ?? 'You were not charged. You can order again anytime.'}
               {order.paymentStatus === 'refunded_tokens' ? ' Your payment was returned to you as DormDash tokens.' : ''}
             </Text>
           </View>
@@ -373,7 +360,7 @@ export default function OrderTracking() {
           <>
             <Text style={styles.sectionLabel}>Progress</Text>
             <View style={styles.card}>
-              {STATUS_ORDER.map((status, idx) => {
+              {STATUS_STEPS.map((status, idx) => {
                 const s = STATUS_CONFIG[status];
                 // Delivered is the end of the route: once it's reached, every
                 // stop (including Delivered itself) is ticked.
@@ -390,7 +377,7 @@ export default function OrderTracking() {
                       ]}>
                         {isCompleted && <Text style={styles.stepCheck}>✓</Text>}
                       </View>
-                      {idx < STATUS_ORDER.length - 1 && (
+                      {idx < STATUS_STEPS.length - 1 && (
                         <View style={[styles.stepLine, isCompleted && styles.stepLineDone]} />
                       )}
                     </View>

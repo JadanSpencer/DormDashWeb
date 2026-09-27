@@ -14,12 +14,9 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, router } from 'expo-router';
-import {
-  collection, onSnapshot, addDoc, updateDoc,
-  deleteDoc, doc, query, orderBy, getDoc,
-} from 'firebase/firestore';
-import { db } from '../../../services/firebase';
-import { MenuItem, Store } from '../../../types';
+import { saveMenuItem, deleteMenuItem, setMenuItemAvailable } from '../../../services/stores';
+import { useStore, useMenu } from '../../../hooks/useStores';
+import { MenuItem } from '../../../types';
 import { formatJMD } from '../../../constants';
 import { adminStoreAlerts } from '../../../services/payments';
 import { S } from '../../../constants/themeMid';
@@ -86,12 +83,7 @@ const ItemFormModal: React.FC<{
     };
 
     try {
-      const itemsRef = collection(db, 'stores', storeId, 'menuItems');
-      if (isEdit && initialData) {
-        await updateDoc(doc(itemsRef, initialData.id), data);
-      } else {
-        await addDoc(itemsRef, data);
-      }
+      await saveMenuItem(storeId, isEdit && initialData ? initialData.id : null, data);
       onClose();
     } catch (e: any) {
       setError('Save failed: ' + e.message);
@@ -280,28 +272,10 @@ const StoreAlertsCard: React.FC<{ storeId: string }> = ({ storeId }) => {
 export default function StoreMenuItems() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const insets = useSafeAreaInsets();
-  const [store, setStore] = useState<Store | null>(null);
-  const [items, setItems] = useState<MenuItem[]>([]);
-  const [loading, setLoading] = useState(true);
+  const store = useStore(id);
+  const { items, loading } = useMenu(id);
   const [modalVisible, setModalVisible] = useState(false);
   const [editTarget, setEditTarget] = useState<MenuItem | null>(null);
-
-  useEffect(() => {
-    if (!id) return;
-    getDoc(doc(db, 'stores', id)).then(snap => {
-      if (snap.exists()) setStore({ id: snap.id, ...snap.data() } as Store);
-    });
-  }, [id]);
-
-  useEffect(() => {
-    if (!id) return;
-    const q = query(collection(db, 'stores', id, 'menuItems'), orderBy('category', 'asc'));
-    const unsub = onSnapshot(q, snap => {
-      setItems(snap.docs.map(d => ({ id: d.id, ...d.data() } as MenuItem)));
-      setLoading(false);
-    });
-    return unsub;
-  }, [id]);
 
   const handleDelete = (item: MenuItem) => {
     Alert.alert('Delete Item', `Remove "${item.name}" from the menu?`, [
@@ -309,16 +283,14 @@ export default function StoreMenuItems() {
       {
         text: 'Delete', style: 'destructive',
         onPress: async () => {
-          await deleteDoc(doc(db, 'stores', id!, 'menuItems', item.id));
+          await deleteMenuItem(id!, item.id);
         },
       },
     ]);
   };
 
   const handleToggleAvailable = async (item: MenuItem) => {
-    await updateDoc(doc(db, 'stores', id!, 'menuItems', item.id), {
-      isAvailable: !item.isAvailable,
-    });
+    await setMenuItemAvailable(id!, item.id, !item.isAvailable);
   };
 
   const openCreate = () => { setEditTarget(null); setModalVisible(true); };

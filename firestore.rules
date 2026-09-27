@@ -89,7 +89,7 @@ service cloud.firestore {
 
       // Go online/offline (lastSeenAt = when they switched; older app
       // versions also sent it as a heartbeat). Earnings and ratings are
-      // server-only (onDeliveryCompleted).
+      // server-only (onOrderStatusChanged credits them on delivery).
       allow update: if isDasher() && request.auth.uid == uid
         && onlyChanged(['isOnline', 'lastSeenAt', 'currentLocation'])
         && request.resource.data.isOnline is bool

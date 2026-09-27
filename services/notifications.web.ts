@@ -99,7 +99,7 @@ async function saveToken(uid: string): Promise<string | null> {
   }
 
   myToken = stored;
-  // Only write when something changed. Each write wakes onPushTokenChanged,
+  // Only write when something changed. Each write wakes onUserWritten,
   // and this runs every time the app comes back on screen.
   if (data?.pushToken !== stored) {
     await updateDoc(ref, {
