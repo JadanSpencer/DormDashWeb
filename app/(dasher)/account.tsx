@@ -12,8 +12,8 @@
 //     stays a clean month.
 //   3. ACCOUNT — identity, member since, sign out.
 //
-// Data notes: single where('dasherId','==',uid) query, everything else
-// filtered client-side — avoids composite-index requirements entirely.
+// Data notes: history comes from hooks/useDasherOrders (bounded by
+// acceptedAt, index dasherId + acceptedAt), not the whole order history.
 
 import React, { useEffect, useState } from 'react';
 import {
@@ -21,16 +21,16 @@ import {
   Pressable, Alert, ActivityIndicator,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { collection, query, where, onSnapshot, doc } from 'firebase/firestore';
+import { onSnapshot, doc } from 'firebase/firestore';
 import { db } from '../../services/firebase';
 import { useAuth } from '../../hooks/useAuth';
+import { useDasherOrders, startOfDay } from '../../hooks/useDasherOrders';
 import { logoutUser } from '../../services/auth';
 import { Order } from '../../types';
 import { formatJMD } from '../../constants';
 import { D } from '../../constants/themeDark';
 import { AccountActions } from '../../components/AccountActions';
 
-const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
 
 interface DasherStats {
   rating: number;
@@ -54,8 +54,6 @@ export default function DasherProfile() {
   const insets = useSafeAreaInsets();
 
   const [stats, setStats] = useState<DasherStats | null>(null);
-  const [recentOrders, setRecentOrders] = useState<Order[]>([]);
-  const [loading, setLoading] = useState(true);
   const [loggingOut, setLoggingOut] = useState(false);
 
   // Lifetime stats — live from the dashers doc (server-written only)
@@ -75,24 +73,9 @@ export default function DasherProfile() {
     return unsub;
   }, [user]);
 
-  // Rolling 30-day history — client-side window on acceptedAt
-  useEffect(() => {
-    if (!user) return;
-    const q = query(collection(db, 'orders'), where('dasherId', '==', user.uid));
-    const unsub = onSnapshot(q, snap => {
-      const cutoff = Date.now() - THIRTY_DAYS_MS;
-      const docs = snap.docs
-        .map(d => ({ id: d.id, ...d.data() } as Order))
-        .filter(o =>
-          (o.status === 'delivered' || o.status === 'cancelled')
-          && (o.acceptedAt ?? o.createdAt) >= cutoff
-        )
-        .sort((a, b) => (b.acceptedAt ?? b.createdAt) - (a.acceptedAt ?? a.createdAt));
-      setRecentOrders(docs);
-      setLoading(false);
-    });
-    return unsub;
-  }, [user]);
+  // Rolling 30-day history (finished orders), bounded by acceptedAt.
+  const { orders: last30Days, loading } = useDasherOrders(user?.uid, startOfDay(30));
+  const recentOrders = last30Days.filter(o => o.status === 'delivered' || o.status === 'cancelled');
 
   const handleLogout = () => {
     Alert.alert('Sign out', 'You will go offline and be signed out.', [

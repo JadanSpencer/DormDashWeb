@@ -56,6 +56,8 @@ function run(q: Q | Ref) {
         if (op === '==') return x === v;
         if (op === 'in') return (v as any[]).includes(x);
         if (op === '!=') return x !== v;
+        if (op === '>=') return x >= v;
+        if (op === '>') return x > v;
         return true;
       });
     }
@@ -68,6 +70,22 @@ function run(q: Q | Ref) {
     if (q.max) rows = rows.slice(0, q.max);
   }
   return { docs: rows, size: rows.length, empty: rows.length === 0, forEach: (fn: any) => rows.forEach(fn) };
+}
+
+// Aggregations (admin dashboard): count(), sum(field), average(field).
+export const count = () => ({ agg: 'count' });
+export const sum = (f: string) => ({ agg: 'sum', f });
+export const average = (f: string) => ({ agg: 'avg', f });
+export async function getAggregateFromServer(q: Q | Ref, spec: Record<string, any>) {
+  const rows = run(q).docs.map(d => d.data()!);
+  const out: Record<string, number | null> = {};
+  for (const [key, a] of Object.entries(spec)) {
+    const nums = a.f ? rows.map(r => r[a.f]).filter((x): x is number => typeof x === 'number') : [];
+    out[key] = a.agg === 'count' ? rows.length
+      : a.agg === 'sum' ? nums.reduce((s, x) => s + x, 0)
+      : nums.length ? nums.reduce((s, x) => s + x, 0) / nums.length : null;
+  }
+  return { data: () => out };
 }
 
 export async function getDoc(ref: Ref) { return docSnap(ref.path); }

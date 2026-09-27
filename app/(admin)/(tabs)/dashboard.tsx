@@ -1,21 +1,68 @@
 // app/(admin)/(tabs)/dashboard.tsx
 // DormDash — Admin dashboard (mid-tone "slate" Route identity).
-// FUNCTIONALITY PRESERVED: same three live listeners (users, orders, stores),
-// same stats math (revenue = delivered fees, GMV, avg delivery mins,
-// completion rate). Currency now formatJMD. One improvement: the quick
-// actions actually navigate now (they were dead TouchableOpacities).
+// Stats (revenue = delivered fees, GMV, avg delivery mins, completion rate)
+// come from Firestore aggregation queries: the server counts and sums, and
+// each one costs one read per 1,000 matching docs. Before, this screen
+// downloaded every user and order and re-downloaded on every change, which
+// grew with the business. Refreshed on focus, every minute while open, and
+// on pull-to-refresh. Stores stay a live listener (a handful of docs).
 
-import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Pressable } from 'react-native';
+import React, { useCallback, useEffect, useState } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Pressable, RefreshControl, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Icon } from '../../../components/TabIcon'; // SVG icons: no icon font to fail loading
-import { router } from 'expo-router';
-import { collection, onSnapshot } from 'firebase/firestore';
+import { router, useFocusEffect } from 'expo-router';
+import {
+  collection, onSnapshot, query, where, getAggregateFromServer, count, sum, average, Query,
+} from 'firebase/firestore';
 import { db } from '../../../services/firebase';
 import { useAuth } from '../../../hooks/useAuth';
 import { logoutUser } from '../../../services/auth';
 import { formatJMD } from '../../../constants';
 import { S } from '../../../constants/themeMid';
+
+const REFRESH_MS = 60 * 1000;
+
+async function loadOrderAndUserStats() {
+  const users = collection(db, 'users');
+  const orders = collection(db, 'orders');
+  const countOf = (q: Query) => getAggregateFromServer(q, { n: count() }).then(s => s.data().n);
+  const dayStart = new Date().setHours(0, 0, 0, 0);
+  const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+
+  const [
+    totalUsers, totalStudents, totalDashers,
+    totalOrders, pendingOrders, activeOrders, cancelledOrders,
+    ordersToday, ordersThisWeek, delivered,
+  ] = await Promise.all([
+    countOf(users),
+    countOf(query(users, where('role', '==', 'student'))),
+    countOf(query(users, where('role', '==', 'dasher'))),
+    countOf(orders),
+    countOf(query(orders, where('status', '==', 'pending'))),
+    countOf(query(orders, where('status', 'in', ['accepted', 'picking_up', 'on_the_way']))),
+    countOf(query(orders, where('status', '==', 'cancelled'))),
+    countOf(query(orders, where('createdAt', '>=', dayStart))),
+    countOf(query(orders, where('createdAt', '>=', weekAgo))),
+    getAggregateFromServer(query(orders, where('status', '==', 'delivered')), {
+      n: count(),
+      revenue: sum('deliveryFee'),
+      gmv: sum('totalAmount'),
+      // deliveryMins is written by the server on delivery (onDeliveryCompleted).
+      avgMins: average('deliveryMins'),
+    }).then(s => s.data()),
+  ]);
+
+  return {
+    totalUsers, totalStudents, totalDashers,
+    totalOrders, pendingOrders, activeOrders, cancelledOrders,
+    ordersToday, ordersThisWeek,
+    deliveredOrders: delivered.n,
+    revenue: delivered.revenue ?? 0,
+    gmv: delivered.gmv ?? 0,
+    avgDeliveryMins: delivered.avgMins == null ? 0 : Math.round(delivered.avgMins),
+  };
+}
 
 export default function AdminDashboard() {
   const { user } = useAuth();
@@ -29,56 +76,47 @@ export default function AdminDashboard() {
     totalStores: 0, activeStores: 0,
   });
 
-  useEffect(() => {
-    const unsubUsers = onSnapshot(collection(db, 'users'), (snap) => {
-      const users = snap.docs.map(d => d.data());
-      setStats(prev => ({
-        ...prev,
-        totalUsers: users.length,
-        totalStudents: users.filter(u => u.role === 'student').length,
-        totalDashers: users.filter(u => u.role === 'dasher').length,
-      }));
-    });
+  const [updatedAt, setUpdatedAt] = useState<number | null>(null);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
-    const unsubOrders = onSnapshot(collection(db, 'orders'), (snap) => {
-      const orders = snap.docs.map(d => d.data());
-      const delivered = orders.filter(o => o.status === 'delivered');
-      const now = Date.now();
-      const dayStart = new Date().setHours(0, 0, 0, 0);
-      const weekAgo = now - 7 * 24 * 60 * 60 * 1000;
-
-      const revenue = delivered.reduce((sum, o) => sum + (Number(o.deliveryFee) || 0), 0);
-      const gmv = delivered.reduce((sum, o) => sum + (Number(o.totalAmount) || 0), 0);
-
-      const withTimes = delivered.filter(o => o.deliveredAt && o.createdAt);
-      const avgDeliveryMins = withTimes.length > 0
-        ? Math.round(withTimes.reduce((sum, o) => sum + (o.deliveredAt - o.createdAt), 0) / withTimes.length / 60000)
-        : 0;
-
-      setStats(prev => ({
-        ...prev,
-        totalOrders: orders.length,
-        pendingOrders: orders.filter(o => o.status === 'pending').length,
-        activeOrders: orders.filter(o => ['accepted', 'picking_up', 'on_the_way'].includes(o.status)).length,
-        deliveredOrders: delivered.length,
-        cancelledOrders: orders.filter(o => o.status === 'cancelled').length,
-        revenue, gmv, avgDeliveryMins,
-        ordersToday: orders.filter(o => o.createdAt >= dayStart).length,
-        ordersThisWeek: orders.filter(o => o.createdAt >= weekAgo).length,
-      }));
-    });
-
-    const unsubStores = onSnapshot(collection(db, 'stores'), (snap) => {
-      const stores = snap.docs.map(d => d.data());
-      setStats(prev => ({
-        ...prev,
-        totalStores: stores.length,
-        activeStores: stores.filter(s => s.isOpen).length,
-      }));
-    });
-
-    return () => { unsubUsers(); unsubOrders(); unsubStores(); };
+  const refresh = useCallback(async () => {
+    try {
+      const next = await loadOrderAndUserStats();
+      setStats(prev => ({ ...prev, ...next }));
+      setUpdatedAt(Date.now());
+      setLoadFailed(false);
+    } catch (e: any) {
+      console.log('Dashboard stats failed:', e?.message);
+      setLoadFailed(true);
+    }
   }, []);
+
+  // Refresh when the tab is opened, then every minute while it stays open
+  // (skipped while the browser tab is hidden).
+  useFocusEffect(useCallback(() => {
+    refresh();
+    const timer = setInterval(() => {
+      if (Platform.OS === 'web' && typeof document !== 'undefined' && document.hidden) return;
+      refresh();
+    }, REFRESH_MS);
+    return () => clearInterval(timer);
+  }, [refresh]));
+
+  const onPullRefresh = async () => {
+    setRefreshing(true);
+    await refresh();
+    setRefreshing(false);
+  };
+
+  useEffect(() => onSnapshot(collection(db, 'stores'), (snap) => {
+    const stores = snap.docs.map(d => d.data());
+    setStats(prev => ({
+      ...prev,
+      totalStores: stores.length,
+      activeStores: stores.filter(s => s.isOpen).length,
+    }));
+  }), []);
 
   const handleLogout = async () => { await logoutUser(); };
 
@@ -92,6 +130,7 @@ export default function AdminDashboard() {
       <ScrollView
         contentContainerStyle={[styles.scroll, { paddingTop: insets.top + S.space.md, paddingBottom: 120 + insets.bottom }]}
         showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onPullRefresh} tintColor={S.color.creamFaint} />}
       >
         {/* Header */}
         <View style={styles.header}>
@@ -103,11 +142,17 @@ export default function AdminDashboard() {
           </TouchableOpacity>
         </View>
 
-        {/* Live bar */}
-        <View style={styles.liveBar}>
-          <View style={styles.liveDot} />
-          <Text style={styles.liveText}>Live · real-time updates</Text>
-        </View>
+        {/* Freshness bar: tap to refresh now */}
+        <Pressable style={styles.liveBar} onPress={refresh} accessibilityRole="button" accessibilityLabel="Refresh stats">
+          <View style={[styles.liveDot, loadFailed && { backgroundColor: S.color.danger }]} />
+          <Text style={styles.liveText}>
+            {loadFailed
+              ? 'Couldn\'t refresh. Tap to try again'
+              : updatedAt
+                ? `Updated ${new Date(updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} · refreshes every minute`
+                : 'Loading stats'}
+          </Text>
+        </Pressable>
 
         {/* Hero cards */}
         <View style={styles.heroGrid}>

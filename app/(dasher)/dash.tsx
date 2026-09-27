@@ -1,8 +1,8 @@
 // app/(dasher)/dash.tsx  (URL: /dash)
 // DormDash — Dasher work surface (inverted Route identity).
 //
-// FUNCTIONALITY UNCHANGED: location tracking with lastSeenAt heartbeat,
-// online toggle, pending-orders listener, active-order listener, race-safe
+// Online toggle (written once per switch, no periodic heartbeat), local-only
+// map pin, pending-orders listener, active-order listener, race-safe
 // accept (try/catch on rules denial), status walk with deliveredAt,
 // map gated by hasGpsFix.
 //
@@ -31,8 +31,9 @@ import { db } from '../../services/firebase';
 import { serverNow, syncServerClock } from '../../services/serverClock';
 import { useAuth } from '../../hooks/useAuth';
 import { useWakeLock } from '../../hooks/useWakeLock';
+import { useDasherOrders, startOfDay } from '../../hooks/useDasherOrders';
 import { Order, OrderStatus } from '../../types';
-import { formatJMD, LOCATION_UPDATE_INTERVAL_MS, HEARTBEAT_INTERVAL_MS } from '../../constants';
+import { formatJMD, LOCATION_UPDATE_INTERVAL_MS } from '../../constants';
 import { D } from '../../constants/themeDark';
 import MapView, { Marker, PROVIDER_GOOGLE } from '../../components/MapView';
 
@@ -70,7 +71,6 @@ export default function DasherHome() {
   const [isOnline, setIsOnline] = useState(false);
   const [pendingOrders, setPendingOrders] = useState<Order[]>([]);
   const [activeOrder, setActiveOrder] = useState<Order | null>(null);
-  const [myOrders, setMyOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [location, setLocation] = useState<{ latitude: number; longitude: number } | null>(null);
   const locationInterval = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -93,13 +93,16 @@ export default function DasherHome() {
     return () => loop.stop();
   }, [isOnline]);
 
-  // ── Location + heartbeat ────────────────────────────────────────────
+  // ── Online switch + local map pin ────────────────────────────────────
   // The dasher's GPS position stays ON THIS PHONE (the "You" pin on the map).
   // It is not uploaded: nothing on the server used it, and a live location
   // of every online dasher readable by any student was a safety risk.
-  // The server only needs a heartbeat (isOnline + lastSeenAt) to know who
-  // can take orders. Heartbeat and GPS are independent, so a GPS failure
-  // indoors can't knock a dasher offline.
+  // The server only needs isOnline to know who can take orders. It is
+  // written once when the dasher switches on (and again when the app
+  // reopens with the switch on), not on a timer: online is a sticky switch,
+  // so a periodic "still here" write was a Firestore write per dasher per
+  // minute that nothing read. A GPS failure indoors can't knock a dasher
+  // offline.
   const startLocationTracking = async () => {
     if (!user) return false;
     try {
@@ -125,17 +128,8 @@ export default function DasherHome() {
       } catch { /* keep the last known pin */ }
     };
 
-    let ticks = 0;
-    const perHeartbeat = Math.max(1, Math.round(HEARTBEAT_INTERVAL_MS / LOCATION_UPDATE_INTERVAL_MS));
     refreshPosition();
-    locationInterval.current = setInterval(() => {
-      refreshPosition();
-      ticks += 1;
-      if (ticks % perHeartbeat === 0) {
-        updateDoc(doc(db, 'dashers', user.uid), { isOnline: true, lastSeenAt: serverNow() })
-          .catch(() => { /* next heartbeat retries */ });
-      }
-    }, LOCATION_UPDATE_INTERVAL_MS);
+    locationInterval.current = setInterval(refreshPosition, LOCATION_UPDATE_INTERVAL_MS);
     return true;
   };
 
@@ -241,16 +235,9 @@ export default function DasherHome() {
     return unsub;
   }, [user]);
 
-  // My orders — one listener feeding the Today strip.
-  // Single where clause avoids composite-index requirements; filter client-side.
-  useEffect(() => {
-    if (!user) return;
-    const q = query(collection(db, 'orders'), where('dasherId', '==', user.uid));
-    const unsub = onSnapshot(q, snap => {
-      setMyOrders(snap.docs.map(d => ({ id: d.id, ...d.data() } as Order)));
-    });
-    return unsub;
-  }, [user]);
+  // Today strip: orders accepted since yesterday's midnight (so a delivery
+  // accepted just before midnight still counts today), not the whole history.
+  const { orders: myOrders } = useDasherOrders(user?.uid, startOfDay(1));
 
   // ── Accept / status (unchanged handlers) ───────────────────────────
   const handleAccept = async (order: Order) => {

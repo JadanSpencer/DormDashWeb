@@ -53,9 +53,6 @@ export const COLORS = {
 
   // How often the dasher's own map pin refreshes (stays on the phone).
   export const LOCATION_UPDATE_INTERVAL_MS = 15000;
-  // How often an online dasher tells the server "still here". The server
-  // treats a dasher as gone after 45 min without one (STALE_MS in functions).
-  export const HEARTBEAT_INTERVAL_MS = 60000;
   export const MAX_SPECIAL_INSTRUCTIONS_LENGTH = 200;
   export const MAX_ORDER_ITEMS = 20;
 

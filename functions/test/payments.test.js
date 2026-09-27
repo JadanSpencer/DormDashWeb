@@ -7,26 +7,36 @@ const FN = path.join(__dirname, '..'); // run: cd functions && npm run test:paym
 // ── Minimal Firestore mock with transactions (reads must precede writes) ──
 const store = new Map(); // path -> data
 const INC = Symbol('inc');
+const DEL = Symbol('del');
 let autoId = 0;
 function applyWrite(p, data, merge) {
   const cur = merge ? { ...(store.get(p) || {}) } : {};
   for (const [k, v] of Object.entries(data)) {
-    if (v && v[INC] !== undefined) cur[k] = (Number((store.get(p) || {})[k]) || 0) + v[INC];
+    if (v && v[DEL]) delete cur[k];
+    else if (v && v[INC] !== undefined) cur[k] = (Number(cur[k]) || 0) + v[INC];
     else cur[k] = v;
   }
   store.set(p, cur);
 }
 function docRef(col, id) {
   const p = `${col}/${id}`;
-  return {
+  const ref = {
     id, path: p,
-    async get() { const d = store.get(p); return { exists: !!d, id, data: () => (d ? { ...d } : undefined), get: k => d?.[k] }; },
+    async get() { const d = store.get(p); return { exists: !!d, id, ref, data: () => (d ? { ...d } : undefined), get: k => d?.[k] }; },
     async set(data, opts) { applyWrite(p, data, !!opts?.merge); },
     async update(data) { if (!store.has(p)) throw new Error('no doc ' + p); applyWrite(p, data, true); },
   };
+  return ref;
 }
 const db = {
-  collection: (name) => ({ doc: (id) => docRef(name, id ?? `auto${++autoId}xxxxxxxxxx`) }),
+  collection: (name) => ({
+    doc: (id) => docRef(name, id ?? `auto${++autoId}xxxxxxxxxx`),
+    async get() {
+      const docs = [...store.keys()].filter(p => p.split('/').length === 2 && p.startsWith(name + '/'))
+        .map(p => { const id = p.split('/')[1]; const d = store.get(p); return { id, ref: docRef(name, id), get: k => d?.[k], data: () => ({ ...d }) }; });
+      return { docs };
+    },
+  }),
   async runTransaction(fn) {
     const writes = []; let wrote = false;
     const tx = {
@@ -40,7 +50,7 @@ const db = {
   },
 };
 const firestoreFn = () => db;
-firestoreFn.FieldValue = { increment: n => ({ [INC]: n }) };
+firestoreFn.FieldValue = { increment: n => ({ [INC]: n }), delete: () => ({ [DEL]: true }) };
 const adminMock = { apps: [], initializeApp() { this.apps.push({}); }, firestore: firestoreFn };
 require.cache[require.resolve('firebase-admin', { paths: [FN] })] = { exports: adminMock, loaded: true, id: 'firebase-admin' };
 require.cache[require.resolve('firebase-admin/firestore', { paths: [FN] })] = { exports: { FieldValue: firestoreFn.FieldValue }, loaded: true, id: 'firebase-admin/firestore' };
@@ -105,7 +115,8 @@ const qs = u => Object.fromEntries(new URL(u).searchParams);
     assert.equal(await P.chargeTokensOnAccept(db.collection('orders').doc('o1')), false);
     assert.deepEqual([get('wallets/stu').balanceJmd, get('wallets/stu').reservedJmd], [800, 0]);
     assert.equal(get('orders/o1').paymentStatus, 'paid');
-    assert.equal(get('stores/sf').floatJmd, 10000 - 1000);
+    assert.equal(get('storeFloats/sf').floatJmd, 10000 - 1000);
+    assert.equal('floatJmd' in get('stores/sf'), false, 'old public float field removed');
   });
 
   await t('support cancels a paid tokens order: refunded as tokens once, float restored', async () => {
@@ -113,7 +124,7 @@ const qs = u => Object.fromEntries(new URL(u).searchParams);
     await P.settleCancelledOrder(db.collection('orders').doc('o1'));
     await P.settleCancelledOrder(db.collection('orders').doc('o1'));
     assert.equal(get('wallets/stu').balanceJmd, 2000); assert.equal(get('orders/o1').paymentStatus, 'refunded_tokens');
-    assert.equal(get('stores/sf').floatJmd, 10000);
+    assert.equal(get('storeFloats/sf').floatJmd, 10000);
   });
 
   await t('cancel before accept releases held tokens once', async () => {
@@ -226,13 +237,13 @@ const qs = u => Object.fromEntries(new URL(u).searchParams);
 
   await t('pay with tokens: charged exactly once, float used, card afterwards refused', async () => {
     seed('wallets/stu', { ...get('wallets/stu'), balanceJmd: 5000, reservedJmd: 300 });
-    const floatBefore = get('stores/sf').floatJmd;
+    const floatBefore = get('storeFloats/sf').floatJmd;
     await P.payOrderWithTokens.run({ auth: { uid: 'stu' }, data: { orderId: 'k1' } });
     await assert.rejects(P.payOrderWithTokens.run({ auth: { uid: 'stu' }, data: { orderId: 'k1' } }), /already paid/);
     assert.deepEqual([get('wallets/stu').balanceJmd, get('wallets/stu').reservedJmd], [3500, 300]);
     assert.equal(get('orders/k1').paymentStatus, 'paid'); assert.equal(get('orders/k1').paymentMethod, 'tokens');
     assert.equal(get('walletTx/k1_pay_tokens').amountJmd, -1500); assert.equal(get('walletTx/k1_pay_tokens').type, 'order_payment');
-    assert.equal(get('stores/sf').floatJmd, floatBefore - 1300);
+    assert.equal(get('storeFloats/sf').floatJmd, floatBefore - 1300);
     await assert.rejects(P.createPayment.run({ auth: { uid: 'stu' }, data: { purpose: 'order', orderId: 'k1' } }), /already paid/);
   });
 
@@ -249,17 +260,34 @@ const qs = u => Object.fromEntries(new URL(u).searchParams);
   });
 
   await t('support cancels an order paid with tokens after accept: refunded once, float restored', async () => {
-    const bal = get('wallets/stu').balanceJmd; const fl = get('stores/sf').floatJmd;
+    const bal = get('wallets/stu').balanceJmd; const fl = get('storeFloats/sf').floatJmd;
     seed('orders/k1', { ...get('orders/k1'), status: 'cancelled' });
     await P.settleCancelledOrder(db.collection('orders').doc('k1'));
     await P.settleCancelledOrder(db.collection('orders').doc('k1'));
-    assert.equal(get('wallets/stu').balanceJmd, bal + 1500); assert.equal(get('stores/sf').floatJmd, fl + 1300);
+    assert.equal(get('wallets/stu').balanceJmd, bal + 1500); assert.equal(get('storeFloats/sf').floatJmd, fl + 1300);
   });
 
   await t('float adjust by admin only, logged', async () => {
     await assert.rejects(P.adminAdjustFloat.run({ auth: { uid: 'dash' }, data: { kind: 'dasher', id: 'dash', amountJmd: 99999 } }), /Admins only/);
     const r = await P.adminAdjustFloat.run({ auth: { uid: 'boss' }, data: { kind: 'store', id: 'nf', amountJmd: 3000, note: 'start' } });
     assert.equal(r.floatJmd, 3000);
+    assert.equal(get('storeFloats/nf').floatJmd, 3000); assert.equal('floatJmd' in get('stores/nf'), false);
+  });
+
+  await t('admin adjusts a store float still on the old public field: moved and added', async () => {
+    seed('stores/old', { name: 'Old', floatJmd: 2000 });
+    const r = await P.adminAdjustFloat.run({ auth: { uid: 'boss' }, data: { kind: 'store', id: 'old', amountJmd: 500, note: 'x' } });
+    assert.equal(r.floatJmd, 2500); assert.equal(get('storeFloats/old').floatJmd, 2500);
+    assert.equal('floatJmd' in get('stores/old'), false);
+  });
+
+  await t('migration sweep moves every old store float once; storeFloats wins if both exist', async () => {
+    seed('stores/m1', { name: 'M1', floatJmd: 700 });
+    seed('stores/m2', { name: 'M2', floatJmd: 999 }); seed('storeFloats/m2', { floatJmd: 50 });
+    assert.equal(await P.migrateLegacyStoreFloats(), 2);
+    assert.equal(get('storeFloats/m1').floatJmd, 700); assert.equal(get('storeFloats/m2').floatJmd, 50);
+    assert.equal('floatJmd' in get('stores/m1'), false); assert.equal('floatJmd' in get('stores/m2'), false);
+    assert.equal(await P.migrateLegacyStoreFloats(), 0);
   });
 
   console.log(`\nAll ${passed} payment tests passed.`);

@@ -77,13 +77,53 @@ async function requireAdmin(uid: string | undefined) {
 }
 
 // ─── Floats ────────────────────────────────────────────────────────────────
+// A store's float lives in storeFloats/{storeId}, which only admins can read.
+// It used to be a floatJmd field on the store doc itself, which every
+// signed-in student can read. moveLegacyStoreFloat moves an old value across
+// inside the caller's transaction (the caller must already have read both
+// docs). migrateLegacyStoreFloats sweeps every store once after deploy.
+const storeFloatRef = (storeId: string) => db.collection('storeFloats').doc(storeId);
+
+function moveLegacyStoreFloat(
+  tx: Tx, storeRef: admin.firestore.DocumentReference,
+  floatSnap: admin.firestore.DocumentSnapshot, legacy: unknown,
+) {
+  if (typeof legacy !== 'number') return;
+  // If both exist, storeFloats is the real balance; the old field is just removed.
+  if (!floatSnap.exists) {
+    tx.set(floatSnap.ref, { storeId: storeRef.id, floatJmd: legacy, movedAt: Date.now() });
+  }
+  tx.update(storeRef, { floatJmd: FieldValue.delete() });
+}
+
+/** Moves every store's old floatJmd into storeFloats. Safe to run repeatedly. */
+export async function migrateLegacyStoreFloats(): Promise<number> {
+  const stores = await db.collection('stores').get();
+  let moved = 0;
+  for (const s of stores.docs) {
+    if (typeof s.get('floatJmd') !== 'number') continue;
+    const didMove = await db.runTransaction(async tx => {
+      const [storeSnap, floatSnap] = await Promise.all([tx.get(s.ref), tx.get(storeFloatRef(s.id))]);
+      const legacy = storeSnap.data()?.floatJmd;
+      if (typeof legacy !== 'number') return false;
+      moveLegacyStoreFloat(tx, s.ref, floatSnap, legacy);
+      return true;
+    });
+    if (didMove) moved++;
+  }
+  return moved;
+}
+
 // Called inside the transaction that marks an order paid (or reverses it).
 // sign = -1 takes the food cost out of the float, +1 puts it back.
 async function readFloatTarget(tx: Tx, order: admin.firestore.DocumentData) {
-  const storeRef = db.collection('stores').doc(String(order.storeId));
-  const store = await tx.get(storeRef);
-  if (typeof store.data()?.floatJmd === 'number') {
-    return { ref: storeRef, kind: 'store' as const, id: storeRef.id };
+  const storeId = String(order.storeId);
+  const storeRef = db.collection('stores').doc(storeId);
+  const [store, floatSnap] = await Promise.all([tx.get(storeRef), tx.get(storeFloatRef(storeId))]);
+  const legacy = store.data()?.floatJmd;
+  if (floatSnap.exists || typeof legacy === 'number') {
+    moveLegacyStoreFloat(tx, storeRef, floatSnap, legacy);
+    return { ref: floatSnap.ref, kind: 'store' as const, id: storeId };
   }
   const dasherRef = db.collection('dashers').doc(String(order.dasherId));
   return { ref: dasherRef, kind: 'dasher' as const, id: dasherRef.id };
@@ -477,8 +517,22 @@ export const adminAdjustFloat = onCall(async (request) => {
   const next = await db.runTransaction(async tx => {
     const snap = await tx.get(ref);
     if (!snap.exists) throw new HttpsError('not-found', 'Not found.');
-    const value = (Number(snap.data()?.floatJmd) || 0) + amountJmd;
-    tx.set(ref, { floatJmd: value }, { merge: true });
+    let value: number;
+    if (kind === 'store') {
+      // Store floats live in storeFloats; an old value on the store doc is
+      // the starting balance if storeFloats doesn't have one yet.
+      const floatSnap = await tx.get(storeFloatRef(id));
+      const legacy = snap.data()?.floatJmd;
+      const current = floatSnap.exists
+        ? Number(floatSnap.data()?.floatJmd) || 0
+        : (typeof legacy === 'number' ? legacy : 0);
+      value = current + amountJmd;
+      tx.set(floatSnap.ref, { storeId: id, floatJmd: value }, { merge: true });
+      if (typeof legacy === 'number') tx.update(ref, { floatJmd: FieldValue.delete() });
+    } else {
+      value = (Number(snap.data()?.floatJmd) || 0) + amountJmd;
+      tx.set(ref, { floatJmd: value }, { merge: true });
+    }
     tx.set(db.collection('floatTx').doc(), {
       kind, targetId: id, amountJmd, note, by: request.auth!.uid, createdAt: Date.now(),
     });

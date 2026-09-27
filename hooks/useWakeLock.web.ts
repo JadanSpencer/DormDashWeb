@@ -2,9 +2,8 @@
 // Keeps the phone screen on while a dasher is online in the PWA.
 //
 // Why: browsers pause timers when the screen locks or the app is
-// backgrounded, which stops the location heartbeat in (dasher)/dash.tsx and
-// eventually makes the dasher look offline to the order-matching function.
-// The Screen Wake Lock API (Chrome/Android, Safari 16.4+) prevents the lock.
+// backgrounded, which freezes the map pin and the live order listener in
+// (dasher)/dash.tsx during a delivery. The Screen Wake Lock API (Chrome/Android, Safari 16.4+) prevents the lock.
 // The browser drops the lock whenever the tab is hidden, so it is
 // re-requested each time DormDash becomes visible again.
 

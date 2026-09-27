@@ -118,6 +118,8 @@ export interface Order {
     studentRating?: number;
     cancelReason?: string;   // set by the server when it rejects an order
     verifiedAt?: number;     // set by the server after re-pricing the order
+    dasherCreditedAt?: number; // set by the server once the dasher's stats are credited
+    deliveryMins?: number;   // set by the server on delivery (admin dashboard average)
     // Payments (functions/src/payments.ts). Missing on orders from before payments.
     paymentMethod?: 'card' | 'tokens';
     paymentStatus?: 'unpaid' | 'reserved' | 'awaiting_payment' | 'paid' | 'released' | 'refunded_tokens';

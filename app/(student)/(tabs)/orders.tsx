@@ -11,14 +11,14 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
-  collection, query, where, onSnapshot,
-  updateDoc, doc,
+  collection, query, where, onSnapshot, orderBy, limit,
+  updateDoc, doc, getAggregateFromServer, count, sum,
 } from 'firebase/firestore';
 import { router } from 'expo-router';
 import { db } from '../../../services/firebase';
 import { useAuth } from '../../../hooks/useAuth';
 import { Order, OrderStatus } from '../../../types';
-import { formatJMD } from '../../../constants';
+import { formatJMD, MAX_ACTIVE_ORDERS } from '../../../constants';
 import { usePriceUnit } from '../../../hooks/usePriceUnit';
 import { T, useReducedMotion } from '../../../constants/theme';
 
@@ -162,6 +162,12 @@ const rail = StyleSheet.create({
   labelActive: { color: T.color.cerulean, fontWeight: '800' },
 });
 
+// Same condition as the student cancel rule in firestore.rules: before a
+// dasher accepts, or after they accept but before anything is paid.
+const canStudentCancel = (order: Order) =>
+  order.status === 'pending' ||
+  (order.status === 'accepted' && order.paymentStatus === 'awaiting_payment');
+
 // ─── ACTIVE ORDER CARD ──────────────────────────────────────────────
 const ActiveOrderCard: React.FC<{ order: Order; onCancel: () => void; reduced: boolean }> = ({ order, onCancel, reduced }) => {
   const { fmt } = usePriceUnit();
@@ -249,7 +255,7 @@ const ActiveOrderCard: React.FC<{ order: Order; onCancel: () => void; reduced: b
 
       <StatusRail status={order.status} reduced={reduced} />
 
-      {order.status === 'pending' && (
+      {canStudentCancel(order) && (
         <Pressable
           onPress={(e) => { e.stopPropagation?.(); onCancel(); }}
           style={({ pressed }) => [
@@ -429,10 +435,13 @@ export default function StudentOrders() {
   const [activeOrders, setActiveOrders] = useState<Order[]>([]);
   const [pastOrders, setPastOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
-  // Past orders are shown PAGE_SIZE at a time. Paging happens on the phone,
-  // over the list the listener already has, so no new Firestore index is
-  // needed and nothing about the live updates changes.
+  // Past orders are shown PAGE_SIZE at a time, and only that many are loaded:
+  // "Show more" widens the live query. Before, this listened to the
+  // student's whole history, which got slower and costlier every week.
   const [visiblePast, setVisiblePast] = useState(PAGE_SIZE);
+  // Delivered count, total spent and how many past orders exist, counted by
+  // Firestore (aggregation queries) instead of by loading every order.
+  const [totals, setTotals] = useState<{ delivered: number; spent: number; past: number } | null>(null);
 
   useEffect(() => {
     if (!user) return;
@@ -450,22 +459,51 @@ export default function StudentOrders() {
 
   useEffect(() => {
     if (!user) return;
+    // Newest first over the studentId + createdAt index (no status filter,
+    // so no extra index). Up to MAX_ACTIVE_ORDERS of the newest can be
+    // in progress, so fetch that many extra and one more to know if there
+    // are older ones.
     const q = query(
       collection(db, 'orders'),
       where('studentId', '==', user.uid),
-      where('status', 'in', ['delivered', 'cancelled'])
+      orderBy('createdAt', 'desc'),
+      limit(visiblePast + MAX_ACTIVE_ORDERS + 1)
     );
     return onSnapshot(q, snap => {
-      const docs = snap.docs.map(d => ({ id: d.id, ...d.data() } as Order));
-      setPastOrders(docs.sort((a, b) => b.createdAt - a.createdAt));
+      setPastOrders(snap.docs
+        .map(d => ({ id: d.id, ...d.data() } as Order))
+        .filter(o => o.status === 'delivered' || o.status === 'cancelled'));
+      setLoading(false);
+    }, err => {
+      console.log('Past orders listener failed:', err?.message);
       setLoading(false);
     });
-  }, [user]);
+  }, [user, visiblePast]);
+
+  // Recount when an order finishes (the newest past order changes).
+  const newestPast = pastOrders[0] ? `${pastOrders[0].id}:${pastOrders[0].status}` : '';
+  useEffect(() => {
+    if (!user) return;
+    let alive = true;
+    const mine = where('studentId', '==', user.uid);
+    Promise.all([
+      getAggregateFromServer(query(collection(db, 'orders'), mine, where('status', '==', 'delivered')),
+        { n: count(), spent: sum('totalAmount') }),
+      getAggregateFromServer(query(collection(db, 'orders'), mine, where('status', 'in', ['delivered', 'cancelled'])),
+        { n: count() }),
+    ]).then(([delivered, past]) => {
+      if (alive) setTotals({ delivered: delivered.data().n, spent: delivered.data().spent ?? 0, past: past.data().n });
+    }).catch(e => console.log('Order totals failed:', e?.message));
+    return () => { alive = false; };
+  }, [user, newestPast]);
 
   const handleCancel = (activeOrder: Order) => {
+    const accepted = activeOrder.status === 'accepted';
     Alert.alert(
       'Cancel Order',
-      'Are you sure you want to cancel this order?',
+      accepted
+        ? `${activeOrder.dasherName ?? 'Your dasher'} will be told not to buy it. You haven't been charged. If a card payment goes through after this, it comes back to you as tokens.`
+        : 'Are you sure you want to cancel this order?',
       [
         { text: 'Keep Order', style: 'cancel' },
         {
@@ -480,7 +518,9 @@ export default function StudentOrders() {
             } catch (e) {
               Alert.alert(
                 'Too Late to Cancel',
-                'A dasher just accepted your order and is on the way. Sit tight!'
+                accepted
+                  ? 'This order has already been paid, so your dasher is on it. Contact DormDash support if you need to cancel.'
+                  : 'A dasher just accepted your order. Pay now to confirm it, or cancel it from here.'
               );
             }
           },
@@ -489,10 +529,7 @@ export default function StudentOrders() {
     );
   };
 
-  const deliveredCount = pastOrders.filter(o => o.status === 'delivered').length;
-  const totalSpent = pastOrders
-    .filter(o => o.status === 'delivered')
-    .reduce((sum, o) => sum + o.totalAmount, 0);
+  const olderCount = Math.max(0, (totals?.past ?? pastOrders.length) - visiblePast);
 
   return (
     <View style={styles.root}>
@@ -515,12 +552,12 @@ export default function StudentOrders() {
               {/* Stats */}
               <View style={styles.stats}>
                 <View style={styles.statCard}>
-                  <Text style={styles.statValue}>{deliveredCount}</Text>
+                  <Text style={styles.statValue}>{totals ? totals.delivered : '—'}</Text>
                   <Text style={styles.statLabel}>Delivered</Text>
                 </View>
                 <View style={[styles.statCard, styles.statDivided]}>
                   <View style={styles.statHollow}>
-                    <Text style={styles.statValueHollow} numberOfLines={1} adjustsFontSizeToFit>{formatJMDCompact(totalSpent)}</Text>
+                    <Text style={styles.statValueHollow} numberOfLines={1} adjustsFontSizeToFit>{totals ? formatJMDCompact(totals.spent) : '—'}</Text>
                   </View>
                   <Text style={styles.statLabel}>Total spent</Text>
                 </View>
@@ -557,8 +594,9 @@ export default function StudentOrders() {
                 accessibilityRole="button"
               >
                 <Text style={styles.moreText}>
-                  Show {Math.min(PAGE_SIZE, pastOrders.length - visiblePast)} more
-                  {' '}({pastOrders.length - visiblePast} older)
+                  {olderCount > 0
+                    ? `Show ${Math.min(PAGE_SIZE, olderCount)} more (${olderCount} older)`
+                    : 'Show more'}
                 </Text>
               </Pressable>
             ) : null

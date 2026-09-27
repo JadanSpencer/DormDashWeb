@@ -377,3 +377,22 @@ See **LAUNCH_CHECKLIST.md** for deploy order, smoke test, console settings, lega
 - Rules: `wallets`, `walletTx`, `payments` and `floatTx` are read-only from the app; a dasher can't move an order past `accepted` until `paymentStatus == 'paid'`; admins can't edit `floatJmd` directly.
 - App: `services/payments.ts`, `hooks/useWallet.ts`, `hooks/usePriceUnit.ts` (J$/tokens switch), `components/WalletCard.tsx`, `components/PriceUnitToggle.tsx`, `components/AmountPrompt.tsx`, and `app/(student)/payment-result.tsx` (confetti).
 - Money logic tests (in-memory, no emulator): 20 scenarios, including forged or replayed returns, late payments and double-charge attempts. They pass against the compiled functions.
+
+### Private dasher and float data (2026-09-26)
+- `dashers/*` is readable only by that dasher and admins (it holds earnings, float and the current order). Checkout's "no dashers online" warning reads `publicStats/app.onlineDashers`, kept current by `onDasherOnlineChanged` (recounts with `count()` whenever someone goes on/offline).
+- Store floats moved from `stores/{id}.floatJmd` (readable by every student) to `storeFloats/{storeId}` (admin read, server write). `readFloatTarget` / `adminAdjustFloat` move an old value across on first touch; the scheduled `runMigrations` sweeps all stores once and seeds the online count, recording each step in `meta/migrations`. Delete `runMigrations` once the logs show all its steps done (`storeFloatsV1`, `deliveryMinsV1`, `onlineDasherCountV1`).
+- Rules: store docs can't be created with `floatJmd`. Tests cover all of this (`npm run test:rules`, `cd functions && npm run test:payments`).
+
+### Decision: no Auth custom claims for roles (2026-09-26)
+`firestore.rules` checks role and `isActive` by reading `users/{uid}` (`me()`), which costs one extra read per request. Moving these into custom claims was considered and **rejected**: claims live in the ID token for up to an hour, so a deactivated dasher could keep accepting orders until it expired (revoking refresh tokens doesn't end the current ID token). Instant deactivation is worth more than the read. Don't reintroduce claims for `isActive`; to cut rule reads, reduce request volume instead (e.g. the dasher heartbeat).
+
+### Admin dashboard uses aggregation queries (2026-09-26)
+`app/(admin)/(tabs)/dashboard.tsx` no longer listens to all of `users` and `orders`. It runs `count()`/`sum()`/`average()` aggregation queries (one read per 1,000 matching docs) on focus, every minute while open (paused while the browser tab is hidden), on pull-to-refresh, and when the "Updated …" bar is tapped. Average delivery time averages `orders.deliveryMins`, which `onDeliveryCompleted` writes; `runMigrations` backfills older delivered orders. Stores are still a live listener (few docs). The preview fake supports these aggregations.
+
+### Bounded order history (2026-09-26)
+No screen listens to a user's whole order history any more:
+- Student Orders tab: past orders are a live `studentId + createdAt desc` query with `limit(visible + MAX_ACTIVE_ORDERS + 1)`; "Show more" widens the limit. Delivered / Total spent / "N older" come from aggregation queries, recounted when an order finishes. Uses the existing index.
+- Dasher `/dash` Today strip and `/account` 30-day history: `hooks/useDasherOrders.ts` (`dasherId + acceptedAt >= since`). **New index** in `firestore.indexes.json`: deploy with `firebase deploy --only firestore:indexes` *before* the web build. Until it finishes building, the hook falls back to the old unbounded query, so nothing breaks in between.
+
+### Scheduler reads only overdue orders (2026-09-26)
+`cancelStalePendingOrders` (every 5 min) no longer reads every pending and accepted order. It queries pending orders with `createdAt < cutoff` or `verifiedAt < cutoff` (both, so a wrong phone clock can't hide an order), and `paymentStatus == 'awaiting_payment'` with `payDeadline < now`, then re-checks each inside its transaction as before. **Two new indexes** in `firestore.indexes.json` (`status + verifiedAt`, `paymentStatus + payDeadline`); while they build, it falls back to the old full reads and logs `Index for … not ready`.

@@ -24,7 +24,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, router } from 'expo-router';
-import { collection, addDoc, getDocs, query, where, onSnapshot } from 'firebase/firestore';
+import { collection, doc, addDoc, getDocs, query, where, onSnapshot } from 'firebase/firestore';
 import { db } from '../../services/firebase';
 import { useAuth } from '../../hooks/useAuth';
 import { CartItem, Order } from '../../types';
@@ -90,10 +90,12 @@ export default function CheckoutScreen() {
     return () => { cancelled = true; };
   }, []);
 
-  useEffect(() => {
-    const q = query(collection(db, 'dashers'), where('isOnline', '==', true));
-    return onSnapshot(q, snap => setOnlineDashers(snap.size));
-  }, []);
+  // dashers/* is private, so the server keeps a public count
+  // (onDasherOnlineChanged). Missing doc = unknown, so no warning is shown.
+  useEffect(() => onSnapshot(doc(db, 'publicStats', 'app'), snap => {
+    const n = snap.data()?.onlineDashers;
+    setOnlineDashers(typeof n === 'number' ? n : null);
+  }, () => setOnlineDashers(null)), []);
 
   const handlePlaceOrder = async () => {
     const cleanLabel = sanitizeAddress(deliveryLabel);

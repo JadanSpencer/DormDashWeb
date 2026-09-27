@@ -7,6 +7,7 @@ import {
 } from '@firebase/rules-unit-testing';
 import {
   doc, getDoc, setDoc, updateDoc, deleteDoc, addDoc, collection, query, where, getDocs,
+  getAggregateFromServer, count, sum, average, orderBy, limit,
 } from 'firebase/firestore';
 
 let env;
@@ -103,8 +104,21 @@ test('dasher with an old stored position can still go online, and clear it', asy
   await assertSucceeds(updateDoc(doc(db('dash2'), 'dashers', 'dash2'), { isOnline: true, lastSeenAt: 1 }));
   await assertSucceeds(updateDoc(doc(db('dash2'), 'dashers', 'dash2'), { isOnline: false, currentLocation: null, lastSeenAt: 2 }));
 });
-test('student can count online dashers', async () => {
-  await assertSucceeds(getDocs(query(collection(db('stu'), 'dashers'), where('isOnline', '==', true))));
+test('dasher docs are private to that dasher and admins', async () => {
+  await assertFails(getDocs(query(collection(db('stu'), 'dashers'), where('isOnline', '==', true))));
+  await assertFails(getDoc(doc(db('stu'), 'dashers', 'dash')));
+  await assertFails(getDoc(doc(db('dash2'), 'dashers', 'dash')));
+  await assertSucceeds(getDoc(doc(db('dash'), 'dashers', 'dash')));
+  await assertSucceeds(getDoc(doc(db('boss'), 'dashers', 'dash')));
+  await assertSucceeds(getDocs(collection(db('boss'), 'dashers')));
+});
+test('online dasher count is public to signed-in users, written by the server only', async () => {
+  await env.withSecurityRulesDisabled(async (ctx) => {
+    await setDoc(doc(ctx.firestore(), 'publicStats', 'app'), { onlineDashers: 3 });
+  });
+  await assertSucceeds(getDoc(doc(db('stu'), 'publicStats', 'app')));
+  await assertFails(getDoc(doc(anon(), 'publicStats', 'app')));
+  await assertFails(setDoc(doc(db('boss'), 'publicStats', 'app'), { onlineDashers: 99 }));
 });
 
 // ── Orders ────────────────────────────────────────────────────────────────
@@ -133,6 +147,20 @@ test('dasher sees open orders but not cancelled ones', async () => {
 test('student cancels pending, not after acceptance', async () => {
   await assertSucceeds(updateDoc(doc(db('stu'), 'orders', 'pend'), { status: 'cancelled', cancelledAt: 1 }));
   await assertFails(updateDoc(doc(db('stu'), 'orders', 'mine'), { status: 'cancelled', cancelledAt: 1 }));
+});
+test('student cancels an accepted order only while it is unpaid', async () => {
+  await env.withSecurityRulesDisabled(async (ctx) => {
+    const a = ctx.firestore();
+    const accepted = { ...baseOrder, status: 'accepted', dasherId: 'dash', dasherName: 'D', verifiedAt: 1, paymentMethod: 'card' };
+    await setDoc(doc(a, 'orders', 'unpaid'), { ...accepted, paymentStatus: 'awaiting_payment', payDeadline: Date.now() + 600000 });
+    await setDoc(doc(a, 'orders', 'paid'), { ...accepted, paymentStatus: 'paid' });
+  });
+  await assertFails(updateDoc(doc(db('stu'), 'orders', 'paid'), { status: 'cancelled', cancelledAt: 1 }));
+  // Can't be used to touch payment fields on the way out.
+  await assertFails(updateDoc(doc(db('stu'), 'orders', 'unpaid'), { status: 'cancelled', cancelledAt: 1, paymentStatus: 'paid' }));
+  // Another student can't cancel it.
+  await assertFails(updateDoc(doc(db('stu2'), 'orders', 'unpaid'), { status: 'cancelled', cancelledAt: 1 }));
+  await assertSucceeds(updateDoc(doc(db('stu'), 'orders', 'unpaid'), { status: 'cancelled', cancelledAt: 1 }));
 });
 test('student cannot change price or mark delivered', async () => {
   await assertFails(updateDoc(doc(db('stu'), 'orders', 'pend'), { totalAmount: 1 }));
@@ -206,4 +234,59 @@ test('nobody can write balances or payments from the app', async () => {
   await assertSucceeds(getDoc(doc(db('stu'), 'payments', 'p1')));
   await assertFails(updateDoc(doc(db('stu'), 'payments', 'p1'), { status: 'paid' }));
   await assertFails(updateDoc(doc(db('boss'), 'stores', 'store1'), { floatJmd: 100000 }));
+});
+test('store floats are admin-read-only and never on the public store doc', async () => {
+  await env.withSecurityRulesDisabled(async (ctx) => {
+    await setDoc(doc(ctx.firestore(), 'storeFloats', 'store1'), { storeId: 'store1', floatJmd: 5000 });
+  });
+  await assertFails(getDoc(doc(db('stu'), 'storeFloats', 'store1')));
+  await assertFails(getDoc(doc(db('dash'), 'storeFloats', 'store1')));
+  await assertSucceeds(getDoc(doc(db('boss'), 'storeFloats', 'store1')));
+  await assertFails(setDoc(doc(db('boss'), 'storeFloats', 'store1'), { floatJmd: 999999 }));
+  await assertFails(setDoc(doc(db('boss'), 'stores', 'store2'), {
+    name: 'New', description: 'New store', deliveryFee: 100, rating: 5, isOpen: true, floatJmd: 5000,
+  }));
+  await assertSucceeds(setDoc(doc(db('boss'), 'stores', 'store2'), {
+    name: 'New', description: 'New store', deliveryFee: 100, rating: 5, isOpen: true,
+  }));
+});
+
+// ── Admin dashboard aggregations ─────────────────────────────────────────
+test('admin dashboard aggregates users and orders; others cannot', async () => {
+  await env.withSecurityRulesDisabled(async (ctx) => {
+    const a = ctx.firestore();
+    await setDoc(doc(a, 'orders', 'd1'), { ...baseOrder, status: 'delivered', deliveryFee: 150, totalAmount: 900, deliveryMins: 20 });
+    await setDoc(doc(a, 'orders', 'd2'), { ...baseOrder, status: 'delivered', deliveryFee: 250, totalAmount: 1100, deliveryMins: 30 });
+  });
+  const agg = await assertSucceeds(getAggregateFromServer(
+    query(collection(db('boss'), 'orders'), where('status', '==', 'delivered')),
+    { n: count(), revenue: sum('deliveryFee'), gmv: sum('totalAmount'), avgMins: average('deliveryMins') },
+  ));
+  const d = agg.data();
+  if (d.n !== 2 || d.revenue !== 400 || d.gmv !== 2000 || d.avgMins !== 25) throw new Error('bad aggregate ' + JSON.stringify(d));
+  await assertSucceeds(getAggregateFromServer(query(collection(db('boss'), 'users'), where('role', '==', 'student')), { n: count() }));
+  await assertSucceeds(getAggregateFromServer(query(collection(db('boss'), 'orders'), where('createdAt', '>=', 0)), { n: count() }));
+  await assertFails(getAggregateFromServer(collection(db('stu'), 'users'), { n: count() }));
+  await assertFails(getAggregateFromServer(collection(db('stu'), 'orders'), { n: count() }));
+  await assertFails(getAggregateFromServer(collection(db('dash'), 'orders'), { n: count() }));
+});
+
+// ── Bounded history queries (Orders tab, dasher Today / 30 days) ─────────
+test('student pages own history and totals; not someone else\'s', async () => {
+  await assertSucceeds(getDocs(query(collection(db('stu'), 'orders'),
+    where('studentId', '==', 'stu'), orderBy('createdAt', 'desc'), limit(14))));
+  await assertSucceeds(getAggregateFromServer(query(collection(db('stu'), 'orders'),
+    where('studentId', '==', 'stu'), where('status', '==', 'delivered')), { n: count(), spent: sum('totalAmount') }));
+  await assertSucceeds(getAggregateFromServer(query(collection(db('stu'), 'orders'),
+    where('studentId', '==', 'stu'), where('status', 'in', ['delivered', 'cancelled'])), { n: count() }));
+  await assertFails(getDocs(query(collection(db('stu2'), 'orders'),
+    where('studentId', '==', 'stu'), orderBy('createdAt', 'desc'), limit(14))));
+  await assertFails(getAggregateFromServer(query(collection(db('stu2'), 'orders'),
+    where('studentId', '==', 'stu'), where('status', '==', 'delivered')), { n: count() }));
+});
+test('dasher reads own recent orders by acceptedAt; not another dasher\'s', async () => {
+  await assertSucceeds(getDocs(query(collection(db('dash'), 'orders'),
+    where('dasherId', '==', 'dash'), where('acceptedAt', '>=', 0), orderBy('acceptedAt', 'desc'))));
+  await assertFails(getDocs(query(collection(db('dash2'), 'orders'),
+    where('dasherId', '==', 'dash'), where('acceptedAt', '>=', 0), orderBy('acceptedAt', 'desc'))));
 });

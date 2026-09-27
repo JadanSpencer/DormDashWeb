@@ -3,8 +3,8 @@
 //
 // TARGETING FIXES IN THIS VERSION — "only the people it's for":
 //   1. New orders no longer blast every dasher account. Only dashers who are
-//      currently ONLINE (dashers/{uid}.isOnline) and whose heartbeat is fresh
-//      are notified.
+//      currently ONLINE (dashers/{uid}.isOnline) are notified. Online is a
+//      sticky switch in the app, so there is no heartbeat or staleness cutoff.
 //   2. A dasher who already has an active delivery is skipped — they can't
 //      accept anyway, so the buzz is noise.
 //   3. The customer is excluded from the dasher broadcast. A student who is
@@ -29,6 +29,7 @@ import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { onSchedule } from 'firebase-functions/v2/scheduler';
 import {
   reserveTokensAndVerify, chargeTokensOnAccept, settleCancelledOrder, PAY_WINDOW_MS,
+  migrateLegacyStoreFloats,
 } from './payments';
 export { createPayment, wipayReturn, adminAdjustTokens, adminAdjustFloat, payOrderWithTokens } from './payments';
 import { alertStore } from './storeAlerts';
@@ -39,10 +40,6 @@ const CHUNK = 400; // Firestore batches cap at 500 writes
 if (!admin.apps.length) admin.initializeApp(); // payments.ts may have done it already
 
 const db = admin.firestore();
-
-// A dasher's heartbeat only writes while the app is foregrounded. 45 minutes
-// keeps a dasher reachable while their phone is pocketed, without spamming
-// someone who closed the app hours ago.
 
 const CERULEAN = '#0E8FB5';
 
@@ -460,7 +457,16 @@ async function verifyNewOrder(
     if (result === 'insufficient') return cancel('insufficient_tokens');
     if (result === 'gone') return null;
   } else {
-    await ref.update(verified);
+    // Only publish if the order is still pending: the student may have
+    // cancelled while it was being checked, and dashers must not be alerted
+    // about an order that no longer exists.
+    const published = await db.runTransaction(async tx => {
+      const fresh = (await tx.get(ref)).data();
+      if (!fresh || fresh.status !== 'pending') return false;
+      tx.update(ref, verified);
+      return true;
+    });
+    if (!published) return null;
   }
   return { ...order, ...verified };
 }
@@ -693,8 +699,18 @@ export const onOrderStatusChanged = onDocumentWritten(
   }
 );
 
+// Minutes from order to doorstep, stored on the order so the admin dashboard
+// can average it with an aggregation query instead of reading every order.
+function deliveryMinsOf(order: admin.firestore.DocumentData): { deliveryMins?: number } {
+  const ms = Number(order.deliveredAt) - Number(order.createdAt);
+  return Number.isFinite(ms) && ms >= 0 ? { deliveryMins: Math.round(ms / 60000) } : {};
+}
+
 // ─── TRIGGER: DELIVERY COMPLETED → credit the dasher ───────────────────────
 // (Kept from the existing deployment: server-written stats are tamper-proof.)
+// Firestore triggers are delivered at least once, so a retry could run this
+// twice for the same delivery. The credit and a dasherCreditedAt mark on the
+// order are written in one transaction: a second run sees the mark and stops.
 export const onDeliveryCompleted = onDocumentWritten(
   'orders/{orderId}',
   async (event) => {
@@ -704,12 +720,20 @@ export const onDeliveryCompleted = onDocumentWritten(
     if (before.status === 'delivered' || after.status !== 'delivered') return;
     if (!after.dasherId) return;
 
-    await db.collection('dashers').doc(after.dasherId).set({
-      totalDeliveries: FieldValue.increment(1),
-      totalEarnings: FieldValue.increment(Number(after.deliveryFee) || 0),
-    }, { merge: true });
+    const orderRef = event.data!.after!.ref;
+    const credited = await db.runTransaction(async tx => {
+      const fresh = (await tx.get(orderRef)).data();
+      if (!fresh || fresh.status !== 'delivered' || fresh.dasherCreditedAt) return false;
+      tx.set(db.collection('dashers').doc(after.dasherId), {
+        totalDeliveries: FieldValue.increment(1),
+        totalEarnings: FieldValue.increment(Number(fresh.deliveryFee) || 0),
+      }, { merge: true });
+      tx.update(orderRef, { dasherCreditedAt: Date.now(), ...deliveryMinsOf(fresh) });
+      return true;
+    });
 
-    logger.info(`Credited dasher ${after.dasherId} for order ${event.params.orderId}`);
+    if (credited) logger.info(`Credited dasher ${after.dasherId} for order ${event.params.orderId}`);
+    else logger.info(`Dasher already credited for order ${event.params.orderId}, skipped`);
   }
 );
 
@@ -879,16 +903,94 @@ export const deleteMyAccount = onCall(async (request) => {
 });
 
 
+// ─── ONLINE DASHER COUNT ───────────────────────────────────────────────────
+// dashers/* is private (earnings, floats), so checkout can't count online
+// dashers itself. It reads publicStats/app instead, which this keeps current.
+// Recounting (rather than +1/-1) means the number can never drift.
+async function refreshOnlineDasherCount(): Promise<void> {
+  const agg = await db.collection('dashers').where('isOnline', '==', true).count().get();
+  await db.collection('publicStats').doc('app').set(
+    { onlineDashers: agg.data().count, updatedAt: Date.now() }, { merge: true });
+}
+
+export const onDasherOnlineChanged = onDocumentWritten('dashers/{uid}', async (event) => {
+  const wasOnline = event.data?.before?.data()?.isOnline === true;
+  const isOnline = event.data?.after?.data()?.isOnline === true;
+  if (wasOnline === isOnline) return; // stat updates, old-app heartbeats
+  await refreshOnlineDasherCount();
+});
+
+// ─── ONE-TIME MIGRATIONS ───────────────────────────────────────────────────
+// Runs by itself after deploy; each step records itself in meta/migrations
+// and never runs again. Once the logs show every step done, this function
+// can be deleted.
+export const runMigrations = onSchedule('every 10 minutes', async () => {
+  const ref = db.collection('meta').doc('migrations');
+  const done = (await ref.get()).data() ?? {};
+  if (!done.storeFloatsV1) {
+    const moved = await migrateLegacyStoreFloats();
+    await ref.set({ storeFloatsV1: Date.now() }, { merge: true });
+    logger.info(`Migration storeFloatsV1: moved ${moved} store float(s) off public store docs`);
+  }
+  if (!done.deliveryMinsV1) {
+    // Delivered orders from before deliveryMins existed.
+    const delivered = await db.collection('orders').where('status', '==', 'delivered').get();
+    const missing = delivered.docs.filter(d => d.get('deliveryMins') === undefined && deliveryMinsOf(d.data()).deliveryMins !== undefined);
+    for (let i = 0; i < missing.length; i += CHUNK) {
+      const batch = db.batch();
+      missing.slice(i, i + CHUNK).forEach(d => batch.update(d.ref, deliveryMinsOf(d.data())));
+      await batch.commit();
+    }
+    await ref.set({ deliveryMinsV1: Date.now() }, { merge: true });
+    logger.info(`Migration deliveryMinsV1: backfilled ${missing.length} delivered order(s)`);
+  }
+  if (!done.onlineDasherCountV1) {
+    await refreshOnlineDasherCount();
+    await ref.set({ onlineDasherCountV1: Date.now() }, { merge: true });
+    logger.info('Migration onlineDasherCountV1: seeded publicStats/app');
+  }
+});
+
 // ─── STALE ORDER CLEANUP ────────────────────────────────────────────────────
 // An order nobody accepts would otherwise sit on "Finding a dasher" forever.
 // Every 5 minutes, cancel pending orders older than PENDING_TIMEOUT_MS. The
 // cancel write triggers onOrderStatusChanged, which tells the student why.
 const PENDING_TIMEOUT_MS = 30 * 60 * 1000;
 
-export const cancelStalePendingOrders = onSchedule('every 5 minutes', async () => {
-  const cutoff = Date.now() - PENDING_TIMEOUT_MS;
-  const snap = await db.collection('orders').where('status', '==', 'pending').get();
-  const stale = snap.docs.filter(d => Number(d.get('verifiedAt') ?? d.get('createdAt')) < cutoff);
+// SPEED: only overdue orders are read. This used to read every pending and
+// every accepted order every 5 minutes and filter them here. Each query
+// needs an index (firestore.indexes.json); while one is still building, it
+// falls back to the old full read so nothing is missed.
+type Snap = admin.firestore.QueryDocumentSnapshot;
+async function overdue(fast: () => Promise<Snap[]>, full: () => Promise<Snap[]>, label: string): Promise<Snap[]> {
+  try {
+    return await fast();
+  } catch (e: any) {
+    if (e?.code !== 9) throw e; // 9 = index missing or still building
+    logger.warn(`Index for ${label} not ready, using full read`);
+    return full();
+  }
+}
+
+async function cancelOverdueOrders(now = Date.now()): Promise<{ noDasher: number; unpaid: number }> {
+  const orders = db.collection('orders');
+  const pending = orders.where('status', '==', 'pending');
+  const cutoff = now - PENDING_TIMEOUT_MS;
+  const isStale = (d: Snap) => Number(d.get('verifiedAt') ?? d.get('createdAt')) < cutoff;
+
+  // verifiedAt is the server's clock; createdAt comes from the phone. Both
+  // queries together find exactly the orders the old full read did.
+  const staleDocs = await overdue(async () => {
+    const [byCreated, byVerified] = await Promise.all([
+      pending.where('createdAt', '<', cutoff).get(),
+      pending.where('verifiedAt', '<', cutoff).get(),
+    ]);
+    const byId = new Map<string, Snap>();
+    [...byCreated.docs, ...byVerified.docs].forEach(d => byId.set(d.id, d));
+    return [...byId.values()];
+  }, async () => (await pending.get()).docs, 'stale pending orders');
+  const stale = staleDocs.filter(isStale);
+
   // All at once rather than one after another (each is its own transaction:
   // skipped if a dasher accepted it in the meantime).
   await Promise.all(stale.map(d => db.runTransaction(async tx => {
@@ -899,16 +1001,25 @@ export const cancelStalePendingOrders = onSchedule('every 5 minutes', async () =
   if (stale.length) logger.info(`Auto-cancelled ${stale.length} order(s) nobody accepted in 30 min`);
 
   // Card orders a dasher accepted but the student never paid for.
-  const now = Date.now();
-  const accepted = await db.collection('orders').where('status', '==', 'accepted').get();
-  const unpaid = accepted.docs.filter(d =>
-    d.get('paymentMethod') === 'card' && d.get('paymentStatus') === 'awaiting_payment' &&
-    Number(d.get('payDeadline')) > 0 && Number(d.get('payDeadline')) < now);
+  const isUnpaid = (d: Snap) =>
+    d.get('status') === 'accepted' && d.get('paymentMethod') === 'card' &&
+    d.get('paymentStatus') === 'awaiting_payment' &&
+    Number(d.get('payDeadline')) > 0 && Number(d.get('payDeadline')) < now;
+  const unpaidDocs = await overdue(
+    async () => (await orders.where('paymentStatus', '==', 'awaiting_payment').where('payDeadline', '<', now).get()).docs,
+    async () => (await orders.where('status', '==', 'accepted').get()).docs,
+    'unpaid orders');
+  const unpaid = unpaidDocs.filter(isUnpaid);
   await Promise.all(unpaid.map(d => db.runTransaction(async tx => {
     const fresh = await tx.get(d.ref);
     if (fresh.get('status') !== 'accepted' || fresh.get('paymentStatus') !== 'awaiting_payment') return;
     tx.update(d.ref, { status: 'cancelled', cancelReason: 'payment_timeout', cancelledAt: Date.now() });
   }).catch(e => logger.warn('Payment-timeout cancel failed', { orderId: d.id, message: e?.message }))));
   if (unpaid.length) logger.info(`Cancelled ${unpaid.length} accepted order(s) not paid in time`);
-});
 
+  return { noDasher: stale.length, unpaid: unpaid.length };
+}
+
+export const cancelStalePendingOrders = onSchedule('every 5 minutes', async () => {
+  await cancelOverdueOrders();
+});

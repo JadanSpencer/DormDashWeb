@@ -73,10 +73,10 @@ service cloud.firestore {
     }
 
     // ── Dashers ─────────────────────────────────────────────────────────
-    // Readable by signed-in users so checkout can count who's online.
-    // Nothing sensitive is stored here: no live GPS position.
+    // Private: earnings, float and the current order. Only the dasher and
+    // admins. Checkout's "dashers online" count comes from publicStats.
     match /dashers/{uid} {
-      allow read: if signedIn();
+      allow read: if signedIn() && (request.auth.uid == uid || isAdmin());
 
       allow create: if signedIn() && request.auth.uid == uid
         && request.resource.data.keys().hasOnly(
@@ -87,7 +87,8 @@ service cloud.firestore {
         && request.resource.data.totalEarnings == 0
         && request.resource.data.rating == 5;
 
-      // Go online/offline and heartbeat. Earnings and ratings are
+      // Go online/offline (lastSeenAt = when they switched; older app
+      // versions also sent it as a heartbeat). Earnings and ratings are
       // server-only (onDeliveryCompleted).
       allow update: if isDasher() && request.auth.uid == uid
         && onlyChanged(['isOnline', 'lastSeenAt', 'currentLocation'])
@@ -125,10 +126,14 @@ service cloud.firestore {
         && str(request.resource.data.deliveryAddress.label, 200)
         && (!('studentNote' in request.resource.data) || str(request.resource.data.studentNote, 500));
 
-      // Student cancels while no dasher has taken it.
+      // Student cancels while no dasher has taken it, or after a dasher
+      // accepted but before it's paid (nothing has been charged yet; a card
+      // payment that lands later is credited back as tokens by wipayReturn).
       allow update: if signedIn()
         && resource.data.studentId == request.auth.uid
-        && resource.data.status == 'pending'
+        && (resource.data.status == 'pending'
+            || (resource.data.status == 'accepted'
+                && resource.data.get('paymentStatus', null) == 'awaiting_payment'))
         && request.resource.data.status == 'cancelled'
         && onlyChanged(['status', 'cancelledAt']);
 
@@ -181,7 +186,9 @@ service cloud.firestore {
     match /stores/{storeId} {
       allow read: if signedIn();
 
+      // Floats live in storeFloats (admin-only), never on the public store doc.
       allow create: if isAdmin()
+        && !('floatJmd' in request.resource.data)
         && isValidString(request.resource.data.name, 100)
         && isValidString(request.resource.data.description, 500)
         && isValidPrice(request.resource.data.deliveryFee)
@@ -220,6 +227,16 @@ service cloud.firestore {
     }
     match /floatTx/{id} {
       allow read: if isAdmin();
+      allow write: if false;
+    }
+    match /storeFloats/{storeId} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+
+    // Public numbers the server keeps up to date (online dasher count).
+    match /publicStats/{id} {
+      allow read: if signedIn();
       allow write: if false;
     }
 

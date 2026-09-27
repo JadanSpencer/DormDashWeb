@@ -233,6 +233,20 @@ export default function AdminStores() {
     return unsub;
   }, []);
 
+  // Store floats are admin-only (storeFloats/{storeId}), not on the public
+  // store doc. The old floatJmd field is shown until the server moves it.
+  const [floats, setFloats] = useState<Record<string, number>>({});
+  useEffect(() => onSnapshot(collection(db, 'storeFloats'), snap => {
+    const m: Record<string, number> = {};
+    snap.forEach(d => { m[d.id] = Number(d.data().floatJmd) || 0; });
+    setFloats(m);
+  }), []);
+  const floatOf = (store: Store): number | undefined => {
+    if (store.id in floats) return floats[store.id];
+    const legacy = (store as any).floatJmd;
+    return typeof legacy === 'number' ? legacy : undefined;
+  };
+
   const handleDelete = (store: Store) => {
     Alert.alert('Delete Store', `Delete "${store.name}"? This cannot be undone.`, [
       { text: 'Cancel', style: 'cancel' },
@@ -313,12 +327,12 @@ export default function AdminStores() {
                   float pays for this store's orders. */}
               <View style={styles.floatRow}>
                 <Text style={styles.floatText}>
-                  {typeof (item as any).floatJmd === 'number'
-                    ? `Float: ${formatJMD((item as any).floatJmd)}`
+                  {floatOf(item) !== undefined
+                    ? `Float: ${formatJMD(floatOf(item)!)}`
                     : 'No store float (dasher\'s float pays)'}
                 </Text>
                 <Pressable onPress={() => setFloatTarget(item)} style={styles.floatBtn}>
-                  <Text style={styles.floatBtnText}>{typeof (item as any).floatJmd === 'number' ? 'Adjust float' : 'Start float'}</Text>
+                  <Text style={styles.floatBtnText}>{floatOf(item) !== undefined ? 'Adjust float' : 'Start float'}</Text>
                 </Pressable>
               </View>
 

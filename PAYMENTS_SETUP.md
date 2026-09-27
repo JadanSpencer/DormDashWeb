@@ -59,4 +59,4 @@ Never share the live API key in chat, email or screenshots. If it leaks, generat
 ## Where to look
 - Student balance and history: Firestore `wallets/{uid}` and `walletTx` (filter by `uid`).
 - Card payments: `payments` (status `pending` / `paid` / `failed` / `credited`).
-- Floats: `stores/{id}.floatJmd`, `dashers/{uid}.floatJmd`, history in `floatTx`.
+- Floats: `storeFloats/{storeId}.floatJmd` (admin-only; older stores had it on the store doc and are moved automatically), `dashers/{uid}.floatJmd`, history in `floatTx`.

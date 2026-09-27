@@ -25,8 +25,8 @@ const sections: Section[] = [
         ['Account details', 'Name, email address, phone number, university, your role (student, dasher or admin), and optionally your major and expected graduation year. Your password is handled by Google Firebase Authentication. We never see or store it.'],
         ['Orders', 'The store, items, quantities, prices, delivery fee, total, order status and times, the delivery address you type (for example "Block C, Room 204"), and any note you add for your dasher.'],
         ['Location at checkout', 'If you allow it, the GPS position of your phone when you place an order, so your dasher gets a map pin. If you say no, we store only the address you typed.'],
-        ['Dasher location', 'Only for dashers, and only while "online" is switched on: if you allow it, your phone uses GPS to show your own position on your map. That position stays on your phone. DormDash does not send it to our servers or show it to customers. While you are online, the app tells our server that you are still available about once a minute.'],
-        ['Dasher activity', 'Online status, when you were last active, vehicle type, number of deliveries, rating and earnings from deliveries.'],
+        ['Dasher location', 'Only for dashers, and only while "online" is switched on: if you allow it, your phone uses GPS to show your own position on your map. That position stays on your phone. DormDash does not send it to our servers or show it to customers. When you switch online or offline, the app tells our server, with the time you switched.'],
+        ['Dasher activity', 'Online status, when you last switched online or offline, vehicle type, number of deliveries, rating and earnings from deliveries.'],
         ['Notifications', 'A notification token for your device, so we can send order updates. It is removed when you sign out.'],
         ['Technical data', 'Our hosting and database provider (Google) keeps short-lived security and error logs, which can include your IP address and device type. We do not use these to track you.'],
       ] },
@@ -39,6 +39,7 @@ const sections: Section[] = [
     blocks: [{ list: [
       'Your dasher sees your name, your delivery address or pin, your note and the items in your order. They do not see your email or phone number.',
       'As a student, you see your dasher\'s name while they are delivering your order.',
+      'A dasher\'s earnings, rating, delivery count and online status are visible only to that dasher and DormDash administrators. Students only see how many dashers are online in total.',
       'Stores do not get an account in DormDash and do not receive your personal details from us.',
       'DormDash administrators can see account details and orders to run the service, handle disputes and prevent abuse.',
     ] }],
@@ -95,7 +96,7 @@ const sections: Section[] = [
     title: 'How long we keep it',
     blocks: [{ list: [
       'Account details: until you delete your account.',
-      'Dasher availability: whether you are online and when you were last active, until you delete your account.',
+      'Dasher availability: whether you are online and when you last switched online or offline, until you delete your account.',
       'Orders: kept as transaction records. When you delete your account, your name, address, GPS position and notes are removed from your past orders, leaving an anonymous record of what was bought and for how much.',
       'Technical logs: kept by Google for up to 30 days.',
     ] }],

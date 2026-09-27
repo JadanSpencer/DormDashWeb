@@ -66,17 +66,17 @@ export function seed(): Record<string, any> {
   });
   db['orders/o1'] = order('o1', 's1', [item('s1', 'm1', 1), item('s1', 'm3', 1)], 'on_the_way', 18 * min,
     { dasherId: 'das1', dasherName: 'Kemar Reid', acceptedAt: now - 14 * min, studentNote: 'Call when you reach the gate.' });
-  db['orders/o2'] = order('o2', 's3', [item('s3', 'm7', 2)], 'delivered', 2 * day, { dasherId: 'das1', dasherName: 'Kemar Reid', deliveredAt: now - 2 * day + 30 * min });
+  db['orders/o2'] = order('o2', 's3', [item('s3', 'm7', 2)], 'delivered', 2 * day, { dasherId: 'das1', dasherName: 'Kemar Reid', acceptedAt: now - 2 * day + 5 * min, deliveredAt: now - 2 * day + 30 * min, deliveryMins: 30 });
   db['orders/o3'] = order('o3', 's2', [item('s2', 'm5', 2), item('s2', 'm6', 2)], 'cancelled', 5 * day);
   db['orders/o4'] = { ...order('o4', 's2', [item('s2', 'm6', 3)], 'pending', 4 * min), studentId: 'stu2', studentName: 'Daniel Williams', verifiedAt: now - 4 * min };
   db['orders/o5'] = { ...order('o5', 's3', [item('s3', 'm8', 1)], 'pending', 9 * min), studentId: 'stu2', studentName: 'Daniel Williams', verifiedAt: now - 9 * min, deliveryAddress: { latitude: 0, longitude: 0, label: 'Science Library, 2nd floor', hasGpsFix: false } };
-  db['orders/o6'] = order('o6', 's1', [item('s1', 'm2', 1)], 'delivered', 9 * day, { dasherId: 'das1', dasherName: 'Kemar Reid', deliveredAt: now - 9 * day + 25 * min });
+  db['orders/o6'] = order('o6', 's1', [item('s1', 'm2', 1)], 'delivered', 9 * day, { dasherId: 'das1', dasherName: 'Kemar Reid', acceptedAt: now - 9 * day + 5 * min, deliveredAt: now - 9 * day + 25 * min, deliveryMins: 25 });
   // A second in-progress order (students can have up to 3) and enough
   // history to show the "Show more" paging on the Orders tab.
   db['orders/o7'] = order('o7', 's2', [item('s2', 'm5', 1)], 'pending', 2 * min, { verifiedAt: now - 2 * min });
   for (let i = 1; i <= 12; i++) {
     db[`orders/h${i}`] = order(`h${i}`, 's3', [item('s3', 'm7', 1)], 'delivered', (10 + i) * day,
-      { dasherId: 'das1', dasherName: 'Kemar Reid', deliveredAt: now - (10 + i) * day + 20 * min });
+      { dasherId: 'das1', dasherName: 'Kemar Reid', acceptedAt: now - (10 + i) * day + 5 * min, deliveredAt: now - (10 + i) * day + 20 * min, deliveryMins: 20 });
   }
   // Payments (preview only): a token balance, a card order waiting for
   // payment, and a paid card payment for the /payment-result screen.
