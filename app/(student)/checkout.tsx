@@ -35,7 +35,7 @@ import { PriceUnitToggle } from '../../components/PriceUnitToggle';
 import { sanitizeText, sanitizeAddress, sanitizeNote, isValidCoordinate } from '../../services/sanitize';
 import { T } from '../../constants/theme';
 import * as Location from 'expo-location';
-import { TopoBackground } from '../../components/TopoBackground';
+import { Backdrop } from '../../components/Backdrop';
 
 // Fallback-safe back — matches store screen behaviour.
 const safeGoBack = () => {
@@ -157,7 +157,7 @@ export default function CheckoutScreen() {
 
   return (
     <View style={styles.root}>
-      <TopoBackground tone="cream" />
+      <Backdrop tone="cream" />
       <ScrollView
         contentContainerStyle={{ paddingBottom: 160 + insets.bottom }}
         showsVerticalScrollIndicator={false}

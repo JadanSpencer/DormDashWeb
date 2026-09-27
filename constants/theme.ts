@@ -1,6 +1,11 @@
 // constants/theme.ts
-// DormDash design system — "Route" identity.
-// Warm cream canvas · teal-ink type · cerulean action · teal support.
+// DormDash design system — "Route" identity, in a Japanese print style.
+// Washi-cream canvas · teal-ink type · indigo (ai-iro) action · teal
+// support · vermilion (shu-iro) seal accent. Headings are set in
+// Shippori Mincho B1 (assets/fonts, OFL); body text stays in the system font
+// for readability. Token names are historical: `cerulean` now holds indigo.
+// Artwork (seigaiha, etched wave, petals, seal): components/Backdrop.tsx
+// and components/Seal.tsx. See PWA_HANDOFF.md "Japanese print style".
 //
 // Sits SEPARATELY from constants/index.ts on purpose:
 //   - constants/index.ts holds functional constants (CAMPUS_CENTER, limits,
@@ -15,6 +20,12 @@
 import { useEffect, useState } from 'react';
 import { AccessibilityInfo } from 'react-native';
 
+// Font family names registered in app/_layout.tsx (useFonts).
+export const FONT = {
+  heading: 'ShipporiMinchoB1',   // headings only: single ExtraBold weight
+  seal: 'YujiSyukuSeal',         // only 寮 配 走, for components/Seal
+};
+
 export const T = {
   color: {
     // Canvas
@@ -28,9 +39,13 @@ export const T = {
     inkFaint: '#5C7379',     // AA 4.6:1 on cream (was #8AA0A5, 2.5:1)
 
     // Action
-    cerulean: '#0A7A9C',     // AA with white text (was #0E8FB5, 3.7:1)
-    ceruleanDeep: '#0A6E8C',
-    ceruleanTint: '#E3F2F7',
+    cerulean: '#1F4E79',     // indigo (ai-iro): 8.0:1 on cream, with cream text
+    ceruleanDeep: '#193F63',
+    ceruleanTint: '#E4ECF4',
+
+    // Seal accent
+    shu: '#B7412E',          // vermilion (shu-iro): 5.1:1 on cream
+    shuTint: '#F6E4DF',
 
     // Support
     teal: '#0A7D6E',         // AA as small text on cream (was #0FA893, 2.8:1)
@@ -50,8 +65,8 @@ export const T = {
   radius: { sm: 8, md: 12, lg: 14, xl: 18, pill: 999 },
 
   type: {
-    display: { fontSize: 40, fontWeight: '900' as const, letterSpacing: -1.4 },
-    title:   { fontSize: 26, fontWeight: '800' as const, letterSpacing: -0.6 },
+display: { fontFamily: FONT.heading, fontSize: 40, letterSpacing: -0.6 },
+title:   { fontFamily: FONT.heading, fontSize: 26, letterSpacing: -0.2 },
     body:    { fontSize: 15, fontWeight: '500' as const, letterSpacing: 0 },
     label:   { fontSize: 12, fontWeight: '700' as const, letterSpacing: 0.1, textTransform: 'none' as const },
     button:  { fontSize: 16, fontWeight: '700' as const, letterSpacing: 0.2 },
@@ -66,7 +81,7 @@ export const T = {
       elevation: 1,
     },
     button: {
-      shadowColor: '#0E8FB5',
+      shadowColor: '#1F4E79',
       shadowOffset: { width: 0, height: 1 },
       shadowOpacity: 0.06,
       shadowRadius: 2,

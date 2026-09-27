@@ -4,6 +4,8 @@
 // cream type, brighter cerulean/teal accents tuned for dark surfaces.
 // Dasher screens import D; student screens keep importing T from theme.ts.
 
+import { FONT } from './theme';
+
 export const D = {
   color: {
     // Canvas (the flip: ink becomes the surface)
@@ -17,9 +19,9 @@ export const D = {
     creamFaint: '#90A8A4',   // AA on cards (was #7E9793)    // placeholders, captions
 
     // Action — brightened for contrast on dark
-    cerulean: '#33ADD1',
-    ceruleanDeep: '#0E8FB5',
-    ceruleanTint: 'rgba(51, 173, 209, 0.14)',
+    cerulean: '#8DB8E3',      // light indigo: 7.4:1 on bg, dark text on it 7.4:1
+    ceruleanDeep: '#5B8FC6',
+    ceruleanTint: 'rgba(141, 184, 227, 0.14)',
 
     // Support
     teal: '#2FC4AE',
@@ -39,8 +41,8 @@ export const D = {
   radius: { sm: 8, md: 12, lg: 14, xl: 18, pill: 999 },
 
   type: {
-    display: { fontSize: 40, fontWeight: '900' as const, letterSpacing: -1.4 },
-    title:   { fontSize: 26, fontWeight: '800' as const, letterSpacing: -0.6 },
+display: { fontFamily: FONT.heading, fontSize: 40, letterSpacing: -0.6 },
+title:   { fontFamily: FONT.heading, fontSize: 26, letterSpacing: -0.2 },
     body:    { fontSize: 15, fontWeight: '500' as const, letterSpacing: 0 },
     label:   { fontSize: 12, fontWeight: '700' as const, letterSpacing: 0.1, textTransform: 'none' as const },
     button:  { fontSize: 16, fontWeight: '700' as const, letterSpacing: 0.2 },
@@ -55,7 +57,7 @@ export const D = {
       elevation: 1,
     },
     button: {
-      shadowColor: '#33ADD1',
+      shadowColor: '#8DB8E3',
       shadowOffset: { width: 0, height: 1 },
       shadowOpacity: 0.06,
       shadowRadius: 2,

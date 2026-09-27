@@ -29,7 +29,7 @@ import { useAuth } from '../../../hooks/useAuth';
 import { Store } from '../../../types';
 import { formatJMD } from '../../../constants';
 import { T } from '../../../constants/theme';
-import { TopoBackground } from '../../../components/TopoBackground';
+import { Backdrop } from '../../../components/Backdrop';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -185,7 +185,7 @@ export default function StudentHome() {
 
   return (
     <View style={styles.root}>
-      <TopoBackground tone="cream" />
+      <Backdrop tone="cream" variant="petals" />
       <ScrollView
         showsVerticalScrollIndicator={false}
         refreshControl={

@@ -3,6 +3,8 @@
 // Between the student's cream and the dasher's ink: a muted teal-slate
 // canvas with CREAM cards floating on it. Admin screens import S.
 
+import { FONT } from './theme';
+
 export const S = {
   color: {
     // Canvas — the in-between
@@ -24,9 +26,9 @@ export const S = {
     creamFaint: '#A3B5B6',
 
     // Accents — standard depth on cream, brightened on slate
-    cerulean: '#0A7A9C',
-    ceruleanBright: '#54BBD9',
-    ceruleanTint: '#E3F2F7',
+    cerulean: '#1F4E79',        // indigo on cream cards (8.0:1)
+    ceruleanBright: '#8DB8E3',  // light indigo on the slate canvas (4.6:1)
+    ceruleanTint: '#E4ECF4',
     teal: '#0A7D6E',
     tealBright: '#3ECDB4',
     tealTint: '#E2F4F1',
@@ -46,8 +48,8 @@ export const S = {
   radius: { sm: 8, md: 12, lg: 14, xl: 18, pill: 999 },
 
   type: {
-    display: { fontSize: 34, fontWeight: '900' as const, letterSpacing: -1.2 },
-    title:   { fontSize: 24, fontWeight: '800' as const, letterSpacing: -0.5 },
+    display: { fontFamily: FONT.heading, fontSize: 34, letterSpacing: -0.5 },
+    title:   { fontFamily: FONT.heading, fontSize: 24, letterSpacing: -0.2 },
     body:    { fontSize: 14, fontWeight: '500' as const, letterSpacing: 0 },
     label:   { fontSize: 12, fontWeight: '700' as const, letterSpacing: 0.1, textTransform: 'none' as const },
     number:  { fontSize: 11, fontWeight: '800' as const, letterSpacing: 1 },

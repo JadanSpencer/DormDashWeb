@@ -15,8 +15,9 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Stack, router, useSegments } from 'expo-router';
 import { View, ActivityIndicator } from 'react-native';
 import * as SplashScreen from 'expo-splash-screen';
+import { useFonts } from 'expo-font';
 import { AuthProvider, useAuth } from '../hooks/useAuth';
-import { T } from '../constants/theme';
+import { T, FONT } from '../constants/theme';
 import { registerForPushNotifications, setupNotificationListeners } from '../services/notifications';
 import { NotificationBanner, BannerHandle } from '../components/NotificationBanner';
 import { InstallPrompt } from '../components/InstallPrompt';
@@ -137,6 +138,16 @@ function IntroLayer({ onDone }: { onDone: () => void }) {
 
 export default function RootLayout() {
   const [introDone, setIntroDone] = useState(() => shouldSkipIntro());
+  // Heading and seal fonts (assets/fonts, OFL). Wait for them behind the
+  // splash so headings never flash in the system font; if loading fails,
+  // carry on with system fonts rather than blocking the app.
+  const [fontsLoaded, fontError] = useFonts({
+    [FONT.heading]: require('../assets/fonts/ShipporiMinchoB1-ExtraBold.latin.ttf'),
+    [FONT.seal]: require('../assets/fonts/YujiSyuku-Seal.ttf'),
+  });
+  if (!fontsLoaded && !fontError) {
+    return <View style={{ flex: 1, backgroundColor: T.color.cream }} />;
+  }
   return (
     <AuthProvider>
       <View style={{ flex: 1 }}>

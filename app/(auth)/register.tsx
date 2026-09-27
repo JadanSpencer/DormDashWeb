@@ -25,7 +25,8 @@ import { registerUser } from '../../services/auth';
 import { requestPushPermissionFromGesture } from '../../services/notifications';
 import { T } from '../../constants/theme';
 import { UserRole } from '../../types';
-import { TopoBackground } from '../../components/TopoBackground';
+import { Backdrop } from '../../components/Backdrop';
+import { Seal } from '../../components/Seal';
 import { Icon } from '../../components/TabIcon'; // SVG icons: no icon font to fail loading
 
 const ROLES: { role: UserRole; label: string; description: string; icon: string; iconSet: string; color: string }[] = [
@@ -160,7 +161,7 @@ export default function RegisterScreen() {
 
   return (
     <SafeAreaView style={styles.safe}>
-      <TopoBackground tone="cream" />
+      <Backdrop tone="cream" variant="wave" />
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.flex}
@@ -192,9 +193,12 @@ export default function RegisterScreen() {
           {/* ── HEADER ───────────────────────────────────────────────── */}
           <View style={styles.header}>
             <Text style={styles.eyebrow}>{step === 1 ? 'Step 1 of 2' : 'Step 2 of 2'}</Text>
-            <Text style={styles.title}>
-              {step === 1 ? 'Join DormDash' : 'Almost there'}
-            </Text>
+            <View style={styles.titleRow}>
+              <Text style={styles.title}>
+                {step === 1 ? 'Join DormDash' : 'Almost there'}
+              </Text>
+              <Seal size={26} />
+            </View>
             <Text style={styles.subtitle}>
               {step === 1
                 ? 'How will you use the app?'
@@ -428,7 +432,8 @@ const styles = StyleSheet.create({
 
   header: { marginBottom: T.space.lg },
   eyebrow: { ...T.type.label, color: T.color.teal, marginBottom: 6 },
-  title: { ...T.type.display, fontSize: 34, color: T.color.ink, marginBottom: 6 },
+  titleRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 6 },
+  title: { ...T.type.display, fontSize: 34, color: T.color.ink, flexShrink: 1 },
   subtitle: { ...T.type.body, color: T.color.inkSoft },
 
   // Role tiles

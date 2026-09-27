@@ -18,7 +18,7 @@ import { Order, OrderStatus } from '../../../types';
 import { formatJMD, STATUS_STEPS, PAY_WINDOW_MIN } from '../../../constants';
 import { usePriceUnit } from '../../../hooks/usePriceUnit';
 import { T, useReducedMotion } from '../../../constants/theme';
-import { TopoBackground } from '../../../components/TopoBackground';
+import { Backdrop } from '../../../components/Backdrop';
 
 
 // Compact money for tight stat cards — full formatJMD breaks layout at scale
@@ -462,7 +462,7 @@ export default function StudentOrders() {
 
   return (
     <View style={styles.root}>
-      <TopoBackground tone="cream" />
+      <Backdrop tone="cream" />
       <View style={[styles.header, { paddingTop: insets.top + T.space.md }]}>
         <Text style={styles.title}>Orders</Text>
       </View>

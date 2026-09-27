@@ -17,7 +17,7 @@ import { S } from '../../../constants/themeMid';
 import { formatJMD, TOKEN_JMD } from '../../../constants';
 import { AmountPrompt } from '../../../components/AmountPrompt';
 import { adminAdjustTokens, adminAdjustFloat, formatTokens } from '../../../services/payments';
-import { TopoBackground } from '../../../components/TopoBackground';
+import { Backdrop } from '../../../components/Backdrop';
 
 export default function AdminUsers() {
   const insets = useSafeAreaInsets();
@@ -73,7 +73,7 @@ export default function AdminUsers() {
 
   return (
     <View style={styles.root}>
-      <TopoBackground tone="mid" />
+      <Backdrop tone="mid" />
       <View style={[styles.header, { paddingTop: insets.top + S.space.md }]}>
         <Text style={styles.title}>Users</Text>
         <Text style={styles.subtitle}>{users.length} registered</Text>

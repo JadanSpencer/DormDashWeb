@@ -28,7 +28,8 @@ import { loginUser, resetPassword } from '../../services/auth';
 import { requestPushPermissionFromGesture } from '../../services/notifications';
 import { T } from '../../constants/theme';
 import { Logo } from '../../components/Logo';
-import { TopoBackground } from '../../components/TopoBackground';
+import { Backdrop } from '../../components/Backdrop';
+import { Seal } from '../../components/Seal';
 
 // Small-screen handling: compact the hero + spacing under 700px tall
 const SMALL = Dimensions.get('window').height < 700;
@@ -119,7 +120,7 @@ export default function LoginScreen() {
 
   return (
     <SafeAreaView style={styles.safe}>
-      <TopoBackground tone="cream" />
+      <Backdrop tone="cream" variant="hero" />
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.flex}
@@ -134,9 +135,13 @@ export default function LoginScreen() {
             <View style={styles.logoTile}>
               <Logo size={SMALL ? 44 : 54} variant="brand" />
             </View>
-            <Text style={styles.wordmark} numberOfLines={1} adjustsFontSizeToFit maxFontSizeMultiplier={1.1}>
-              DormDash
-            </Text>
+            {/* Wordmark with its seal, like the stamp beside an artist's signature. */}
+            <View style={styles.wordmarkRow}>
+              <Text style={styles.wordmark} numberOfLines={1} adjustsFontSizeToFit maxFontSizeMultiplier={1.1}>
+                DormDash
+              </Text>
+              <Seal size={SMALL ? 26 : 30} />
+            </View>
             <Text style={styles.tagline}>From the gate to your door.</Text>
           </Animated.View>
 
@@ -286,7 +291,8 @@ const styles = StyleSheet.create({
     ...T.shadow.card,
   },
   eyebrow: { ...T.type.label, color: T.color.teal, marginBottom: 4 },
-  wordmark: { ...T.type.display, fontSize: SMALL ? 34 : 40, color: T.color.ink },
+  wordmarkRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  wordmark: { ...T.type.display, fontSize: SMALL ? 34 : 40, color: T.color.ink, flexShrink: 1 },
   tagline: { ...T.type.body, color: T.color.inkSoft, marginTop: 6 },
 
   // Form + route rail

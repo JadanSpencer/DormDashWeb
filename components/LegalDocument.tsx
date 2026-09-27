@@ -9,8 +9,8 @@ import { View, Text, ScrollView, Pressable, StyleSheet, Linking } from 'react-na
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Icon } from './TabIcon'; // SVG icons: no icon font to fail loading
-import { T } from '../constants/theme';
-import { TopoBackground } from './TopoBackground';
+import { FONT, T } from '../constants/theme';
+import { Backdrop } from './Backdrop';
 
 export type Block =
   | { p: string }
@@ -27,7 +27,7 @@ export function LegalDocument({ title, updated, intro, sections }: {
 
   return (
     <View style={styles.root}>
-    <TopoBackground tone="cream" />
+    <Backdrop tone="cream" />
     <ScrollView
       style={styles.scroll}
       contentContainerStyle={[styles.content, { paddingTop: insets.top + 12, paddingBottom: insets.bottom + 48 }]}
@@ -100,10 +100,10 @@ const styles = StyleSheet.create({
   column: { width: '100%', maxWidth: 680, alignSelf: 'center' },
   back: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', gap: 2, paddingVertical: 6, marginBottom: 16 },
   backText: { fontSize: 15, fontWeight: '600', color: T.color.ink },
-  title: { fontSize: 30, lineHeight: 36, fontWeight: '800', letterSpacing: -0.6, color: T.color.ink },
+  title: { fontFamily: FONT.heading, fontSize: 30, lineHeight: 38, letterSpacing: -0.3, color: T.color.ink },
   updated: { fontSize: 13, color: T.color.inkSoft, marginTop: 6, marginBottom: 20 },
   section: { marginTop: 28 },
-  h2: { fontSize: 18, lineHeight: 24, fontWeight: '800', color: T.color.ink, marginBottom: 8 },
+  h2: { fontFamily: FONT.heading, fontSize: 19, lineHeight: 26, color: T.color.ink, marginBottom: 8 },
   p: { fontSize: 15, lineHeight: 23, color: T.color.ink, marginBottom: 10 },
   list: { marginBottom: 6 },
   li: { flexDirection: 'row', alignItems: 'flex-start', paddingLeft: 2 },

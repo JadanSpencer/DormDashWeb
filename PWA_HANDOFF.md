@@ -427,7 +427,7 @@ Symptom: a dasher got the new-order notification but the order didn't appear unt
 - `usePendingOrders({ watchdog })`: while a dasher is online with no active delivery, every 30 s it counts pending orders on the server (1 read, outside the live connection); a mismatch with the list triggers a reconnect. Worst case for a missed order is now ~30 s instead of "never".
 - Tested: preview fake can simulate a dead connection (`window.__ddPreview.freezeListeners()`); in headless Chrome the order stays hidden without the fix and appears via push (ms), foreground (ms), and watchdog (≤30 s); accept still works. The real Firestore SDK was checked against the emulator: a reconnect delivers the missed update (~50 ms). Rules test covers the watchdog count (dashers yes, students no).
 
-### Topographic background (2026-09-27)
+### Topographic background (2026-09-27) — superseded by "Japanese print style" below
 `components/TopoBackground.tsx` draws thin contour lines (like a campus map) behind every screen: student, sign-in and legal (`tone="cream"`), dasher (`"dark"`), admin (`"mid"`). It is the first child of each screen's root view (absolute fill, ignores touches, fixed while content scrolls), static SVG computed once, deterministic.
 - This is **line work only**: it doesn't conflict with "no orbs/blobs". Don't turn it into filled shapes, gradients or animation, and don't raise the opacities (cream 0.09, dark 0.11, mid 0.06) without checking contrast on real screens.
 - Screens keep their own opaque background colour. Don't make screens transparent to share one background: the native stack keeps the previous screen mounted underneath.
@@ -450,3 +450,13 @@ Proves requests come from the real web app, not a script using someone's login. 
 3. Add `EXPO_PUBLIC_RECAPTCHA_SITE_KEY=<site key>` to `.env` (and Vercel env if used), then `npm run deploy:web`.
 4. Watch Firebase console → App Check → metrics, and function logs (`"verifications":{"app":"VALID"}`) for a few days after launch.
 5. Stage 2, when ~100% of requests are verified: set `APP_CHECK_ENFORCE=true` in `functions/.env`, `firebase deploy --only functions`, and click **Enforce** for Cloud Firestore in the App Check console. Roll back by reversing either step.
+
+### Japanese print style (2026-09-27)
+The app is styled like an ukiyo-e woodblock print, using **original** vector art only (no copied images: the reference pictures were modern artworks under copyright, and only Hokusai's Great Wave is public domain).
+- **Palette** (token names kept, values changed): `cerulean` now holds **indigo** (ai-iro) `#1F4E79` (8.0:1 on cream); new `shu` **vermilion** `#B7412E` (5.1:1) for the seal; dark and mid themes use light indigo `#8DB8E3`. Contrast checked to WCAG AA. Manifest `theme_color`, notification colour, the in-app banner and the web map button follow.
+- **Type:** headings (`display` and `title` in all three themes, legal-page headings) use **Shippori Mincho B1 ExtraBold**; body text stays in the system font. `FONT` in `constants/theme.ts`; loaded in `app/_layout.tsx` behind the splash (falls back to system fonts if loading fails). Heading styles must not set `fontWeight` (the file has one weight; a forced bold is synthesised and looks smeared).
+- **Fonts** in `assets/fonts/` (OFL, commercial use allowed), subset to Latin: 132 KB + a 4 KB seal font containing only 寮 配 走. See `assets/fonts/README.md` to add characters.
+- **`components/Backdrop.tsx`** (replaces TopoBackground; first child of every screen root): seigaiha pattern in bands at the top and bottom that fade out behind content. `variant="petals"` (Home), `"wave"` (register), `"hero"` (sign-in: petals + a breaking wave with Fuji in the bottom corner). Art is drawn for the cream palette only.
+- **`components/Seal.tsx`:** vermilion hanko with 寮 ("dormitory") beside the wordmark on sign-in and register.
+- **Rules:** keep the art at the edges and faint; the middle of the screen stays clear for content. No large filled shapes, glows, gradients on text, or a filled red sun (that is an "orb"). New screens add `<Backdrop tone="…" />`. Check new art with `npm run preview:web` screenshots before shipping.
+

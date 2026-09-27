@@ -18,7 +18,7 @@ import { useAuth } from '../../../hooks/useAuth';
 import { logoutUser } from '../../../services/auth';
 import { formatJMD } from '../../../constants';
 import { S } from '../../../constants/themeMid';
-import { TopoBackground } from '../../../components/TopoBackground';
+import { Backdrop } from '../../../components/Backdrop';
 
 const REFRESH_MS = 60 * 1000;
 
@@ -85,7 +85,7 @@ export default function AdminDashboard() {
 
   return (
     <View style={styles.root}>
-      <TopoBackground tone="mid" />
+      <Backdrop tone="mid" />
       <ScrollView
         contentContainerStyle={[styles.scroll, { paddingTop: insets.top + S.space.md, paddingBottom: 120 + insets.bottom }]}
         showsVerticalScrollIndicator={false}

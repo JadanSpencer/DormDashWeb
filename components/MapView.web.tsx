@@ -86,7 +86,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     right: 10,
     bottom: 10,
-    backgroundColor: '#0E8FB5',
+    backgroundColor: '#1F4E79', // indigo (T.color.cerulean)
     paddingHorizontal: 14,
     paddingVertical: 8,
     borderRadius: 999,

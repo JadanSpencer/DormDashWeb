@@ -40,7 +40,7 @@
       "name": "DormDash",
       "shortName": "DormDash",
       "description": "Order meals and essentials on campus. Students deliver to students.",
-      "themeColor": "#0E8FB5",
+      "themeColor": "#1F4E79",
       "backgroundColor": "#FAF5EC",
       "lang": "en"
     },
@@ -57,7 +57,7 @@
         "expo-notifications",
         {
           "icon": "./assets/notification-icon.png",
-          "color": "#0E8FB5",
+          "color": "#1F4E79",
           "defaultChannel": "default"
         }
       ],
