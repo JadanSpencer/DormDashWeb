@@ -6,13 +6,14 @@
 // of history, or a date window), so none of them grows with a user's whole
 // history. Indexes they rely on are in firestore.indexes.json.
 
-import { useCallback, useEffect, useState } from 'react';
-import { Platform } from 'react-native';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { AppState } from 'react-native';
 import {
   collection, doc, query, where, orderBy, limit, onSnapshot,
   getAggregateFromServer, count, sum,
 } from 'firebase/firestore';
 import { db } from '../services/firebase';
+import { onResync, resyncLiveData } from '../services/liveSync';
 import { MAX_ACTIVE_ORDERS, ACTIVE_STATUSES, IN_DELIVERY_STATUSES } from '../constants';
 import { Order } from '../types';
 
@@ -118,29 +119,33 @@ export function useStudentOrderHistory(uid: string | undefined, visible: number)
  * Open orders the server has verified (verifiedAt set), oldest first.
  * Unverified ones may be about to be rejected (duplicates, rate limits).
  *
- * A listener that errors, or that the phone froze while DormDash was in the
- * background, used to stop updating silently: cancelled orders stayed on
- * screen and accepting them failed. So it re-subscribes after an error and
- * whenever the web app comes back on screen. `refresh()` forces the same;
- * `dismiss(id)` hides one order right away (e.g. after a failed accept).
+ * On phones the live listener can freeze silently (see services/liveSync):
+ * a dasher got the new-order notification but the order never appeared.
+ * So this list:
+ *   • re-subscribes after every live-data resync (push, foreground, online),
+ *   • re-subscribes after a listener error,
+ *   • with `watchdog` on (dasher online, no active delivery), asks the
+ *     server every WATCHDOG_MS how many orders are pending: one read,
+ *     outside the live connection. If that disagrees with this list, the
+ *     connection is stale and it reconnects.
+ * `refresh()` forces a re-subscribe; `dismiss(id)` hides one order at once
+ * (e.g. after a failed accept).
  */
-export function usePendingOrders() {
+const WATCHDOG_MS = 30 * 1000;
+
+export function usePendingOrders({ watchdog = false }: { watchdog?: boolean } = {}) {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [listenKey, setListenKey] = useState(0);
+  // How many pending orders the listener sees (verified or not): the same
+  // set the watchdog counts on the server.
+  const seenPending = useRef<number | null>(null);
   const refresh = useCallback(() => setListenKey(k => k + 1), []);
   const dismiss = useCallback((orderId: string) => {
     setOrders(list => list.filter(o => o.id !== orderId));
   }, []);
 
-  useEffect(() => {
-    if (Platform.OS !== 'web' || typeof document === 'undefined') return;
-    const onVisible = () => {
-      if (document.visibilityState === 'visible') refresh();
-    };
-    document.addEventListener('visibilitychange', onVisible);
-    return () => document.removeEventListener('visibilitychange', onVisible);
-  }, [refresh]);
+  useEffect(() => onResync(refresh), [refresh]);
 
   useEffect(() => {
     const q = query(
@@ -150,6 +155,7 @@ export function usePendingOrders() {
     );
     let retry: ReturnType<typeof setTimeout> | undefined;
     const unsub = onSnapshot(q, snap => {
+      seenPending.current = snap.size;
       setOrders(snap.docs.map(toOrder).filter(o => !!o.verifiedAt));
       setLoading(false);
     }, err => {
@@ -158,6 +164,23 @@ export function usePendingOrders() {
     });
     return () => { unsub(); if (retry) clearTimeout(retry); };
   }, [listenKey, refresh]);
+
+  useEffect(() => {
+    if (!watchdog) return;
+    const check = async () => {
+      if (AppState.currentState !== 'active' || seenPending.current === null) return;
+      try {
+        const agg = await getAggregateFromServer(
+          query(collection(db, 'orders'), where('status', '==', 'pending')), { n: count() });
+        if (agg.data().n !== seenPending.current) {
+          console.log('Order list out of date, reconnecting', { server: agg.data().n, shown: seenPending.current });
+          resyncLiveData('watchdog');
+        }
+      } catch { /* offline: the 'online' trigger will reconnect */ }
+    };
+    const timer = setInterval(check, WATCHDOG_MS);
+    return () => clearInterval(timer);
+  }, [watchdog]);
 
   return { orders, loading, refresh, dismiss };
 }

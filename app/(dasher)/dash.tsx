@@ -66,8 +66,9 @@ export default function DasherHome() {
   // ── Listeners (hooks/useOrders.ts) ────────────────────────────────
   // Verified open orders; re-subscribes after errors and when the web app
   // comes back on screen.
-  const { orders: pendingOrders, loading, refresh: refreshPending, dismiss: dismissPending } = usePendingOrders();
   const activeOrder = useActiveDelivery(user?.uid);
+  const { orders: pendingOrders, loading, refresh: refreshPending, dismiss: dismissPending } =
+    usePendingOrders({ watchdog: isOnline && !activeOrder });
 
   // PWA: keep the screen on only during an active delivery (map and status
   // buttons in use). Being online no longer needs the app open.

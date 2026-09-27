@@ -24,11 +24,15 @@ import { BrandIntro, shouldSkipIntro } from '../components/BrandIntro';
 import { DDAlertHost } from '../components/DDAlertHost';
 import { installWebAlert } from '../services/webAlert';
 import { syncServerClock } from '../services/serverClock';
+import { installLiveSync, resyncLiveData } from '../services/liveSync';
 
 // Web/PWA only: make Alert.alert work in the browser (no-op on native).
 installWebAlert();
 // Web/PWA: measure how wrong this device's clock is (see services/serverClock).
 syncServerClock();
+// Reconnect Firestore's live data on foreground / back online / push, so
+// lists can't silently freeze on phones (see services/liveSync).
+installLiveSync();
 
 // Hold the native splash until React is mounted and auth has resolved, so
 // there is never a blank frame between the OS splash and our own.
@@ -82,6 +86,8 @@ function RouteGuard({ introDone }: { introDone: boolean }) {
   useEffect(() => {
     const cleanup = setupNotificationListeners(
       (notification) => {
+        // A push means the server just changed something for this user.
+        resyncLiveData('push');
         const { title, body, data } = notification.request.content;
         bannerRef.current?.show({
           title: title ?? 'DormDash',
@@ -90,6 +96,7 @@ function RouteGuard({ introDone }: { introDone: boolean }) {
         });
       },
       (response) => {
+        resyncLiveData('push');
         const data = response.notification.request.content.data;
         if (data?.screen) router.push(data.screen as any);
       }

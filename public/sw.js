@@ -8,7 +8,7 @@
  * Bump VERSION whenever this file changes. App code updates don't need a
  * bump: JS bundles are content-hashed and navigations are network-first.
  */
-const VERSION = 'dd-v6';
+const VERSION = 'dd-v7';
 const SHELL = `${VERSION}-shell`;
 const RUNTIME = `${VERSION}-runtime`;
 
@@ -137,6 +137,11 @@ self.addEventListener('push', (event) => {
       focused.postMessage({ type: 'dd-push', title: msg.title, body: msg.body, data: msg.data });
       return;
     }
+    // Tell every open DormDash page that something changed, even when a
+    // system notification is shown instead of the banner (always on iPhone
+    // and Safari). The page reconnects its live data (services/liveSync.ts),
+    // so a dasher's order list can't miss the order this push is about.
+    wins.forEach((w) => w.postMessage({ type: 'dd-sync', data: msg.data }));
     // Loud by default: sound + vibration, and every update alerts again
     // (renotify) even though updates for the same order replace each other
     // (tag). Whether it also drops down as a banner ("heads-up") is decided

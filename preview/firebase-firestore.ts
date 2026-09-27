@@ -91,14 +91,31 @@ export async function getAggregateFromServer(q: Q | Ref, spec: Record<string, an
 export async function getDoc(ref: Ref) { return docSnap(ref.path); }
 export async function getDocs(q: Q | Ref) { return run(q); }
 
+let frozen = false; // see disableNetwork / enableNetwork below
 export function onSnapshot(target: any, cb: (s: any) => void, _err?: any) {
   const fire = () => cb(target.kind === 'doc' ? docSnap(target.path) : run(target));
   listeners.add(fire);
-  setTimeout(fire, 0);
+  setTimeout(() => { if (!frozen) fire(); }, 0); // a dead connection delivers nothing
   return () => { listeners.delete(fire); };
 }
 
-function changed() { setTimeout(() => listeners.forEach(l => l()), 0); }
+// Simulated dead connection (design QA / tests of services/liveSync): while
+// frozen, listeners get no updates, like a phone whose Firestore connection
+// died silently. disableNetwork + enableNetwork (a reconnect) unfreezes.
+function changed() { setTimeout(() => { if (!frozen) listeners.forEach(l => l()); }, 0); }
+export async function disableNetwork(_db?: any) { /* reconnect starts */ }
+export async function enableNetwork(_db?: any) {
+  frozen = false;
+  setTimeout(() => listeners.forEach(l => l()), 0);
+}
+if (typeof window !== 'undefined') {
+  (window as any).__ddPreview = {
+    freezeListeners: () => { frozen = true; },
+    isFrozen: () => frozen,
+    set: (path: string, data: any) => { store.set(path, { ...data }); changed(); },
+    update: (path: string, patch: any) => { store.set(path, { ...(store.get(path) ?? {}), ...patch }); changed(); },
+  };
+}
 
 export async function setDoc(ref: Ref, data: any) { store.set(ref.path, { ...data }); changed(); }
 export async function updateDoc(ref: Ref, data: any) {

@@ -290,3 +290,11 @@ test('dasher reads own recent orders by acceptedAt; not another dasher\'s', asyn
   await assertFails(getDocs(query(collection(db('dash2'), 'orders'),
     where('dasherId', '==', 'dash'), where('acceptedAt', '>=', 0), orderBy('acceptedAt', 'desc'))));
 });
+
+// ── Dasher order-list watchdog (hooks/useOrders usePendingOrders) ────────
+test('dasher can count pending orders on the server; students cannot', async () => {
+  const pending = (who) => query(collection(db(who), 'orders'), where('status', '==', 'pending'));
+  await assertSucceeds(getAggregateFromServer(pending('dash'), { n: count() }));
+  await assertFails(getAggregateFromServer(pending('stu'), { n: count() }));
+  await assertFails(getAggregateFromServer(pending('banned'), { n: count() }));
+});
