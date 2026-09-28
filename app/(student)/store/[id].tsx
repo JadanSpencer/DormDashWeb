@@ -372,7 +372,7 @@ const styles = StyleSheet.create({
   blobTeal: { position: 'absolute', width: 240, height: 240, borderRadius: 120, backgroundColor: T.color.teal, opacity: 0.06, top: 80, right: -80 },
   blobCerulean: { position: 'absolute', width: 300, height: 300, borderRadius: 150, backgroundColor: T.color.cerulean, opacity: 0.05, top: 300, left: -120 },
 
-  hero: { paddingHorizontal: T.space.lg, paddingBottom: T.space.lg + 4 },
+  hero: { paddingHorizontal: T.space.lg },
   heroTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: T.space.lg },
   backBtn: {
     width: 42, height: 42, borderRadius: 21, backgroundColor: T.color.card,

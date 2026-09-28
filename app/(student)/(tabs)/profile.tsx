@@ -409,7 +409,6 @@ const styles = StyleSheet.create({
   avatarBlock: {
     alignItems: 'center',
     paddingTop: T.space.sm,
-    paddingBottom: T.space.xl,
     paddingHorizontal: T.space.lg,
   },
   avatarWrap: { position: 'relative', marginBottom: T.space.sm },

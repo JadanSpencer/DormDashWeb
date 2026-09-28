@@ -286,7 +286,7 @@ const styles = StyleSheet.create({
   name: { ...T.type.display, color: T.color.card },
   headerNote: { ...T.type.body, color: T.color.seaFoam, fontSize: 13, fontWeight: '700', marginTop: 6 },
 
-  searchWrap: { paddingHorizontal: T.space.lg, paddingBottom: T.space.lg + 6 },
+  searchWrap: { paddingHorizontal: T.space.lg },
   search: {
     flexDirection: 'row', alignItems: 'center',
     backgroundColor: T.color.card,

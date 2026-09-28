@@ -15,7 +15,7 @@ import { cancelOrder, canStudentCancel } from '../../../services/orders';
 import { useStudentActiveOrders, useStudentOrderHistory } from '../../../hooks/useOrders';
 import { useAuth } from '../../../hooks/useAuth';
 import { Order, OrderStatus } from '../../../types';
-import { formatJMD, STATUS_STEPS, PAY_WINDOW_MIN } from '../../../constants';
+import { STATUS_STEPS, PAY_WINDOW_MIN } from '../../../constants';
 import { usePriceUnit } from '../../../hooks/usePriceUnit';
 import { T, useReducedMotion } from '../../../constants/theme';
 import { Backdrop } from '../../../components/Backdrop';
@@ -24,13 +24,6 @@ import { SkeletonGroup, OrderCardSkeleton, Bone } from '../../../components/Skel
 import { Seal } from '../../../components/Seal';
 import { Money } from '../../../components/Money';
 
-
-// Compact money for tight stat cards — full formatJMD breaks layout at scale
-const formatJMDCompact = (v: number) => {
-  if (v >= 1_000_000) return `J$${(v / 1_000_000).toFixed(v >= 10_000_000 ? 0 : 2)}M`;
-  if (v >= 10_000) return `J$${(v / 1_000).toFixed(v >= 100_000 ? 0 : 1)}K`;
-  return formatJMD(v);
-};
 
 const STATUS_CONFIG: Record<OrderStatus, { label: string; description: string; color: string }> = {
   pending:    { label: 'Pending',    description: 'Waiting for a dasher to accept', color: T.color.warning },
@@ -491,26 +484,7 @@ export default function StudentOrders() {
           ListHeaderComponent={
             <>
               <TideHeader title="Orders" kicker="What's on the way, and what came before" />
-              {/* Stats */}
-              <View style={styles.stats}>
-                <View style={styles.statCard}>
-                  <Text style={styles.statValue}>{totals ? totals.delivered : '—'}</Text>
-                  <Text style={styles.statLabel}>Delivered</Text>
-                </View>
-                <View style={[styles.statCard, styles.statDivided]}>
-                  <View style={styles.statHollow}>
-                    <Text style={styles.statValueHollow} numberOfLines={1} adjustsFontSizeToFit>{totals ? formatJMDCompact(totals.spent) : '—'}</Text>
-                  </View>
-                  <Text style={styles.statLabel}>Total spent</Text>
-                </View>
-                <View style={styles.statCard}>
-                  <Text style={styles.statValue}>
-                    {activeOrders.length}
-                  </Text>
-                  <Text style={styles.statLabel}>Active</Text>
-                </View>
-              </View>
-
+              <View style={{ height: T.space.md }} />
               {activeOrders.length > 0 ? (
                 activeOrders.map(o => (
                   <ActiveOrderCard key={o.id} order={o} onCancel={() => handleCancel(o)} reduced={reduced} />
@@ -574,29 +548,6 @@ const styles = StyleSheet.create({
   },
 
   skeleton: { paddingHorizontal: T.space.lg, paddingTop: T.space.md, gap: T.space.lg },
-
-  // Stats: one teal strip, the numbers belong together.
-  stats: {
-    flexDirection: 'row',
-    marginHorizontal: T.space.lg,
-    marginTop: T.space.md,
-    marginBottom: T.space.lg,
-    backgroundColor: T.color.teal,
-    borderRadius: T.radius.lg,
-    paddingVertical: T.space.md,
-    ...T.plate.teal, shadowColor: '#03352D',
-  },
-  statCard: {
-    flex: 1,
-    paddingHorizontal: T.space.sm,
-    alignItems: 'center',
-    gap: 4,
-  },
-  statValue: { fontSize: 24, fontWeight: '900', color: T.color.card, letterSpacing: -0.4 },
-  statHollow: {},
-  statDivided: { borderLeftWidth: 1, borderRightWidth: 1, borderColor: 'rgba(250, 252, 251, 0.25)' },
-  statValueHollow: { fontSize: 18, lineHeight: 29, fontWeight: '900', color: T.color.card, letterSpacing: -0.3 },
-  statLabel: { ...T.type.label, fontSize: 12, color: T.color.tealTint },
 
   // No active
   noActiveCard: {

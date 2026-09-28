@@ -1,9 +1,10 @@
 // components/Tide.tsx
 // "Tide Print" building blocks for student screens (constants/theme.ts):
 //
-//   <TideBand>   the deep cerulean sea band at the top of a screen, with
-//                seigaiha waves etched into it and a scalloped foam edge
-//                where it meets the page. Put the screen's heading inside.
+//   <TideBand>   the deep cerulean sea at the top of a screen, with seigaiha
+//                waves etched into it, fading into the page (whose own wave
+//                pattern, components/Backdrop, carries on down the screen).
+//                Put the screen's heading inside.
 //   <StoreMark>  a store's own tile: a sea colour picked from its id, the
 //                wave pattern, and its initial in the heading face. `muted`
 //                is "low tide" for a closed store.
@@ -12,10 +13,10 @@
 // Pattern ids are per instance (useId), so several bands or marks on one
 // page never share a pattern.
 
-import React, { useId } from 'react';
+import React, { useId, useState } from 'react';
 import { Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Svg, { Circle, Defs, G, Pattern, Rect } from 'react-native-svg';
+import Svg, { Circle, Defs, G, LinearGradient, Mask, Pattern, Rect, Stop } from 'react-native-svg';
 import { T, FONT } from '../constants/theme';
 
 // ─── Seigaiha pattern (same geometry as components/Backdrop) ──────────────
@@ -56,40 +57,55 @@ function WaveFill({ r, canvas, ink, opacity }: { r: number; canvas: string; ink:
   );
 }
 
-// ─── Scalloped shore: foam fans rising into the sea ───────────────────────
-const EDGE = 14;
-
-function ShoreEdge({ color }: { color: string }) {
-  const id = `tide-edge-${useId().replace(/:/g, '')}`;
-  return (
-    <Svg pointerEvents="none" width="100%" height={EDGE} style={styles.edge}>
-      <Defs>
-        <Pattern id={id} patternUnits="userSpaceOnUse" width={2 * EDGE} height={EDGE}>
-          <Circle cx={EDGE} cy={EDGE} r={EDGE} fill={color} />
-          <Circle cx={EDGE} cy={EDGE} r={EDGE * 0.62} fill="none" stroke={T.color.tealBright} strokeOpacity={0.55} strokeWidth={1.5} />
-        </Pattern>
-      </Defs>
-      <Rect x="0" y="0" width="100%" height={EDGE} fill={`url(#${id})`} />
-    </Svg>
-  );
-}
+// ─── The sea band ─────────────────────────────────────────────────────────
+// The last FADE px of the band dissolve into the page, so the sea and the
+// page's pattern run into each other with no edge. Content stays clear of
+// the fade (paddingBottom), so cream text always sits on solid sea.
+const FADE = 84;
 
 /**
  * The sea band that opens a student screen. Content goes inside (cream
- * text: T.color.card; secondary: T.color.seaSoft). `shore` is the colour
- * the scallops are filled with: the page colour behind the band.
+ * text: T.color.card; secondary: T.color.seaSoft).
  */
-export function TideBand({
-  children, style, shore = T.color.cream,
-}: { children?: React.ReactNode; style?: StyleProp<ViewStyle>; shore?: string }) {
+export function TideBand({ children, style }: { children?: React.ReactNode; style?: StyleProp<ViewStyle> }) {
+  const [h, setH] = useState(0);
+  const uid = useId().replace(/:/g, '');
+  const stop = h > FADE ? (h - FADE) / h : 0.7;
   return (
-    <View style={[styles.band, style]}>
-      <WaveFill r={22} canvas={T.color.sea} ink={T.color.ceruleanBright} opacity={0.28} />
+    <View
+      style={[styles.band, h === 0 && styles.bandUnmeasured, style]}
+      onLayout={e => {
+        const next = Math.round(e.nativeEvent.layout.height);
+        if (next !== h) setH(next);
+      }}
+    >
+      {h > 0 && (
+        <Svg pointerEvents="none" style={StyleSheet.absoluteFill} width="100%" height={h}>
+          <Defs>
+            <Pattern id={`sea-${uid}`} patternUnits="userSpaceOnUse" width={2 * BAND_R} height={BAND_R}>
+              <Waves r={BAND_R} canvas={T.color.sea} ink={T.color.ceruleanBright} opacity={0.28} />
+            </Pattern>
+            <LinearGradient id={`fade-${uid}`} x1="0" y1="0" x2="0" y2={h} gradientUnits="userSpaceOnUse">
+              <Stop offset="0" stopColor="#fff" stopOpacity="1" />
+              <Stop offset={String(stop)} stopColor="#fff" stopOpacity="1" />
+              <Stop offset={String(stop + (1 - stop) * 0.55)} stopColor="#fff" stopOpacity="0.35" />
+              <Stop offset="1" stopColor="#fff" stopOpacity="0" />
+            </LinearGradient>
+            <Mask id={`mask-${uid}`} maskUnits="userSpaceOnUse" x="0" y="0" width="100%" height={h}>
+              <Rect x="0" y="0" width="100%" height={h} fill={`url(#fade-${uid})`} />
+            </Mask>
+          </Defs>
+          <Rect x="0" y="0" width="100%" height={h} fill={`url(#sea-${uid})`} mask={`url(#mask-${uid})`} />
+        </Svg>
+      )}
       {children}
-      <ShoreEdge color={shore} />
     </View>
   );
 }
+
+// Same wave size as the page pattern (components/Backdrop), so the two
+// read as one sea where they meet.
+const BAND_R = 18;
 
 /**
  * A standard student screen header on the sea band: optional back button,
@@ -194,11 +210,11 @@ export function pressPlate(pressed: boolean, depth = 4): ViewStyle | null {
 }
 
 const styles = StyleSheet.create({
-  band: { backgroundColor: T.color.sea, overflow: 'hidden', paddingBottom: EDGE },
-  edge: { position: 'absolute', left: 0, right: 0, bottom: 0 },
+  band: { overflow: 'hidden', paddingBottom: FADE - 12 },
+  bandUnmeasured: { backgroundColor: T.color.sea },
   mark: { overflow: 'hidden', alignItems: 'center', justifyContent: 'center' },
   markInitial: { fontFamily: FONT.heading, color: T.color.card, textAlign: 'center' },
-  head: { paddingHorizontal: T.space.lg, paddingBottom: T.space.lg + 4 },
+  head: { paddingHorizontal: T.space.lg },
   headTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: T.space.md },
   headBack: {
     width: 42, height: 42, borderRadius: 21, backgroundColor: T.color.card,
