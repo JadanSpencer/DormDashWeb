@@ -23,6 +23,8 @@ import { Backdrop } from '../../../components/Backdrop';
 import { TideBand, StoreMark, StoreArt, pressPlate } from '../../../components/Tide';
 import { Swoosh } from '../../../components/Swoosh';
 import { SkeletonGroup, StoreRowSkeleton, Bone } from '../../../components/Skeleton';
+import { JcBadge } from '../../../components/JcBadge';
+import { Scripture } from '../../../components/Scripture';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -158,8 +160,14 @@ export default function StudentHome() {
               { paddingTop: insets.top + T.space.lg, opacity: headerFade, transform: [{ translateY: headerRise }] },
             ]}
           >
-            <Text style={styles.greeting}>{greeting()},</Text>
-            <Text style={styles.name}>{firstName}.</Text>
+            {/* Greeting on the left, the Jcommerce mark across from it. */}
+            <View style={styles.greetRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.greeting}>{greeting()},</Text>
+                <Text style={styles.name} numberOfLines={1} adjustsFontSizeToFit>{firstName}.</Text>
+              </View>
+              <JcBadge />
+            </View>
             <Swoosh width={Math.min(260, 40 + firstName.length * 26)} />
             <Text style={styles.headerNote}>Anything on campus, to your door for {formatJMD(DELIVERY_FEE_JMD)}.</Text>
           </Animated.View>
@@ -207,6 +215,9 @@ export default function StudentHome() {
             </Pressable>
           ))}
         </ScrollView>
+
+        {/* A Bible verse, changing every few minutes (not while searching). */}
+        {!searchQuery && <Scripture />}
 
         {loading ? (
           <SkeletonGroup label="Loading stores…">
@@ -281,6 +292,7 @@ const styles = StyleSheet.create({
 
   // Sea band
   header: { paddingHorizontal: T.space.lg, paddingBottom: T.space.md },
+  greetRow: { flexDirection: 'row', alignItems: 'flex-start', gap: T.space.md },
   greeting: { ...T.type.display, fontSize: 30, lineHeight: 36, color: T.color.card },
   name: { ...T.type.display, fontSize: 48, lineHeight: 56, color: T.color.mustard },
   headerNote: { ...T.type.body, color: T.color.card, fontSize: 15, fontWeight: '600', marginTop: 10 },
