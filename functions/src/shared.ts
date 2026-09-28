@@ -27,6 +27,28 @@ export const PAY_WINDOW_MS = 10 * 60 * 1000;
 export const PENDING_TIMEOUT_MS = 30 * 60 * 1000;
 export const minutes = (ms: number) => Math.round(ms / 60000);
 
+// ─── Idle dashers ──────────────────────────────────────────────────────────
+// A dasher who stays "online" but hasn't opened DormDash for this long gets
+// a "Still dashing?" notification…
+export const DASHER_IDLE_NUDGE_MS = 2 * 60 * 60 * 1000;
+// …and is taken offline if they still haven't opened it this long after.
+export const DASHER_IDLE_GRACE_MS = 30 * 60 * 1000;
+// While DormDash is open, the app records activity this often (must be
+// well under DASHER_IDLE_NUDGE_MS).
+export const DASHER_ACTIVITY_MS = 30 * 60 * 1000;
+
+// ─── Wave dispatch ─────────────────────────────────────────────────────────
+// A new order is offered to OFFER_WAVE_SIZE free dashers at a time (those
+// offered an order least recently first). If nobody takes it, the next
+// few get it every OFFER_WAVE_MS, and from wave OFFER_OPEN_WAVE on it is
+// open to every dasher. With OFFER_WAVE_SIZE or fewer free dashers it goes
+// to all of them at once. The order carries the schedule (offerAt: when
+// each named dasher may take it; openToAllAt: when anyone may), which the
+// dasher app and the Firestore rules both follow.
+export const OFFER_WAVE_SIZE = 3;
+export const OFFER_WAVE_MS = 45 * 1000;
+export const OFFER_OPEN_WAVE = 3;
+
 // ─── Order vocabulary ──────────────────────────────────────────────────────
 export type OrderStatus =
   | 'pending' | 'accepted' | 'picking_up' | 'on_the_way' | 'delivered' | 'cancelled';

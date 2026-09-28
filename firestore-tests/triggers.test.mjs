@@ -9,6 +9,7 @@
 //   • onUserWritten: push token moves to one account; deactivation
 //     disables sign-in and reactivation restores it
 //   • cancelStalePendingOrders: only overdue orders, wrong phone clocks
+//   • wave dispatch: who is offered a new order, and when
 //
 // Nothing here sends a real push: no test user has a push token that
 // would be used, and the project is a demo project with no real backend.
@@ -18,6 +19,9 @@ import { createRequire } from 'node:module';
 import admin from 'firebase-admin';
 
 process.env.GCLOUD_PROJECT = process.env.GCLOUD_PROJECT || 'demo-dormdash';
+// Wave dispatch: waves 3 s apart (OFFER_WAVE_SECONDS in
+// functions/.env.demo-dormdash), run by the Cloud Tasks emulator.
+const WAVE_MS = 3000;
 admin.initializeApp({ projectId: process.env.GCLOUD_PROJECT });
 const db = admin.firestore();
 // The scheduled function runs in this process (the emulator doesn't run
@@ -193,4 +197,200 @@ test('scheduler cancels only overdue orders, whatever the phone clock said', asy
     const o = await get(`orders/${tag}${k}`);
     assert.equal(o.status === 'cancelled' ? o.cancelReason : null, want, k);
   }
+});
+
+// ── Repair sweep: finishing what a failed trigger left half-done ──────────
+// Each broken state is built the way a failed trigger leaves it: write a
+// document the trigger handles harmlessly, then change it in a way the
+// trigger ignores. The sweep (in cancelStalePendingOrders) must finish it,
+// exactly once, and leave healthy documents alone.
+test('repair sweep finishes half-done work and leaves healthy work alone', async () => {
+  const { FieldValue } = await import('firebase-admin/firestore');
+  const now = Date.now();
+  const tag = `rep_${now}_`;
+  const O = (id) => db.doc(`orders/${tag}${id}`);
+
+  // 1. New order never checked (no verifiedAt), so no dasher could see it.
+  const stu = await student();
+  await O('unverified').set({ status: 'placeholder' });
+  await wait(1200);
+  await O('unverified').set(order(stu, { createdAt: now }));
+
+  // 2. Cancelled, but the held tokens were never released.
+  await db.doc(`wallets/${stu}`).set({ balanceJmd: 1000, reservedJmd: 500 });
+  await O('unsettled').set({ studentId: stu, storeName: 'X', status: 'cancelled', paymentMethod: 'tokens', paymentStatus: 'released', totalAmount: 500, deliveryFee: 100 });
+  await wait(1200);
+  await O('unsettled').update({ paymentStatus: 'reserved' });
+
+  // 3. Accepted card order whose pay window never opened.
+  await O('unpaid').set({ studentId: stu, storeName: 'X', dasherId: 'nobodyDasher', dasherName: 'D', status: 'accepted', paymentMethod: 'card', paymentStatus: 'paid', totalAmount: 700, deliveryFee: 100 });
+  await wait(1200);
+  await O('unpaid').update({ paymentStatus: 'unpaid' });
+
+  // 4. Delivered, dasher never credited.
+  const dR = `${tag}dR`;
+  await db.doc(`dashers/${dR}`).set({ uid: dR, isOnline: false, totalDeliveries: 0, totalEarnings: 0 });
+  await O('uncredited').set({ studentId: stu, storeName: 'X', dasherId: dR, status: 'delivered', deliveryFee: 300, totalAmount: 900, createdAt: now - 20 * 60000, deliveredAt: now, dasherCreditedAt: 1 });
+  await wait(1500);
+  await O('uncredited').update({ dasherCreditedAt: FieldValue.delete() });
+
+  // 5. Dasher still marked busy with a finished order, and (control) a
+  //    dasher genuinely mid-delivery who must stay busy.
+  const dB = `${tag}dB`, dK = `${tag}dK`;
+  await O('finished').set({ studentId: stu, storeName: 'X', dasherId: dB, status: 'delivered', deliveryFee: 0, totalAmount: 0, deliveredAt: now, createdAt: now });
+  await O('live').set({ studentId: stu, storeName: 'X', dasherId: dK, status: 'on_the_way', totalAmount: 0 });
+  await wait(1500);
+  await db.doc(`dashers/${dB}`).set({ uid: dB, isOnline: true, activeOrderId: `${tag}finished` }, { merge: true });
+  await db.doc(`dashers/${dK}`).set({ uid: dK, isOnline: true, activeOrderId: `${tag}live` }, { merge: true });
+  await wait(1200);
+
+  // Broken as intended before the sweep?
+  assert.equal((await O('unverified').get()).get('verifiedAt'), undefined);
+  assert.equal((await O('unsettled').get()).get('paymentStatus'), 'reserved');
+  assert.equal((await O('unpaid').get()).get('paymentStatus'), 'unpaid');
+  assert.equal((await O('uncredited').get()).get('dasherCreditedAt'), undefined);
+
+  process.env.REPAIR_MIN_AGE_MS = '0'; // everything above counts as "quiet"
+  try {
+    await fns.cancelStalePendingOrders.run({});
+
+    const unverified = (await O('unverified').get()).data();
+    assert.equal(unverified.status, 'pending', 'published, not cancelled');
+    assert.ok(unverified.verifiedAt, 'checked by the server');
+    assert.equal(unverified.totalAmount, 2 * 300 + 150, 're-priced from the menu');
+
+    assert.equal((await O('unsettled').get()).get('paymentStatus'), 'released');
+    assert.equal((await get(`wallets/${stu}`)).reservedJmd, 0, 'held tokens released');
+
+    const unpaid = (await O('unpaid').get()).data();
+    assert.equal(unpaid.paymentStatus, 'awaiting_payment');
+    assert.ok(unpaid.payDeadline > Date.now(), 'student gets a full pay window');
+
+    await wait(1500); // the credit's own write re-triggers; let it settle
+    const credited = await get(`dashers/${dR}`);
+    assert.equal(credited.totalDeliveries, 1); assert.equal(credited.totalEarnings, 300);
+    assert.ok((await O('uncredited').get()).get('dasherCreditedAt'));
+
+    assert.equal((await get(`dashers/${dB}`)).activeOrderId, null, 'freed');
+    assert.equal((await get(`dashers/${dK}`)).activeOrderId, `${tag}live`, 'mid-delivery dasher untouched');
+
+    // A second sweep changes nothing.
+    await fns.cancelStalePendingOrders.run({});
+    await wait(1500);
+    const again = await get(`dashers/${dR}`);
+    assert.equal(again.totalDeliveries, 1); assert.equal(again.totalEarnings, 300);
+    assert.equal((await get(`wallets/${stu}`)).reservedJmd, 0);
+  } finally {
+    delete process.env.REPAIR_MIN_AGE_MS;
+  }
+});
+
+// ── Wave dispatch (publishNewOrder + offerNextWave) ────────────────────────
+test('wave dispatch: least recently offered first, then the next few, then everyone', async () => {
+  // Start from a known set of online dashers.
+  const online = await db.collection('dashers').where('isOnline', '==', true).get();
+  await Promise.all(online.docs.map(d => d.ref.update({ isOnline: false })));
+  const t0 = Date.now(), W = WAVE_MS;
+  const tag = `wave_${t0}_`;
+  // Seven free dashers, 0 offered an order longest ago; one busy one.
+  const ids = [0, 1, 2, 3, 4, 5, 6].map(i => `${tag}${i}`);
+  const busy = `${tag}busy`;
+  for (const [i, uid] of [...ids, busy].entries()) {
+    await db.doc(`users/${uid}`).set({ uid, role: 'dasher', name: uid, isActive: true, createdAt: 1 });
+    await db.doc(`dashers/${uid}`).set({
+      uid, isOnline: true, totalDeliveries: 0, totalEarnings: 0, lastSeenAt: t0,
+      lastOfferedAt: uid === busy ? 0 : t0 - (10 - i) * 60000,
+      ...(uid === busy ? { activeOrderId: 'elsewhere' } : {}),
+    });
+  }
+  const offeredAt = async uid => (await get(`dashers/${uid}`)).lastOfferedAt ?? 0;
+  const whenOffered = async uid => until(async () => { const t = await offeredAt(uid); return t >= t0 ? t : null; }, 30000);
+  try {
+    const id = await place(order(await student()));
+    const o = await settled(id);
+    assert.equal(o.status, 'pending');
+    // 7 free dashers: 3, then 3 more, then the order is open to everyone.
+    const start = o.openToAllAt - 2 * W;
+    const [wave0, wave1, last] = [ids.slice(0, 3), ids.slice(3, 6), ids[6]];
+    assert.deepEqual(Object.keys(o.offerAt).sort(), [...wave0, ...wave1].sort());
+    wave0.forEach(u => assert.equal(o.offerAt[u], start));
+    wave1.forEach(u => assert.equal(o.offerAt[u], start + W));
+    assert.ok(Math.abs(start - o.verifiedAt) < 5000);
+
+    // Each wave is alerted no earlier than its time (the queue runs them).
+    for (const u of wave0) assert.ok(await whenOffered(u), 'first wave alerted');
+    for (const u of wave1) assert.ok((await whenOffered(u)) >= start + W - 2000, 'second wave, on time');
+    assert.ok((await whenOffered(last)) >= start + 2 * W - 2000, 'the last wave reaches everyone not alerted yet');
+    assert.equal(await offeredAt(busy), 0, 'never a dasher mid-delivery');
+
+    // Once taken, later waves do nothing.
+    const before = await Promise.all(ids.map(offeredAt));
+    const id2 = await place(order(await student()));
+    const o2 = await settled(id2);
+    await db.doc(`orders/${id2}`).update({ status: 'accepted', dasherId: ids[0], dasherName: 'D', acceptedAt: Date.now() });
+    const firstWave2 = Object.keys(o2.offerAt).filter(u => o2.offerAt[u] === o2.openToAllAt - 2 * W);
+    await wait(o2.openToAllAt - Date.now() + 4000);
+    const after = await Promise.all(ids.map(offeredAt));
+    ids.forEach((u, i) => {
+      if (!firstWave2.includes(u)) assert.equal(after[i], before[i], `${u} not alerted after the order was taken`);
+    });
+  } finally {
+    await Promise.all([...ids, busy].map(u => db.doc(`dashers/${u}`).update({ isOnline: false })));
+  }
+});
+
+test('wave dispatch: with 3 or fewer free dashers, everyone gets it at once', async () => {
+  const online = await db.collection('dashers').where('isOnline', '==', true).get();
+  await Promise.all(online.docs.map(d => d.ref.update({ isOnline: false })));
+  const t0 = Date.now();
+  const ids = [0, 1].map(i => `few_${t0}_${i}`);
+  for (const uid of ids) {
+    await db.doc(`users/${uid}`).set({ uid, role: 'dasher', name: uid, isActive: true, createdAt: 1 });
+    await db.doc(`dashers/${uid}`).set({ uid, isOnline: true, totalDeliveries: 0, totalEarnings: 0, lastSeenAt: t0 });
+  }
+  try {
+    const o = await settled(await place(order(await student())));
+    assert.deepEqual(o.offerAt, {});
+    assert.ok(o.openToAllAt <= o.verifiedAt + 5000 && o.openToAllAt >= t0);
+    assert.ok(await until(async () => {
+      const d = await Promise.all(ids.map(u => get(`dashers/${u}`)));
+      return d.every(x => x.lastOfferedAt >= t0);
+    }), 'both alerted');
+  } finally {
+    await Promise.all(ids.map(u => db.doc(`dashers/${u}`).update({ isOnline: false })));
+  }
+});
+
+// ── Idle dashers (retireIdleDashers, in the 5-minute scheduler) ──────────
+test('idle online dashers are nudged, then switched off; busy or active ones are not', async () => {
+  const now = Date.now(), min = 60000, hr = 60 * min;
+  const tag = `idle_${now}_`;
+  const seed = {
+    idle3h:       { lastSeenAt: now - 3 * hr },
+    nudgedLong:   { lastSeenAt: now - 3 * hr, idleNudgedAt: now - 31 * min },
+    nudgedRecent: { lastSeenAt: now - 3 * hr, idleNudgedAt: now - 10 * min },
+    cameBack:     { lastSeenAt: now - 10 * min, idleNudgedAt: now - 3 * hr },
+    busy:         { lastSeenAt: now - 5 * hr, idleNudgedAt: now - 1 * hr, activeOrderId: 'someOrder' },
+    fresh:        { lastSeenAt: now - 5 * min },
+  };
+  for (const [k, v] of Object.entries(seed)) {
+    await db.doc(`dashers/${tag}${k}`).set({ uid: `${tag}${k}`, isOnline: true, totalDeliveries: 0, totalEarnings: 0, ...v });
+  }
+  await wait(1200);
+  await fns.cancelStalePendingOrders.run({});
+  const d = async k => (await db.doc(`dashers/${tag}${k}`).get()).data();
+
+  const idle = await d('idle3h');
+  assert.equal(idle.isOnline, true, 'first a nudge, not a switch-off');
+  assert.ok(idle.idleNudgedAt >= now, 'nudged');
+
+  const gone = await d('nudgedLong');
+  assert.equal(gone.isOnline, false); assert.equal(gone.offlineReason, 'idle');
+
+  assert.equal((await d('nudgedRecent')).isOnline, true, 'still in the grace period');
+  const back = await d('cameBack');
+  assert.equal(back.isOnline, true); assert.equal(back.idleNudgedAt, now - 3 * hr, 'not re-nudged');
+  assert.equal((await d('busy')).isOnline, true, 'never mid-delivery');
+  const fresh = await d('fresh');
+  assert.equal(fresh.isOnline, true); assert.equal(fresh.idleNudgedAt, undefined);
 });

@@ -76,7 +76,12 @@ export default function PaymentResult() {
   const credited = pay?.status === 'credited';
   // The server applies the payment before sending the student here, so a
   // "pending" record with a success URL just means Firestore hasn't caught up.
-  const stillChecking = pay?.status === 'pending' && (urlStatus === 'success' || urlStatus === 'credited');
+  // "verified" = applying it is being retried (every few minutes);
+  // "review" = DormDash is confirming it with WiPay (see PaymentsToCheck).
+  const stillChecking =
+    (pay?.status === 'pending' && (urlStatus === 'success' || urlStatus === 'credited' || urlStatus === 'processing')) ||
+    pay?.status === 'verified';
+  const inReview = pay?.status === 'review';
 
   let title = 'Payment didn\'t go through';
   let text = 'You were not charged. You can try again.';
@@ -91,7 +96,10 @@ export default function PaymentResult() {
     text = 'Your dasher has been told to go ahead with your order.';
   } else if (stillChecking) {
     title = 'Confirming your payment…';
-    text = 'This takes a few seconds.';
+    text = 'This usually takes a few seconds. You can leave this page: your balance or order updates on its own.';
+  } else if (inReview) {
+    title = 'We\'re confirming your payment';
+    text = `WiPay reported your payment in an unusual way, so DormDash is checking it by hand. You won't be charged twice. Reference: ${pid ?? 'unknown'}.`;
   } else if (urlStatus === 'error' || !pay) {
     title = 'We couldn\'t confirm this payment';
     text = `If money was taken from your card, contact DormDash support with this reference: ${pid ?? 'unknown'}.`;

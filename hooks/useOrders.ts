@@ -6,7 +6,7 @@
 // of history, or a date window), so none of them grows with a user's whole
 // history. Indexes they rely on are in firestore.indexes.json.
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AppState } from 'react-native';
 import {
   collection, doc, query, where, orderBy, limit, onSnapshot,
@@ -14,6 +14,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { onResync, resyncLiveData } from '../services/liveSync';
+import { serverNow } from '../services/serverClock';
 import { MAX_ACTIVE_ORDERS, ACTIVE_STATUSES, IN_DELIVERY_STATUSES } from '../constants';
 import { Order } from '../types';
 
@@ -130,11 +131,26 @@ export function useStudentOrderHistory(uid: string | undefined, visible: number)
  *     connection is stale and it reconnects.
  * `refresh()` forces a re-subscribe; `dismiss(id)` hides one order at once
  * (e.g. after a failed accept).
+ *
+ * Wave dispatch: with `uid`, an order shows only once it has been offered to
+ * this dasher (see offeredFrom); the list updates itself when the next one
+ * comes due. The Firestore rules refuse an accept before then anyway.
  */
 const WATCHDOG_MS = 30 * 1000;
+// The rules check the server's clock; wait a moment past it so an order
+// never shows a few hundred milliseconds before it can be taken.
+const OFFER_MARGIN_MS = 1000;
 
-export function usePendingOrders({ watchdog = false }: { watchdog?: boolean } = {}) {
-  const [orders, setOrders] = useState<Order[]>([]);
+/** When this dasher may take the order (orders from before waves: always). */
+export function offeredFrom(o: Order, uid: string | undefined): number {
+  if (o.openToAllAt == null) return 0;
+  const mine = uid ? o.offerAt?.[uid] : undefined;
+  return Math.min(o.openToAllAt, mine ?? Infinity);
+}
+
+export function usePendingOrders({ watchdog = false, uid }: { watchdog?: boolean; uid?: string } = {}) {
+  const [all, setAll] = useState<Order[]>([]);
+  const [now, setNow] = useState(() => serverNow());
   const [loading, setLoading] = useState(true);
   const [listenKey, setListenKey] = useState(0);
   // How many pending orders the listener sees (verified or not): the same
@@ -142,7 +158,7 @@ export function usePendingOrders({ watchdog = false }: { watchdog?: boolean } = 
   const seenPending = useRef<number | null>(null);
   const refresh = useCallback(() => setListenKey(k => k + 1), []);
   const dismiss = useCallback((orderId: string) => {
-    setOrders(list => list.filter(o => o.id !== orderId));
+    setAll(list => list.filter(o => o.id !== orderId));
   }, []);
 
   useEffect(() => onResync(refresh), [refresh]);
@@ -156,7 +172,8 @@ export function usePendingOrders({ watchdog = false }: { watchdog?: boolean } = 
     let retry: ReturnType<typeof setTimeout> | undefined;
     const unsub = onSnapshot(q, snap => {
       seenPending.current = snap.size;
-      setOrders(snap.docs.map(toOrder).filter(o => !!o.verifiedAt));
+      setAll(snap.docs.map(toOrder).filter(o => !!o.verifiedAt));
+      setNow(serverNow());
       setLoading(false);
     }, err => {
       console.log('Pending orders listener failed, retrying:', err?.message);
@@ -181,6 +198,16 @@ export function usePendingOrders({ watchdog = false }: { watchdog?: boolean } = 
     const timer = setInterval(check, WATCHDOG_MS);
     return () => clearInterval(timer);
   }, [watchdog]);
+
+  // Orders offered to this dasher by now; wake up when the next one is.
+  const orders = useMemo(
+    () => all.filter(o => offeredFrom(o, uid) + OFFER_MARGIN_MS <= now), [all, uid, now]);
+  useEffect(() => {
+    const next = Math.min(...all.map(o => offeredFrom(o, uid) + OFFER_MARGIN_MS).filter(t => t > now));
+    if (!Number.isFinite(next)) return;
+    const timer = setTimeout(() => setNow(serverNow()), Math.max(0, next - serverNow()) + 50);
+    return () => clearTimeout(timer);
+  }, [all, uid, now]);
 
   return { orders, loading, refresh, dismiss };
 }

@@ -4,7 +4,7 @@
 // that no dasher has accepted yet.
 
 import { useEffect, useState } from 'react';
-import { collection, doc, onSnapshot, query, where } from 'firebase/firestore';
+import { collection, doc, limit, onSnapshot, orderBy, query, where } from 'firebase/firestore';
 import { db } from '../services/firebase';
 
 export type Wallet = { balanceJmd: number; reservedJmd: number; availableJmd: number; loaded: boolean };
@@ -60,3 +60,33 @@ export function usePayment<T = Record<string, any>>(paymentId: string | undefine
   }, [paymentId]);
   return { pay, loaded };
 }
+
+export type PaymentToCheck = {
+  id: string; uid: string; purpose: 'order' | 'tokens'; amountJmd: number; tokens?: number;
+  orderId?: string | null; status: 'pending' | 'review'; createdAt: number; reviewReason?: string;
+  returnTransactionId?: string;
+};
+
+const UNCONFIRMED_AFTER_MS = 15 * 60 * 1000;
+
+/**
+ * Admin: card payments WiPay never confirmed to us. 'review' ones (valid
+ * signature, changed transaction id) and 'pending' ones older than 15
+ * minutes (the student probably left WiPay's page without coming back).
+ * Newest first. See adminResolvePayment.
+ */
+export function usePaymentsToCheck() {
+  const [rows, setRows] = useState<PaymentToCheck[]>([]);
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 60 * 1000); // pending ones become due over time
+    return () => clearInterval(t);
+  }, []);
+  useEffect(() => onSnapshot(
+    query(collection(db, 'payments'), where('status', 'in', ['pending', 'review']), orderBy('createdAt', 'desc'), limit(50)),
+    snap => setRows(snap.docs.map(d => ({ id: d.id, ...d.data() } as PaymentToCheck))),
+    () => {},
+  ), []);
+  return rows.filter(r => r.status === 'review' || now - r.createdAt > UNCONFIRMED_AFTER_MS);
+}
+

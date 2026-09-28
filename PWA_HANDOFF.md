@@ -469,3 +469,42 @@ Logs showed card payments started (`createPayment`) with no WiPay return, and ta
 - `openCheckout` refuses anything but an `https` link: navigating to a missing URL reloaded the app, which looked like a dead button.
 - Audit of every other busy/disabled button: all reset on every path (`finally`, calls that never throw, or navigation away on success). `AmountPrompt` resets itself each time it opens.
 - Rule: a button that disables itself must re-enable on **every** path, including success paths that leave the app.
+
+### Card payments can't be lost (2026-09-27)
+WiPay's API ([Payments API Documentation](https://wipaycaribbean.com/WiPay-API-Documentation.pdf)) has only the payment request and a browser redirect: no webhook, no status lookup. So:
+- `wipayReturn` verifies the signature, **saves** the result (`status: 'verified'` + `return*` fields), then applies it via `applyVerifiedPayment` (exactly once, all money logic in one place). If applying fails, `retryVerifiedPayments` (in the 5-minute scheduler) applies it.
+- A valid signature with a transaction ID different from the one WiPay gave at the start (e.g. a retry on WiPay's page) is saved as `review`, never applied automatically.
+- Returns that never arrive: admin dashboard **Card payments to check** (`components/PaymentsToCheck.tsx`, `usePaymentsToCheck`) + callable `adminResolvePayment` (Paid needs WiPay's transaction ID; both need a note; audit fields `resolvedBy/resolvedNote/resolvedAt`). Daily routine in PAYMENTS_SETUP.md.
+- Payment statuses: `pending` → `verified` → `paid` | `credited`; plus `review` and `failed`. Index: `payments (status, createdAt desc)`.
+- Tests: payments 28/28 (apply failure + retry once, review hold, admin resolve paid/not paid/credited, never twice), rules 37/37 (admin list only).
+
+
+### Half-finished work is repaired (2026-09-27)
+Triggers run with `RETRY_POLICY_DO_NOT_RETRY`, and retrying a whole trigger would re-send notifications. Instead `repairHalfFinishedWork()` runs first in the 5-minute scheduler and completes each state a failed trigger can leave, with the same code the trigger runs (all safe to run twice). It only touches documents unchanged for 60 s (`REPAIR_MIN_AGE_MS`), so it never races a live trigger:
+1. pending order never checked → `publishNewOrder` (check, publish, notify dashers)
+2. cancelled with tokens reserved/paid → `settleCancelledOrder`
+3. accepted card order still `unpaid` → `openPayWindow` (transactional; fresh 10-min window + "Pay now" push); old tokens-at-checkout order still `reserved` → `chargeTokensOnAccept`
+4. delivered in the last day, dasher not credited → `creditDasherForDelivery`
+5. dasher `activeOrderId` pointing at a finished order → `setDasherBusy(false)`
+- Each repair logs `Repaired half-finished work: <kind>`; a spike means triggers are failing.
+- `publishNewOrder` and `openPayWindow` were extracted from `onOrderStatusChanged` so both paths share one implementation.
+- New indexes: `orders (status, paymentStatus)`, `orders (status, deliveredAt)`.
+- Test: `firestore-tests/triggers.test.mjs` builds each broken state the way a failed trigger leaves it, runs the sweep, checks each is fixed, a mid-delivery dasher is untouched, and a second sweep changes nothing (10/10).
+
+### Idle dashers are switched off (2026-09-27)
+"Online" used to be a sticky switch, so dashers who walked away kept getting orders and counted as available. Now:
+- The app records activity (`dashers/{uid}.lastSeenAt`) when DormDash opens or returns to the foreground, and every `DASHER_ACTIVITY_MS` (30 min) while it's open. At most ~48 tiny writes per dasher per day.
+- `retireIdleDashers()` (5-minute scheduler): online, not mid-delivery, no activity for `DASHER_IDLE_NUDGE_MS` (2 h) → "Still dashing?" push (`idleNudgedAt`); still none `DASHER_IDLE_GRACE_MS` (30 min) later → switched off in a transaction that re-checks nothing changed (`offlineReason: 'idle'`) + "You're offline now" push. Opening the app at any point resets it.
+- The dasher screen explains the rule while online, and explains an idle switch-off when they next open the app. Going online clears `offlineReason`.
+- Times live in `functions/src/shared.ts`. Rules: the dasher may write `lastSeenAt` (number) and clear `offlineReason` (to null) only. Privacy policy updated (27 Sep 2026).
+- Tests: rules 38/38; emulator 11/11 (nudge, switch-off, grace period, came back, mid-delivery, fresh).
+
+### Orders are offered in waves (2026-09-27)
+Every new order used to go to every free online dasher at once: at 50+ dashers that meant a notification storm and constant "Too slow!" races. Now (`publishNewOrder` / `offerNextWave` in functions/src/index.ts, numbers in `functions/src/shared.ts`):
+- The order goes to `OFFER_WAVE_SIZE` (3) free dashers, least recently offered first (`dashers/{uid}.lastOfferedAt`, random among equals). Nobody takes it → 3 more every `OFFER_WAVE_MS` (45 s); from wave `OFFER_OPEN_WAVE` (4th, ~2¼ min) it's open to everyone, including dashers who came online since.
+- **3 or fewer free dashers: everyone at once, exactly as before.** So at launch size nothing changes.
+- The schedule is on the order, written in the same write as `verifiedAt`: `offerAt` (uid → time) and `openToAllAt`. The dasher list shows an order only from that dasher's time (`offeredFrom` in hooks/useOrders.ts, updates itself), and the Firestore accept rule checks `request.time` against the same fields. Orders without them (older ones) are open to all.
+- Later waves are sent by `offerNextWave`, a Cloud Tasks queue function (one task per wave, id `<orderId>-<time>`). It stops once the order is taken or cancelled. A wave that arrives early is failed so the queue retries it.
+- **Fail-open:** if a wave can't be scheduled, the order opens to everyone at once and the rest are alerted ("Could not schedule the next offer wave" in the logs). Waves never delay an order.
+- **After deploying:** the first deploy enables the Cloud Tasks API and creates the `offerNextWave` queue. Place a test order with 4+ dashers online, or just check the logs: no "Could not schedule" errors. If they appear, give the default compute service account the "Cloud Tasks Enqueuer" and "Service Account User" roles (IAM console).
+- Tests: rules 39/39 (not before your wave, after openToAllAt anyone, can't write offer times); emulator 13/13 (wave order and timing through the Cloud Tasks emulator, busy dashers skipped, taken order stops waves, ≤3 dashers all at once). Privacy policy: "when you were last offered an order".

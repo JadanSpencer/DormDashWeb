@@ -87,12 +87,15 @@ service cloud.firestore {
         && request.resource.data.totalEarnings == 0
         && request.resource.data.rating == 5;
 
-      // Go online/offline (lastSeenAt = when they switched; older app
-      // versions also sent it as a heartbeat). Earnings and ratings are
-      // server-only (onOrderStatusChanged credits them on delivery).
+      // Go online/offline, and record activity (lastSeenAt) so an idle
+      // dasher can be taken offline. Earnings and ratings are server-only
+      // (onOrderStatusChanged credits them on delivery). offlineReason is
+      // set by the server (e.g. 'idle'); the dasher may only clear it.
       allow update: if isDasher() && request.auth.uid == uid
-        && onlyChanged(['isOnline', 'lastSeenAt', 'currentLocation'])
+        && onlyChanged(['isOnline', 'lastSeenAt', 'currentLocation', 'offlineReason'])
         && request.resource.data.isOnline is bool
+        && (!changed('lastSeenAt') || request.resource.data.lastSeenAt is number)
+        && (!changed('offlineReason') || request.resource.data.offlineReason == null)
         // Older app versions stored a position here; it may only be cleared.
         && (!changed('currentLocation') || request.resource.data.currentLocation == null);
     }
@@ -137,12 +140,18 @@ service cloud.firestore {
         && request.resource.data.status == 'cancelled'
         && onlyChanged(['status', 'cancelledAt']);
 
-      // Dasher accepts an open, server-verified order for themselves.
+      // Dasher accepts an open, server-verified order for themselves, once
+      // it has been offered to them: wave dispatch (functions/src/index.ts)
+      // names a few dashers at a time in offerAt, then opens it to everyone
+      // at openToAllAt. Orders from before waves have neither: open to all.
       allow update: if isDasher()
         && resource.data.status == 'pending'
         && resource.data.get('verifiedAt', null) != null
         && resource.data.get('dasherId', null) == null
         && resource.data.studentId != request.auth.uid
+        && (request.time.toMillis() >= resource.data.get('openToAllAt', 0)
+            || request.time.toMillis() >= resource.data.get('offerAt', {})
+                 .get(request.auth.uid, request.time.toMillis() + 1))
         && request.resource.data.status == 'accepted'
         && request.resource.data.dasherId == request.auth.uid
         && str(request.resource.data.dasherName, 100)

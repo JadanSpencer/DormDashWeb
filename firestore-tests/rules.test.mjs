@@ -172,6 +172,22 @@ test('dasher accepts verified order for themselves only', async () => {
   await assertFails(updateDoc(doc(db('dash'), 'orders', 'pend'), { status: 'accepted', dasherId: 'dash', dasherName: 'D', acceptedAt: 1, deliveryFee: 9999 }));
   await assertSucceeds(updateDoc(doc(db('dash'), 'orders', 'pend'), { status: 'accepted', dasherId: 'dash', dasherName: 'D', acceptedAt: 1 }));
 });
+test('wave dispatch: a dasher takes an order only once it is offered to them', async () => {
+  const now = Date.now(), later = now + 10 * 60000;
+  await env.withSecurityRulesDisabled(async (ctx) => {
+    const a = ctx.firestore();
+    // dash is in the first wave, dash2 in a later one, nobody else yet.
+    await setDoc(doc(a, 'orders', 'wave'), { ...baseOrder, verifiedAt: now, offerAt: { dash: now - 1000, dash2: later }, openToAllAt: later });
+    // Past openToAllAt: anyone, named or not.
+    await setDoc(doc(a, 'orders', 'open'), { ...baseOrder, verifiedAt: now, offerAt: { dash: later }, openToAllAt: now - 1000 });
+  });
+  const take = (uid, id) => updateDoc(doc(db(uid), 'orders', id), { status: 'accepted', dasherId: uid, dasherName: 'D', acceptedAt: 1 });
+  await assertFails(take('dash2', 'wave'));
+  await assertSucceeds(take('dash', 'wave'));
+  await assertSucceeds(take('dash2', 'open'));
+  // A dasher can't write their own offer time.
+  await assertFails(updateDoc(doc(db('dash2'), 'orders', 'pend'), { status: 'accepted', dasherId: 'dash2', dasherName: 'D', acceptedAt: 1, offerAt: { dash2: 0 } }));
+});
 test('second dasher cannot steal an accepted order', async () => {
   await assertFails(updateDoc(doc(db('dash2'), 'orders', 'mine'), { status: 'accepted', dasherId: 'dash2', dasherName: 'X', acceptedAt: 1 }));
   await assertFails(updateDoc(doc(db('dash2'), 'orders', 'mine'), { status: 'picking_up' }));
@@ -297,4 +313,34 @@ test('dasher can count pending orders on the server; students cannot', async () 
   await assertSucceeds(getAggregateFromServer(pending('dash'), { n: count() }));
   await assertFails(getAggregateFromServer(pending('stu'), { n: count() }));
   await assertFails(getAggregateFromServer(pending('banned'), { n: count() }));
+});
+
+// ── Admin: card payments to check (components/PaymentsToCheck) ───────────
+test('admin lists unconfirmed card payments; students only ever see their own', async () => {
+  await env.withSecurityRulesDisabled(async (ctx) => {
+    const a = ctx.firestore();
+    await setDoc(doc(a, 'payments', 'payStu'), { uid: 'stu', status: 'pending', createdAt: 1, amountJmd: 500, purpose: 'tokens' });
+    await setDoc(doc(a, 'payments', 'payStu2'), { uid: 'stu2', status: 'review', createdAt: 2, amountJmd: 900, purpose: 'order' });
+  });
+  const toCheck = (who) => query(collection(db(who), 'payments'), where('status', 'in', ['pending', 'review']), orderBy('createdAt', 'desc'), limit(50));
+  await assertSucceeds(getDocs(toCheck('boss')));
+  await assertFails(getDocs(toCheck('stu')));   // would include stu2's payment
+  await assertFails(getDocs(toCheck('dash')));
+  await assertSucceeds(getDoc(doc(db('stu'), 'payments', 'payStu')));
+  await assertFails(getDoc(doc(db('stu'), 'payments', 'payStu2')));
+  await assertFails(updateDoc(doc(db('boss'), 'payments', 'payStu'), { status: 'paid' })); // only the server resolves
+});
+
+// ── Idle dashers: activity and the idle note ─────────────────────────────
+test('dasher records activity and clears the idle note, but cannot set server fields', async () => {
+  await env.withSecurityRulesDisabled(async (ctx) => {
+    await updateDoc(doc(ctx.firestore(), 'dashers', 'dash'), { offlineReason: 'idle', idleNudgedAt: 5 });
+  });
+  const me = doc(db('dash'), 'dashers', 'dash');
+  await assertSucceeds(updateDoc(me, { lastSeenAt: Date.now() }));
+  await assertSucceeds(updateDoc(me, { isOnline: true, lastSeenAt: Date.now(), offlineReason: null }));
+  await assertFails(updateDoc(me, { offlineReason: 'vacation' }));
+  await assertFails(updateDoc(me, { idleNudgedAt: 0 }));
+  await assertFails(updateDoc(me, { lastSeenAt: 'yesterday' }));
+  await assertFails(updateDoc(doc(db('dash2'), 'dashers', 'dash'), { lastSeenAt: Date.now() }));
 });

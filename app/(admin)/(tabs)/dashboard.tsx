@@ -19,6 +19,7 @@ import { logoutUser } from '../../../services/auth';
 import { formatJMD } from '../../../constants';
 import { S } from '../../../constants/themeMid';
 import { Backdrop } from '../../../components/Backdrop';
+import { PaymentsToCheck } from '../../../components/PaymentsToCheck';
 
 const REFRESH_MS = 60 * 1000;
 
@@ -182,6 +183,9 @@ export default function AdminDashboard() {
             </View>
           </View>
         </View>
+
+        {/* Card payments WiPay never confirmed (components/PaymentsToCheck) */}
+        <PaymentsToCheck />
 
         {/* Quick actions — now actually navigate */}
         <Text style={styles.sectionTitle}>Quick actions</Text>

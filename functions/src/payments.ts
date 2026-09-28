@@ -416,21 +416,72 @@ export const wipayReturn = onRequest({ secrets: [WIPAY_API_KEY], invoker: 'publi
   const expected = crypto.createHash('md5').update(txId + pay.totalSent + WIPAY_API_KEY.value()).digest('hex');
   const hashOk = typeof q.hash === 'string' && q.hash.toLowerCase() === expected;
   const txOk = !pay.wipayTransactionId || pay.wipayTransactionId === txId;
-  if (!hashOk || !txOk) {
+  if (!hashOk) {
+    // Not signed by WiPay with our key: forged or tampered. Change nothing.
     logger.error('WiPay return FAILED verification', { paymentId, hashOk, txOk });
     go('error', { kind });
     return;
   }
 
-  let outcome = 'success';
-  await db.runTransaction(async tx => {
+  // Record the verified result BEFORE applying it. If applying fails, the
+  // record survives and retryVerifiedPayments (every 5 minutes) applies it,
+  // so a student whose card was charged is never left without credit.
+  // A transaction id that differs from the one WiPay gave when the payment
+  // started (e.g. a retry on WiPay's page) still has a valid signature, but
+  // is held for an admin to confirm ('review') rather than applied blindly.
+  const state = await db.runTransaction(async tx => {
     const fresh = (await tx.get(payRef)).data();
-    if (!fresh || fresh.status === 'paid' || fresh.status === 'credited') return; // already applied
+    if (!fresh) return 'missing';
+    if (['paid', 'credited', 'verified'].includes(fresh.status)) return fresh.status;
+    tx.update(payRef, {
+      status: txOk ? 'verified' : 'review',
+      returnTransactionId: txId,
+      returnTotal: String(q.total ?? ''),
+      returnCard: String(q.card ?? '').slice(-4),
+      returnVerifiedAt: Date.now(),
+      ...(txOk ? {} : { reviewReason: 'transaction_id_changed' }),
+    });
+    return txOk ? 'verified' : 'review';
+  });
+
+  if (state === 'review') {
+    logger.warn('WiPay return held for review (transaction id changed)', { paymentId, txId });
+    go('processing', { kind, ...(pay.orderId ? { order: pay.orderId } : {}) });
+    return;
+  }
+  let outcome = state === 'credited' ? 'credited' : 'success';
+  if (state === 'verified') {
+    try {
+      outcome = (await applyVerifiedPayment(paymentId)) === 'credited' ? 'credited' : 'success';
+    } catch (e: any) {
+      // Saved as verified: retryVerifiedPayments applies it shortly.
+      logger.error('Applying a verified payment failed; will retry', { paymentId, message: e?.message });
+      outcome = 'processing';
+    }
+  }
+
+  logger.info('Payment verified', { paymentId, purpose: pay.purpose, outcome });
+  go(outcome, { kind, ...(pay.orderId ? { order: pay.orderId } : {}) });
+});
+
+// ─── Applying a verified payment (exactly once) ────────────────────────────
+/**
+ * Moves a 'verified' payment to 'paid' (tokens bought, or order paid) or
+ * 'credited' (the order moved on while they paid: the money becomes tokens).
+ * Safe to call any number of times: only a 'verified' payment is applied,
+ * inside one transaction. Returns the resulting status, or null if there
+ * was nothing to apply.
+ */
+export async function applyVerifiedPayment(paymentId: string): Promise<'paid' | 'credited' | null> {
+  const payRef = db.collection('payments').doc(paymentId);
+  return db.runTransaction(async tx => {
+    const fresh = (await tx.get(payRef)).data();
+    if (!fresh || fresh.status !== 'verified') return null;
 
     const paidFields = {
-      transactionId: txId,
-      chargedTotal: String(q.total ?? ''),
-      card: String(q.card ?? '').slice(-4),
+      transactionId: String(fresh.returnTransactionId ?? ''),
+      chargedTotal: String(fresh.returnTotal ?? ''),
+      card: String(fresh.returnCard ?? ''),
       paidAt: Date.now(),
     };
 
@@ -440,7 +491,7 @@ export const wipayReturn = onRequest({ secrets: [WIPAY_API_KEY], invoker: 'publi
         uid: fresh.uid, type: 'topup_card', amountJmd: fresh.amountJmd, paymentId, createdAt: Date.now(),
       });
       tx.update(payRef, { status: 'paid', ...paidFields });
-      return;
+      return 'paid' as const;
     }
 
     // Order payment.
@@ -452,21 +503,78 @@ export const wipayReturn = onRequest({ secrets: [WIPAY_API_KEY], invoker: 'publi
       tx.update(orderRef, { paymentStatus: 'paid', paidAt: Date.now(), paymentId });
       tx.update(payRef, { status: 'paid', ...paidFields });
       writeFloat(tx, target, orderRef.id, foodCost(order!), -1, 'Card order paid');
-    } else {
-      // Order was cancelled (or otherwise moved on) while they were paying.
-      // Keep their money: credit it as tokens.
-      tx.set(walletRef(fresh.uid), { balanceJmd: FieldValue.increment(fresh.amountJmd), updatedAt: Date.now() }, { merge: true });
-      tx.set(db.collection('walletTx').doc(`${paymentId}_late`), {
-        uid: fresh.uid, type: 'late_payment_credit', amountJmd: fresh.amountJmd, paymentId, orderId: fresh.orderId,
-        note: 'Paid after the order was cancelled: added as tokens', createdAt: Date.now(),
-      });
-      tx.update(payRef, { status: 'credited', ...paidFields });
-      outcome = 'credited';
+      return 'paid' as const;
     }
+    // Order was cancelled (or otherwise moved on) while they were paying.
+    // Keep their money: credit it as tokens.
+    tx.set(walletRef(fresh.uid), { balanceJmd: FieldValue.increment(fresh.amountJmd), updatedAt: Date.now() }, { merge: true });
+    tx.set(db.collection('walletTx').doc(`${paymentId}_late`), {
+      uid: fresh.uid, type: 'late_payment_credit', amountJmd: fresh.amountJmd, paymentId, orderId: fresh.orderId,
+      note: 'Paid after the order was cancelled: added as tokens', createdAt: Date.now(),
+    });
+    tx.update(payRef, { status: 'credited', ...paidFields });
+    return 'credited' as const;
+  });
+}
+
+/** Scheduler: applies payments that were verified but not applied yet. */
+export async function retryVerifiedPayments(): Promise<number> {
+  const snap = await db.collection('payments').where('status', '==', 'verified').limit(100).get();
+  let applied = 0;
+  for (const d of snap.docs) {
+    try {
+      if (await applyVerifiedPayment(d.id)) applied++;
+    } catch (e: any) {
+      logger.error('Retrying a verified payment failed', { paymentId: d.id, message: e?.message });
+    }
+  }
+  if (applied) logger.info(`Applied ${applied} verified payment(s) on retry`);
+  return applied;
+}
+
+// ─── Admin: resolve a card payment WiPay never confirmed to us ─────────────
+// WiPay reports results only by redirecting the student's browser (its API
+// has no webhook or status lookup). If the student closed the tab, the
+// payment stays 'pending' here even if the card was charged. WiPay's
+// merchant dashboard lists every transaction with our payment id as its
+// order_id, so an admin checks there and resolves it:
+//   paid: true  → applied exactly like a normal return (tokens or order)
+//   paid: false → marked failed
+// Every resolution records who did it and why.
+export const adminResolvePayment = onCall({ ...APP_CHECK }, async (request) => {
+  await requireAdmin(request.auth?.uid);
+  const paymentId = String(request.data?.paymentId ?? '');
+  const paid = request.data?.paid === true;
+  const note = String(request.data?.note ?? '').trim().slice(0, 200);
+  const wipayTx = String(request.data?.transactionId ?? '').trim().slice(0, 100);
+  if (!/^[A-Za-z0-9]{10,40}$/.test(paymentId)) throw new HttpsError('invalid-argument', 'Payment not found.');
+  if (!note) throw new HttpsError('invalid-argument', 'Add a short note (e.g. "Checked WiPay dashboard").');
+  if (paid && !wipayTx) throw new HttpsError('invalid-argument', 'Enter the WiPay transaction ID from the WiPay dashboard.');
+
+  const payRef = db.collection('payments').doc(paymentId);
+  const by = request.auth!.uid;
+  const result = await db.runTransaction(async tx => {
+    const fresh = (await tx.get(payRef)).data();
+    if (!fresh) throw new HttpsError('not-found', 'Payment not found.');
+    if (!['pending', 'review', 'failed'].includes(fresh.status)) {
+      throw new HttpsError('failed-precondition', `This payment is already ${fresh.status}.`);
+    }
+    const resolution = { resolvedBy: by, resolvedNote: note, resolvedAt: Date.now() };
+    if (paid) {
+      tx.update(payRef, {
+        status: 'verified', ...resolution,
+        returnTransactionId: wipayTx, returnTotal: String(fresh.totalSent ?? ''),
+        returnCard: String(fresh.returnCard ?? ''), returnVerifiedAt: Date.now(),
+      });
+      return 'verified';
+    }
+    tx.update(payRef, { status: 'failed', failReason: `admin: ${note}`, ...resolution });
+    return 'failed';
   });
 
-  logger.info('Payment verified', { paymentId, purpose: pay.purpose, outcome });
-  go(outcome, { kind, ...(pay.orderId ? { order: pay.orderId } : {}) });
+  const status = result === 'verified' ? await applyVerifiedPayment(paymentId) : 'failed';
+  logger.info('Payment resolved by admin', { paymentId, paid, status, by });
+  return { status };
 });
 
 // ─── Admin: tokens and floats ──────────────────────────────────────────────

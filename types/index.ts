@@ -103,6 +103,8 @@ export interface Order {
     studentRating?: number;
     cancelReason?: CancelReason; // set by the server (or admin); none = the student cancelled
     verifiedAt?: number;     // set by the server after re-pricing the order
+    offerAt?: Record<string, number>; // wave dispatch: dasher uid -> when they may take it
+    openToAllAt?: number;    // wave dispatch: when every dasher may take it
     dasherCreditedAt?: number; // set by the server once the dasher's stats are credited
     deliveryMins?: number;   // set by the server on delivery (admin dashboard average)
     // Payments (functions/src/payments.ts). Missing on orders from before payments.

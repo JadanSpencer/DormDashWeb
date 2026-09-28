@@ -27,15 +27,19 @@ import * as admin from 'firebase-admin';
 import { FieldValue } from 'firebase-admin/firestore';
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { onSchedule } from 'firebase-functions/v2/scheduler';
+import { onTaskDispatched } from 'firebase-functions/v2/tasks';
+import { getFunctions } from 'firebase-admin/functions';
 import {
   reserveTokensAndVerify, chargeTokensOnAccept, settleCancelledOrder,
-  migrateLegacyStoreFloats,
+  migrateLegacyStoreFloats, retryVerifiedPayments,
 } from './payments';
 import {
   MAX_ACTIVE_ORDERS, MAX_ITEMS_PER_ORDER, PAY_WINDOW_MS, PENDING_TIMEOUT_MS, minutes,
+  DASHER_IDLE_NUDGE_MS, DASHER_IDLE_GRACE_MS,
+  OFFER_WAVE_SIZE, OFFER_WAVE_MS, OFFER_OPEN_WAVE,
   ACTIVE_STATUSES, IN_DELIVERY_STATUSES, CancelReason,
 } from './shared';
-export { createPayment, wipayReturn, adminAdjustTokens, adminAdjustFloat, payOrderWithTokens } from './payments';
+export { createPayment, wipayReturn, adminAdjustTokens, adminAdjustFloat, payOrderWithTokens, adminResolvePayment } from './payments';
 import { alertStore } from './storeAlerts';
 import { APP_CHECK } from './appCheck';
 export { storeAlertsAdmin } from './storeAlerts';
@@ -212,41 +216,49 @@ async function getUserToken(uid: string): Promise<string | null> {
   return data?.pushToken ?? null;
 }
 
-// ─── Which dashers should actually hear about a new order ──────────────────
+// ─── Which dashers can take a new order ────────────────────────────────────
 // SPEED: this used to read every active order on campus, then look up
 // dashers 30 at a time, one after another. With 1,000 dashers that was 34
 // round trips in a row plus a read that grew with every order. Now:
-//   1. one query for online dashers (only the activeOrderId field), and
+//   1. one query for online dashers (two small fields), and
 //   2. one parallel batch read of their user docs (only 3 small fields).
 // "Busy" comes from dashers/{uid}.activeOrderId, which this file keeps up to
 // date when an order is accepted and when it finishes (see setDasherBusy).
-async function getEligibleDasherTokens(excludeUid?: string): Promise<string[]> {
-  // No "last seen" cutoff: a dasher stays online until they switch off or
-  // sign out, and gets new orders as push notifications with the app closed.
+type FreeDasher = { uid: string; token: string | null; lastOfferedAt: number };
+
+async function getFreeDashers(excludeUid?: string): Promise<FreeDasher[]> {
+  // No "last seen" cutoff here: a dasher stays online until they switch off
+  // (or retireIdleDashers does), and gets new orders as push notifications
+  // with the app closed.
   const dasherSnap = await db.collection('dashers')
     .where('isOnline', '==', true)
-    .select('activeOrderId')
+    .select('activeOrderId', 'lastOfferedAt')
     .get();
 
-  const freeRefs = dasherSnap.docs
+  const free = dasherSnap.docs
     .filter(d => d.id !== excludeUid)          // don't ping the customer
-    .filter(d => !d.get('activeOrderId'))      // mid-delivery: can't accept
-    .map(d => db.collection('users').doc(d.id));
-  if (freeRefs.length === 0) return [];
+    .filter(d => !d.get('activeOrderId'));     // mid-delivery: can't accept
+  if (free.length === 0) return [];
+  const lastOffered = new Map(free.map(d => [d.id, Number(d.get('lastOfferedAt')) || 0]));
+  const refs = free.map(d => db.collection('users').doc(d.id));
 
   const chunks: admin.firestore.DocumentReference[][] = [];
-  for (let i = 0; i < freeRefs.length; i += 300) chunks.push(freeRefs.slice(i, i + 300));
+  for (let i = 0; i < refs.length; i += 300) chunks.push(refs.slice(i, i + 300));
   const results = await Promise.all(chunks.map(c =>
     db.getAll(...c, { fieldMask: ['pushToken', 'isActive', 'role'] })));
 
-  const tokens: string[] = [];
+  const seenTokens = new Set<string>();
+  const out: FreeDasher[] = [];
   results.flat().forEach(doc => {
     const u = doc.data();
     if (!u || u.isActive === false) return;
     if (u.role !== 'dasher') return;          // belt and braces
-    if (u.pushToken) tokens.push(u.pushToken);
+    // Never alert the same device twice (a phone shared by two accounts).
+    const token = u.pushToken && !seenTokens.has(u.pushToken) ? String(u.pushToken) : null;
+    if (token) seenTokens.add(token);
+    out.push({ uid: doc.id, token, lastOfferedAt: lastOffered.get(doc.id) ?? 0 });
   });
-  return [...new Set(tokens)]; // never alert the same device twice
+  return out;
 }
 
 // Marks a dasher busy (orderId) or free (null). Free only clears the order
@@ -320,7 +332,8 @@ async function getRecentOrdersForStudent(studentId: string): Promise<admin.fires
 
 async function verifyNewOrder(
   ref: admin.firestore.DocumentReference,
-  order: admin.firestore.DocumentData
+  order: admin.firestore.DocumentData,
+  dispatch: Record<string, unknown> = {},
 ): Promise<admin.firestore.DocumentData | null> {
   const cancel = async (reason: CancelReason) => {
     logger.warn(`Order ${ref.id} rejected: ${reason}`, { studentId: order.studentId });
@@ -448,6 +461,7 @@ async function verifyNewOrder(
     paymentMethod,
     paymentStatus: paymentMethod === 'tokens' ? 'reserved' : 'unpaid',
     verifiedAt: Date.now(),
+    ...dispatch, // who may take it when (see planOffer), published in the same write
   };
   if (Number(order.totalAmount) !== verified.totalAmount) {
     logger.warn(`Order ${ref.id}: total corrected ${order.totalAmount} -> ${verified.totalAmount}`);
@@ -470,6 +484,187 @@ async function verifyNewOrder(
     if (!published) return null;
   }
   return { ...order, ...verified };
+}
+
+// ─── New order: check it, then offer it to dashers in waves ───────────────
+// Used by onOrderStatusChanged and by repairHalfFinishedWork (for an order
+// whose trigger failed before it was checked). Safe to run twice: the
+// order is only published while it is still pending.
+//
+// Wave dispatch (OFFER_* in shared.ts): instead of every online dasher
+// getting every order (and racing for it), the order goes to the few free
+// dashers who were offered one least recently, then to a few more every
+// OFFER_WAVE_MS, then to everyone. Later waves are sent by offerNextWave
+// through a Cloud Tasks queue. If that queue can't be reached, the order
+// opens to everyone at once, so a failure never delays an order.
+const WAVE_MS = (Number(process.env.OFFER_WAVE_SECONDS) || OFFER_WAVE_MS / 1000) * 1000;
+
+type OfferPlan = { offerAt: Record<string, number>; openToAllAt: number; first: FreeDasher[]; lastWave: number };
+
+function planOffer(free: FreeDasher[], start: number): OfferPlan {
+  // Least recently offered first; a random order among equals, so two
+  // dashers who have never had an offer don't always come out the same way.
+  const queue = free
+    .map(d => ({ d, r: Math.random() }))
+    .sort((a, b) => a.d.lastOfferedAt - b.d.lastOfferedAt || a.r - b.r)
+    .map(x => x.d);
+  const waves = Math.ceil(queue.length / OFFER_WAVE_SIZE);
+  const lastWave = Math.max(0, Math.min(waves - 1, OFFER_OPEN_WAVE));
+  const offerAt: Record<string, number> = {};
+  for (let w = 0; w < lastWave; w++) {
+    for (const d of queue.slice(w * OFFER_WAVE_SIZE, (w + 1) * OFFER_WAVE_SIZE)) offerAt[d.uid] = start + w * WAVE_MS;
+  }
+  return {
+    offerAt,
+    openToAllAt: start + lastWave * WAVE_MS,
+    first: lastWave === 0 ? queue : queue.slice(0, OFFER_WAVE_SIZE),
+    lastWave,
+  };
+}
+
+/** Pushes the new-order alert to these dashers and records when they were offered one. */
+async function offerTo(dashers: FreeDasher[], order: admin.firestore.DocumentData, orderId: string): Promise<void> {
+  if (!dashers.length) return;
+  const now = Date.now();
+  const batch = db.batch();
+  dashers.forEach(d => batch.update(db.collection('dashers').doc(d.uid), { lastOfferedAt: now }));
+  await Promise.all([
+    batch.commit().catch(e => logger.warn('Could not record offers', { orderId, message: e?.message })),
+    sendPushes(dashers.filter(d => d.token).map(d => ({
+      token: d.token!,
+      title: `${MARK.newOrder} New order available`,
+      body: `${order.storeName} — ${jmd(order.deliveryFee)} to deliver`,
+      data: { screen: '/(dasher)/dash', orderId },
+      ttlSeconds: 600, // an order alert older than 10 minutes is useless
+    })), 'new_order'),
+  ]);
+}
+
+type WaveTask = { orderId: string; at: number };
+
+/** Schedules the wave due at `at`. False if the queue can't be reached. */
+async function scheduleWave(task: WaveTask): Promise<boolean> {
+  try {
+    await getFunctions().taskQueue('offerNextWave').enqueue(task, {
+      scheduleTime: new Date(task.at),
+      // One task per order per wave, even if this runs twice.
+      id: `${task.orderId}-${task.at}`,
+    });
+    return true;
+  } catch (e: any) {
+    if (e?.code === 'functions/task-already-exists') return true;
+    logger.error('Could not schedule the next offer wave; opening the order to everyone', {
+      orderId: task.orderId, message: e?.message, code: e?.code });
+    return false;
+  }
+}
+
+/** Opens the order to every dasher now and alerts the free ones not yet alerted. */
+async function openToEveryone(ref: admin.firestore.DocumentReference, orderId: string): Promise<number> {
+  const opened = await db.runTransaction(async tx => {
+    const o = (await tx.get(ref)).data();
+    if (!o || o.status !== 'pending' || !o.verifiedAt) return null;
+    if (!(Number(o.openToAllAt) <= Date.now())) tx.update(ref, { openToAllAt: Date.now() });
+    return o;
+  });
+  if (!opened) return 0;
+  const offered = opened.offerAt ?? {};
+  const rest = (await getFreeDashers(opened.studentId)).filter(d => !(d.uid in offered));
+  await offerTo(rest, opened, orderId);
+  return rest.length;
+}
+
+async function publishNewOrder(
+  ref: admin.firestore.DocumentReference, order: admin.firestore.DocumentData,
+  orderId: string, lagMs?: number,
+): Promise<void> {
+  const started = Date.now();
+  // Start finding dashers while the order is being checked: both only
+  // read, so neither slows the other down.
+  const freePromise = getFreeDashers(order.studentId);
+  freePromise.catch(() => {}); // avoid an unhandled rejection if we bail early
+  let plan: OfferPlan | null = null;
+  try {
+    plan = planOffer(await freePromise, Date.now());
+  } catch (e: any) {
+    // Can't see who is online: publish it open to everyone (as before waves).
+    logger.error('Could not list free dashers', { orderId, message: e?.message });
+  }
+  const checked = await verifyNewOrder(ref, order, plan
+    ? { offerAt: plan.offerAt, openToAllAt: plan.openToAllAt }
+    : { openToAllAt: Date.now() });
+  if (!checked || !plan) return; // cancelled; the cancel write re-triggers and notifies the student
+
+  let notified = plan.first.length;
+  if (plan.lastWave > 0 && !(await scheduleWave({ orderId, at: plan.openToAllAt - (plan.lastWave - 1) * WAVE_MS }))) {
+    await ref.update({ openToAllAt: Date.now() }).catch(() => {});
+    plan.first = await getFreeDashers(order.studentId).catch(() => plan!.first);
+    notified = plan.first.length;
+  }
+  await offerTo(plan.first, checked, orderId);
+  logger.info(`New order ${orderId}: offered to ${notified} dashers`, {
+    orderId, dashers: notified, waves: plan.lastWave + 1, handleMs: Date.now() - started, lagMs,
+  });
+}
+
+// ─── TASK: THE NEXT OFFER WAVE ─────────────────────────────────────────────
+// Sent by the Cloud Tasks queue at the time the wave is due. Does nothing
+// once the order is taken or cancelled. The last wave opens the order to
+// every free dasher not alerted yet (including ones who came online since).
+export const offerNextWave = onTaskDispatched<WaveTask>(
+  { retryConfig: { maxAttempts: 5, minBackoffSeconds: 5 }, rateLimits: { maxConcurrentDispatches: 50 } },
+  async (req) => {
+    const { orderId, at } = req.data ?? ({} as WaveTask);
+    if (!orderId || !at) return;
+    // Cloud Tasks runs a task at or after its time, but the local emulator
+    // may run it at once. A wave that isn't due yet would jump the queue:
+    // fail it, and the queue tries again after its backoff.
+    if (Date.now() < at - 2000) {
+      throw new Error(`Offer wave for ${orderId} arrived ${at - Date.now()} ms early`);
+    }
+    const ref = db.collection('orders').doc(orderId);
+    const o = (await ref.get()).data();
+    if (!o || o.status !== 'pending' || !o.verifiedAt || o.dasherId) return;
+
+    if (at >= Number(o.openToAllAt)) {
+      const n = await openToEveryone(ref, orderId);
+      logger.info(`Order ${orderId}: open to everyone, alerted ${n} more`, { orderId, dashers: n });
+      return;
+    }
+    const offerAt: Record<string, number> = o.offerAt ?? {};
+    const due = new Set(Object.keys(offerAt).filter(uid => offerAt[uid] === at));
+    // Skip anyone who has gone offline or taken another order since.
+    const wave = (await getFreeDashers(o.studentId)).filter(d => due.has(d.uid));
+    if (!(await scheduleWave({ orderId, at: at + WAVE_MS }))) {
+      const n = await openToEveryone(ref, orderId);
+      logger.info(`Order ${orderId}: open to everyone early, alerted ${n} more`, { orderId, dashers: n });
+      return;
+    }
+    await offerTo(wave, o, orderId);
+    logger.info(`Order ${orderId}: next wave offered to ${wave.length}`, { orderId, dashers: wave.length });
+  },
+);
+
+// ─── Accepted card order: open the pay window, tell the student ───────────
+// In a transaction, so it happens once even if the trigger and the repair
+// sweep both reach it: only an accepted card order that is still 'unpaid'
+// moves to 'awaiting_payment' with a fresh PAY_WINDOW_MS deadline.
+async function openPayWindow(ref: admin.firestore.DocumentReference, orderId: string): Promise<void> {
+  const opened = await db.runTransaction(async tx => {
+    const o = (await tx.get(ref)).data();
+    if (!o || o.status !== 'accepted' || o.paymentMethod !== 'card' || o.paymentStatus !== 'unpaid') return null;
+    tx.update(ref, { paymentStatus: 'awaiting_payment', payDeadline: Date.now() + PAY_WINDOW_MS });
+    return o;
+  });
+  if (!opened) return;
+  const token = await getUserToken(opened.studentId);
+  if (token) await sendPushNotification(
+    token,
+    `${MARK.assigned} Pay now to confirm`,
+    `${opened.dasherName} accepted your order. Pay ${jmd(opened.totalAmount)} with your tokens or card within ${minutes(PAY_WINDOW_MS)} minutes, or it will be cancelled.`,
+    { screen: `/(student)/order/${orderId}`, orderId },
+    'accepted_pay_now'
+  );
 }
 
 // ─── TRIGGER: ORDER WRITTEN ────────────────────────────────────────────────
@@ -513,25 +708,7 @@ export const onOrderStatusChanged = onDocumentWritten(
 
     // ── NEW ORDER: only eligible dashers ──────────────────────────────────
     if (isNewOrder) {
-      const started = Date.now();
-      // Start finding dashers while the order is being checked: both only
-      // read, so neither slows the other down.
-      const tokensPromise = getEligibleDasherTokens(studentId);
-      tokensPromise.catch(() => {}); // avoid an unhandled rejection if we bail early
-      const checked = await verifyNewOrder(ref, after);
-      if (!checked) return; // cancelled; the cancel write re-triggers and notifies the student
-      after = checked;
-      const tokens = await tokensPromise;
-      await sendPushes(tokens.map(token => ({
-        token,
-        title: `${MARK.newOrder} New order available`,
-        body: `${after!.storeName} — ${jmd(after!.deliveryFee)} to deliver`,
-        data: { screen: '/(dasher)/dash', orderId },
-        ttlSeconds: 600, // an order alert older than 10 minutes is useless
-      })), 'new_order');
-      logger.info(`New order ${orderId}: notified ${tokens.length} eligible dashers`, {
-        orderId, dashers: tokens.length, handleMs: Date.now() - started, lagMs,
-      });
+      await publishNewOrder(ref, after, orderId, lagMs);
       return;
     }
 
@@ -577,18 +754,8 @@ export const onOrderStatusChanged = onDocumentWritten(
       }
 
       if (after.paymentMethod === 'card' && after.paymentStatus === 'unpaid') {
-        const [token] = await Promise.all([
-          tokenPromise,
-          ref.update({ paymentStatus: 'awaiting_payment', payDeadline: Date.now() + PAY_WINDOW_MS }),
-          busy,
-        ]);
-        if (token) await sendPushNotification(
-          token,
-          `${MARK.assigned} Pay now to confirm`,
-          `${after.dasherName} accepted your order. Pay ${jmd(after.totalAmount)} with your tokens or card within ${minutes(PAY_WINDOW_MS)} minutes, or it will be cancelled.`,
-          { screen: `/(student)/order/${orderId}`, orderId },
-          'accepted_pay_now'
-        );
+        tokenPromise.catch(() => {}); // not needed on this path
+        await Promise.all([openPayWindow(ref, orderId), busy]);
         return;
       }
 
@@ -1015,6 +1182,148 @@ async function cancelOverdueOrders(now = Date.now()): Promise<{ noDasher: number
   return { noDasher: stale.length, unpaid: unpaid.length };
 }
 
+// ─── REPAIR: finish work a failed trigger left half-done ──────────────────
+// Triggers are not retried (RETRY_POLICY_DO_NOT_RETRY), and retrying the
+// whole trigger would re-send notifications. So instead, every 5 minutes,
+// this finds each state a failed trigger can leave behind and completes it
+// with the same code the trigger runs. Every step is safe to run twice.
+// Only documents unchanged for REPAIR_MIN_AGE_MS are touched, so it never
+// races a trigger that is still running.
+//   1. pending order never checked      → no dasher could see it
+//   2. cancelled with money not returned → tokens held / payment not refunded
+//   3. accepted card order still unpaid  → nobody could pay or cancel it
+//      (and old tokens-at-checkout orders never charged)
+//   4. delivered, dasher never credited  → earnings missing
+//   5. dasher still marked busy          → never offered orders again
+const DAY_MS = 24 * 60 * 60 * 1000;
+const repairMinAgeMs = () => Number(process.env.REPAIR_MIN_AGE_MS ?? 60 * 1000);
+
+async function repairHalfFinishedWork(): Promise<Record<string, number>> {
+  const cutoff = Date.now() - repairMinAgeMs();
+  const quiet = (d: admin.firestore.QueryDocumentSnapshot) => d.updateTime.toMillis() <= cutoff;
+  const orders = db.collection('orders');
+  const done: Record<string, number> = { unverified: 0, unsettled: 0, payWindow: 0, uncharged: 0, uncredited: 0, busy: 0 };
+  const fix = async (kind: string, id: string, work: () => Promise<unknown>) => {
+    try {
+      await work();
+      done[kind]++;
+      logger.warn(`Repaired half-finished work: ${kind}`, { id });
+    } catch (e: any) {
+      logger.error(`Repair failed: ${kind}`, { id, message: e?.message });
+    }
+  };
+
+  const [pending, unsettled, accepted, delivered, busy] = await Promise.all([
+    orders.where('status', '==', 'pending').get(),
+    orders.where('status', '==', 'cancelled').where('paymentStatus', 'in', ['reserved', 'paid']).get(),
+    orders.where('status', '==', 'accepted').where('paymentStatus', 'in', ['unpaid', 'reserved']).get(),
+    orders.where('status', '==', 'delivered').where('deliveredAt', '>=', Date.now() - DAY_MS).get(),
+    db.collection('dashers').where('activeOrderId', '!=', null).get(),
+  ]);
+
+  for (const d of pending.docs) {
+    if (!d.get('verifiedAt') && quiet(d)) await fix('unverified', d.id, () => publishNewOrder(d.ref, d.data(), d.id));
+  }
+  for (const d of unsettled.docs) {
+    if (quiet(d)) await fix('unsettled', d.id, () => settleCancelledOrder(d.ref));
+  }
+  for (const d of accepted.docs) {
+    if (!quiet(d)) continue;
+    if (d.get('paymentMethod') === 'card' && d.get('paymentStatus') === 'unpaid') {
+      await fix('payWindow', d.id, () => openPayWindow(d.ref, d.id));
+    } else if (d.get('paymentMethod') === 'tokens' && d.get('paymentStatus') === 'reserved') {
+      await fix('uncharged', d.id, async () => {
+        if (await chargeTokensOnAccept(d.ref)) await alertStore(d.data(), d.id, 'confirmed');
+      });
+    }
+  }
+  for (const d of delivered.docs) {
+    const dasherId = d.get('dasherId');
+    if (dasherId && !d.get('dasherCreditedAt') && quiet(d)) {
+      await fix('uncredited', d.id, () => creditDasherForDelivery(d.ref, dasherId));
+    }
+  }
+  for (const d of busy.docs) {
+    if (!quiet(d)) continue;
+    const orderId = String(d.get('activeOrderId'));
+    const o = (await orders.doc(orderId).get()).data();
+    const stillDelivering = o && o.dasherId === d.id && IN_DELIVERY_STATUSES.includes(o.status);
+    if (!stillDelivering) await fix('busy', d.id, () => setDasherBusy(d.id, orderId, false));
+  }
+
+  const total = Object.values(done).reduce((a, b) => a + b, 0);
+  if (total) logger.warn('Repair sweep finished', done);
+  return done;
+}
+
+// ─── IDLE DASHERS ──────────────────────────────────────────────────────────
+// Online used to be a sticky switch: a dasher who switched on and walked
+// away counted as available forever, so orders were offered to people who
+// weren't there. The app records activity (lastSeenAt) whenever DormDash is
+// open. A dasher who hasn't opened it for DASHER_IDLE_NUDGE_MS gets a
+// "Still dashing?" notification; DASHER_IDLE_GRACE_MS later, if they still
+// haven't, they're switched off (offlineReason 'idle', shown in the app).
+// Never while they have a delivery in progress. Opening the app at any
+// point resets it.
+async function retireIdleDashers(now = Date.now()): Promise<{ nudged: number; offline: number }> {
+  const online = await db.collection('dashers').where('isOnline', '==', true).get();
+  let nudged = 0;
+  let offline = 0;
+  for (const d of online.docs) {
+    try {
+      if (d.get('activeOrderId')) continue; // mid-delivery
+      const lastSeen = Number(d.get('lastSeenAt')) || 0;
+      if (now - lastSeen < DASHER_IDLE_NUDGE_MS) continue;
+      const nudgedAt = Number(d.get('idleNudgedAt')) || 0;
+
+      if (nudgedAt <= lastSeen) {
+        // Idle, and not nudged since they were last around.
+        await d.ref.update({ idleNudgedAt: now });
+        const token = await getUserToken(d.id);
+        if (token) await sendPushNotification(
+          token,
+          'Still dashing?',
+          `You're online but haven't opened DormDash in a while. Open it to stay online, or we'll switch you off in ${minutes(DASHER_IDLE_GRACE_MS)} minutes.`,
+          { screen: '/(dasher)/dash' },
+          'idle_nudge'
+        );
+        nudged++;
+        continue;
+      }
+      if (now - nudgedAt < DASHER_IDLE_GRACE_MS) continue;
+
+      // Still idle after the nudge: switch off, unless anything changed.
+      const switchedOff = await db.runTransaction(async tx => {
+        const f = (await tx.get(d.ref)).data();
+        if (!f || f.isOnline !== true || f.activeOrderId || (Number(f.lastSeenAt) || 0) !== lastSeen) return false;
+        tx.update(d.ref, { isOnline: false, currentLocation: null, offlineReason: 'idle', offlineAt: now });
+        return true;
+      });
+      if (!switchedOff) continue;
+      const token = await getUserToken(d.id);
+      if (token) await sendPushNotification(
+        token,
+        "You're offline now",
+        `We switched you off after ${Math.round(DASHER_IDLE_NUDGE_MS / 3600000)} hours without opening DormDash, so orders go to dashers who are around. Switch back on any time.`,
+        { screen: '/(dasher)/dash' },
+        'idle_offline'
+      );
+      offline++;
+    } catch (e: any) {
+      logger.error('Idle dasher check failed', { dasherId: d.id, message: e?.message });
+    }
+  }
+  if (nudged || offline) logger.info('Idle dashers', { nudged, offline });
+  return { nudged, offline };
+}
+
 export const cancelStalePendingOrders = onSchedule('every 5 minutes', async () => {
+  // Finish anything a failed trigger left half-done (see above) first, so
+  // an order that was never checked is published rather than auto-cancelled.
+  await repairHalfFinishedWork();
   await cancelOverdueOrders();
+  // Card payments whose WiPay return was verified but not applied yet.
+  await retryVerifiedPayments();
+  // Online dashers who haven't opened DormDash for hours.
+  await retireIdleDashers();
 });

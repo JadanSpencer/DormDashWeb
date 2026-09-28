@@ -95,6 +95,20 @@ export async function buyTokens(tokens: number): Promise<void> {
   }
 }
 
+/**
+ * Admin: resolve a card payment WiPay never confirmed (the student didn't
+ * come back from WiPay's page). Check WiPay's dashboard first: our payment
+ * reference is WiPay's order_id. paid=true needs the WiPay transaction ID.
+ */
+export async function adminResolvePayment(paymentId: string, paid: boolean, transactionId: string, note: string) {
+  try {
+    const res: any = await httpsCallable(functions, 'adminResolvePayment')({ paymentId, paid, transactionId, note });
+    return res.data as { status: string };
+  } catch (e: any) {
+    throw new Error(errorText(e, 'Could not update the payment. Try again.'));
+  }
+}
+
 /** Admin: add (positive) or remove (negative) tokens for a student. */
 export async function adminAdjustTokens(uid: string, tokens: number, note: string) {
   try {

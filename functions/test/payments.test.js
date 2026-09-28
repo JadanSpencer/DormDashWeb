@@ -31,11 +31,8 @@ function docRef(col, id) {
 const db = {
   collection: (name) => ({
     doc: (id) => docRef(name, id ?? `auto${++autoId}xxxxxxxxxx`),
-    async get() {
-      const docs = [...store.keys()].filter(p => p.split('/').length === 2 && p.startsWith(name + '/'))
-        .map(p => { const id = p.split('/')[1]; const d = store.get(p); return { id, ref: docRef(name, id), get: k => d?.[k], data: () => ({ ...d }) }; });
-      return { docs };
-    },
+    async get() { return query(name, []).get(); },
+    where: (f, op, v) => query(name, [[f, op, v]]),
   }),
   async runTransaction(fn) {
     const writes = []; let wrote = false;
@@ -49,6 +46,20 @@ const db = {
     return r;
   },
 };
+// Queries: == and 'in' filters, limit(); enough for the payment sweep.
+function query(name, filters, max = Infinity) {
+  return {
+    where: (f, op, v) => query(name, [...filters, [f, op, v]], max),
+    limit: n => query(name, filters, n),
+    async get() {
+      const docs = [...store.keys()].filter(p => p.split('/').length === 2 && p.startsWith(name + '/'))
+        .map(p => { const id = p.split('/')[1]; const d = store.get(p); return { id, ref: docRef(name, id), get: k => d?.[k], data: () => ({ ...d }) }; })
+        .filter(d => filters.every(([f, op, v]) => op === 'in' ? v.includes(d.get(f)) : d.get(f) === v))
+        .slice(0, max);
+      return { docs, size: docs.length };
+    },
+  };
+}
 const firestoreFn = () => db;
 firestoreFn.FieldValue = { increment: n => ({ [INC]: n }), delete: () => ({ [DEL]: true }) };
 const adminMock = { apps: [], initializeApp() { this.apps.push({}); }, firestore: firestoreFn };
@@ -163,12 +174,6 @@ const qs = u => Object.fromEntries(new URL(u).searchParams);
     const res = fakeRes();
     await P.wipayReturn({ query: { order_id: pid, status: 'success', transaction_id: 'SB-TX1', total: '1250.40', hash: md5('SB-TX1' + '1200.00' + 'WRONGKEY') } }, res);
     assert.equal(qs(res.location).status, 'error'); assert.equal(get(`payments/${pid}`).status, 'pending'); assert.equal(get('orders/c1').paymentStatus, 'awaiting_payment');
-  });
-
-  await t('a different transaction id with a valid hash is rejected', async () => {
-    const res = fakeRes();
-    await P.wipayReturn({ query: { order_id: pid, status: 'success', transaction_id: 'SB-OTHER', hash: md5('SB-OTHER' + '1200.00' + '123') } }, res);
-    assert.equal(qs(res.location).status, 'error'); assert.equal(get(`payments/${pid}`).status, 'pending');
   });
 
   await t('declined card marks payment failed, order still payable', async () => {
@@ -288,6 +293,84 @@ const qs = u => Object.fromEntries(new URL(u).searchParams);
     assert.equal(get('storeFloats/m1').floatJmd, 700); assert.equal(get('storeFloats/m2').floatJmd, 50);
     assert.equal('floatJmd' in get('stores/m1'), false); assert.equal('floatJmd' in get('stores/m2'), false);
     assert.equal(await P.migrateLegacyStoreFloats(), 0);
+  });
+
+  // ── Returns that must never be lost (WiPay has no webhook or status API) ──
+  const startTokensPayment = async (tokens, wipayTx) => {
+    global.fetch = async () => ({ json: async () => ({ url: 'https://wipay/pay/x', transaction_id: wipayTx }) });
+    return (await P.createPayment.run({ auth: { uid: 'stu' }, data: { purpose: 'tokens', tokens } })).paymentId;
+  };
+  const successReturn = (paymentId, tx, total) => ({ query: {
+    order_id: paymentId, status: 'success', transaction_id: tx, total, card: 'XXXXXXXXXXXX1111',
+    hash: md5(tx + total + '123'),
+  } });
+
+  await t('return verified but applying fails: saved as verified, retry sweep applies it exactly once', async () => {
+    const p1 = await startTokensPayment(5, 'SB-R1');
+    const before = get('wallets/stu').balanceJmd;
+    // Recording the return is transaction 1; make transaction 2 (applying it) fail.
+    const origRun = db.runTransaction; let calls = 0;
+    db.runTransaction = async fn => { calls++; if (calls === 2) throw new Error('SIMULATED apply failure'); return origRun.call(db, fn); };
+    const res = fakeRes();
+    await P.wipayReturn(successReturn(p1, 'SB-R1', '500.00'), res);
+    db.runTransaction = origRun;
+    assert.equal(qs(res.location).status, 'processing');
+    assert.equal(get(`payments/${p1}`).status, 'verified', 'saved before applying');
+    assert.equal(get('wallets/stu').balanceJmd, before, 'not credited yet');
+    assert.equal(await P.retryVerifiedPayments(), 1);
+    assert.equal(await P.retryVerifiedPayments(), 0, 'second sweep does nothing');
+    assert.equal(get(`payments/${p1}`).status, 'paid');
+    assert.equal(get('wallets/stu').balanceJmd, before + 500);
+    // The student's browser replays the same return: nothing more happens.
+    const again = fakeRes(); await P.wipayReturn(successReturn(p1, 'SB-R1', '500.00'), again);
+    assert.equal(get('wallets/stu').balanceJmd, before + 500);
+  });
+
+  await t('changed transaction id with a valid signature is held for review, not applied', async () => {
+    const p2 = await startTokensPayment(10, 'SB-R2');
+    const before = get('wallets/stu').balanceJmd;
+    const res = fakeRes();
+    await P.wipayReturn(successReturn(p2, 'SB-R2-RETRY', '1000.00'), res);
+    assert.equal(qs(res.location).status, 'processing');
+    assert.equal(get(`payments/${p2}`).status, 'review');
+    assert.equal(get('wallets/stu').balanceJmd, before, 'no money moved');
+    assert.equal(await P.retryVerifiedPayments(), 0, 'the sweep never applies review items');
+    // A later declined redirect can't downgrade it.
+    await P.wipayReturn({ query: { order_id: p2, status: 'failed' } }, fakeRes());
+    assert.equal(get(`payments/${p2}`).status, 'review');
+    // Admin checks the WiPay dashboard and confirms it.
+    await assert.rejects(P.adminResolvePayment.run({ auth: { uid: 'stu' }, data: { paymentId: p2, paid: true, transactionId: 'SB-R2-RETRY', note: 'x' } }), /Admins only/);
+    await assert.rejects(P.adminResolvePayment.run({ auth: { uid: 'boss' }, data: { paymentId: p2, paid: true, transactionId: 'SB-R2-RETRY', note: '' } }), /note/);
+    await assert.rejects(P.adminResolvePayment.run({ auth: { uid: 'boss' }, data: { paymentId: p2, paid: true, note: 'checked' } }), /transaction ID/);
+    const r = await P.adminResolvePayment.run({ auth: { uid: 'boss' }, data: { paymentId: p2, paid: true, transactionId: 'SB-R2-RETRY', note: 'Seen in WiPay dashboard' } });
+    assert.equal(r.status, 'paid');
+    assert.equal(get('wallets/stu').balanceJmd, before + 1000);
+    assert.equal(get(`payments/${p2}`).resolvedBy, 'boss');
+    await assert.rejects(P.adminResolvePayment.run({ auth: { uid: 'boss' }, data: { paymentId: p2, paid: true, transactionId: 'SB-R2-RETRY', note: 'again' } }), /already paid/);
+    assert.equal(get('wallets/stu').balanceJmd, before + 1000, 'never twice');
+  });
+
+  await t('student never came back from WiPay: admin resolves paid order payment, or marks not paid', async () => {
+    // Order still waiting for payment: resolving pays the order.
+    order('lost1', { paymentMethod: 'card', status: 'accepted', paymentStatus: 'awaiting_payment', payDeadline: Date.now() + 600000, totalAmount: 800 });
+    global.fetch = async () => ({ json: async () => ({ url: 'https://wipay/pay/y', transaction_id: 'SB-L1' }) });
+    const p3 = (await P.createPayment.run({ auth: { uid: 'stu' }, data: { purpose: 'order', orderId: 'lost1' } })).paymentId;
+    assert.equal(get(`payments/${p3}`).status, 'pending');
+    const r = await P.adminResolvePayment.run({ auth: { uid: 'boss' }, data: { paymentId: p3, paid: true, transactionId: 'SB-L1', note: 'WiPay shows success' } });
+    assert.equal(r.status, 'paid'); assert.equal(get('orders/lost1').paymentStatus, 'paid');
+    // Order already cancelled for non-payment: the money becomes tokens.
+    order('lost2', { paymentMethod: 'card', status: 'accepted', paymentStatus: 'awaiting_payment', payDeadline: Date.now() + 600000, totalAmount: 900 });
+    global.fetch = async () => ({ json: async () => ({ url: 'https://wipay/pay/z', transaction_id: 'SB-L2' }) });
+    const p4 = (await P.createPayment.run({ auth: { uid: 'stu' }, data: { purpose: 'order', orderId: 'lost2' } })).paymentId;
+    seed('orders/lost2', { ...get('orders/lost2'), status: 'cancelled', cancelReason: 'payment_timeout' });
+    const bal = get('wallets/stu').balanceJmd;
+    const r2 = await P.adminResolvePayment.run({ auth: { uid: 'boss' }, data: { paymentId: p4, paid: true, transactionId: 'SB-L2', note: 'Paid after deadline' } });
+    assert.equal(r2.status, 'credited'); assert.equal(get('wallets/stu').balanceJmd, bal + 900);
+    // Not paid: marked failed, nothing moves.
+    const p5 = await startTokensPayment(5, 'SB-L3');
+    const bal2 = get('wallets/stu').balanceJmd;
+    const r3 = await P.adminResolvePayment.run({ auth: { uid: 'boss' }, data: { paymentId: p5, paid: false, note: 'Not in WiPay dashboard' } });
+    assert.equal(r3.status, 'failed'); assert.equal(get(`payments/${p5}`).status, 'failed'); assert.equal(get('wallets/stu').balanceJmd, bal2);
   });
 
   console.log(`\nAll ${passed} payment tests passed.`);

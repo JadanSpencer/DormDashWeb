@@ -90,5 +90,9 @@ export function seed(): Record<string, any> {
   });
   db['payments/pdemo'] = { uid: 'stu1', purpose: 'order', orderId: 'o1', amountJmd: 2100, status: 'paid' };
   db['payments/ptok'] = { uid: 'stu1', purpose: 'tokens', tokens: 10, amountJmd: 1000, status: 'paid' };
+  // Card payments WiPay never confirmed (admin dashboard: Card payments to check).
+  db['payments/pv4uFs9Djm3XwK1fTCSaP'] = { uid: 'stu1', purpose: 'tokens', tokens: 10, amountJmd: 1000, status: 'pending', createdAt: now - 40 * min, orderId: null };
+  db['payments/pFKSk0IYcr9atWTOVi4Tt'] = { uid: 'stu1', purpose: 'order', amountJmd: 2100, status: 'review', createdAt: now - 25 * min, orderId: 'o1', returnTransactionId: 'SB-44-1-pFKSk0IYcr9atWTOVi4Tt-20260927220901', reviewReason: 'transaction_id_changed' };
+  db['payments/pRecentCheckout123'] = { uid: 'stu1', purpose: 'tokens', tokens: 5, amountJmd: 500, status: 'pending', createdAt: now - 3 * min, orderId: null };
   return db;
 }

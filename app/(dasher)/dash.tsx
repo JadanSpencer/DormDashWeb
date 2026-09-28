@@ -19,18 +19,18 @@
 import React, { useEffect, useState, useRef } from 'react';
 import {
   View, Text, StyleSheet, FlatList, Pressable,
-  Switch, Alert, Animated, Easing, Platform
+  Switch, Alert, Animated, Easing, Platform, AppState
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Location from 'expo-location';
-import { goOnline, goOffline, isDasherOnline } from '../../services/dasher';
+import { goOnline, goOffline, getDasherStatus, recordDasherActivity } from '../../services/dasher';
 import { serverNow, syncServerClock } from '../../services/serverClock';
 import { useAuth } from '../../hooks/useAuth';
 import { useWakeLock } from '../../hooks/useWakeLock';
 import { usePendingOrders, useActiveDelivery, useDasherOrders, startOfDay } from '../../hooks/useOrders';
 import { acceptOrder, advanceOrder, NEXT_STATUS } from '../../services/orders';
 import { Order, OrderStatus } from '../../types';
-import { formatJMD, LOCATION_UPDATE_INTERVAL_MS, PAY_WINDOW_MIN } from '../../constants';
+import { formatJMD, LOCATION_UPDATE_INTERVAL_MS, PAY_WINDOW_MIN, DASHER_ACTIVITY_MS, DASHER_IDLE_NUDGE_MS } from '../../constants';
 import { D } from '../../constants/themeDark';
 import MapView, { Marker, PROVIDER_GOOGLE } from '../../components/MapView';
 import { Backdrop } from '../../components/Backdrop';
@@ -56,20 +56,24 @@ const minsAgo = (ts: number) => {
   return `${m} mins ago`;
 };
 
+const IDLE_HOURS = Math.round(DASHER_IDLE_NUDGE_MS / 3600000);
+
 export default function DasherHome() {
   const { user } = useAuth();
   const insets = useSafeAreaInsets();
 
   const [isOnline, setIsOnline] = useState(false);
+  // Set when the server switched this dasher off for being idle (see below).
+  const [idleOff, setIdleOff] = useState(false);
   const [location, setLocation] = useState<{ latitude: number; longitude: number } | null>(null);
   const locationInterval = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // ── Listeners (hooks/useOrders.ts) ────────────────────────────────
-  // Verified open orders; re-subscribes after errors and when the web app
-  // comes back on screen.
+  // Verified open orders offered to this dasher so far (wave dispatch);
+  // re-subscribes after errors and when the web app comes back on screen.
   const activeOrder = useActiveDelivery(user?.uid);
   const { orders: pendingOrders, loading, refresh: refreshPending, dismiss: dismissPending } =
-    usePendingOrders({ watchdog: isOnline && !activeOrder });
+    usePendingOrders({ watchdog: isOnline && !activeOrder, uid: user?.uid });
 
   // PWA: keep the screen on only during an active delivery (map and status
   // buttons in use). Being online no longer needs the app open.
@@ -136,7 +140,25 @@ export default function DasherHome() {
     }
   };
 
+  // Online dashers who don't open DormDash for DASHER_IDLE_NUDGE_MS are
+  // nudged, then taken offline, so orders go to people who are around.
+  // While the app is open this records activity on every return to the
+  // foreground and every DASHER_ACTIVITY_MS.
+  useEffect(() => {
+    if (!user || !isOnline) return;
+    let last = 0;
+    const record = () => {
+      if (AppState.currentState !== 'active' || Date.now() - last < 5 * 60 * 1000) return;
+      last = Date.now();
+      recordDasherActivity(user.uid);
+    };
+    const sub = AppState.addEventListener('change', s => { if (s === 'active') record(); });
+    const timer = setInterval(record, DASHER_ACTIVITY_MS);
+    return () => { sub.remove(); clearInterval(timer); };
+  }, [user?.uid, isOnline]);
+
   const handleToggleOnline = async (value: boolean) => {
+    setIdleOff(false);
     if (value) {
       const success = await startLocationTracking();
       if (success) setIsOnline(true);
@@ -154,9 +176,12 @@ export default function DasherHome() {
     syncServerClock();
     if (!user) return;
     let cancelled = false;
-    isDasherOnline(user.uid).then(online => {
-      if (!cancelled && online) {
+    getDasherStatus(user.uid).then(({ online, offlineReason }) => {
+      if (cancelled) return;
+      if (online) {
         startLocationTracking().then(ok => { if (ok && !cancelled) setIsOnline(true); });
+      } else {
+        setIdleOff(offlineReason === 'idle');
       }
     }).catch(() => {});
     return () => {
@@ -239,10 +264,10 @@ export default function DasherHome() {
                 </View>
                 <Text style={styles.onlineSub}>
                   {isOnline
-                    ? Platform.OS === 'web'
-                      ? 'Receiving orders. You stay online until you switch this off, and new orders arrive as notifications.'
-                      : 'Receiving orders. You stay online until you switch this off.'
-                    : 'Toggle on to start receiving orders'}
+                    ? `Receiving orders${Platform.OS === 'web' ? ', and new orders arrive as notifications' : ''}. If you don't open DormDash for ${IDLE_HOURS} hours, we'll check you're still dashing.`
+                    : idleOff
+                      ? `We switched you off after ${IDLE_HOURS} hours without opening DormDash, so orders went to dashers who were around. Switch on when you're ready.`
+                      : 'Toggle on to start receiving orders'}
                 </Text>
               </View>
               <Switch

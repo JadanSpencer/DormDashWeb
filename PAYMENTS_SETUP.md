@@ -60,3 +60,19 @@ Never share the live API key in chat, email or screenshots. If it leaks, generat
 - Student balance and history: Firestore `wallets/{uid}` and `walletTx` (filter by `uid`).
 - Card payments: `payments` (status `pending` / `paid` / `failed` / `credited`).
 - Floats: `storeFloats/{storeId}.floatJmd` (admin-only; older stores had it on the store doc and are moved automatically), `dashers/{uid}.floatJmd`, history in `floatTx`.
+
+## Card payments to check (do this daily)
+WiPay tells DormDash a card payment worked **only** by sending the student's browser back to DormDash (its API has no webhook or status lookup). If a student closes the tab or loses signal on WiPay's page, their card can be charged while DormDash still shows the payment as unconfirmed.
+
+Admin → **Board** → **Card payments to check** lists:
+- payments still unconfirmed 15 minutes after they started, and
+- payments WiPay returned with a different transaction ID than expected (shown in red).
+
+For each one, open your **WiPay dashboard** and find the transaction whose **order ID** matches the one shown in DormDash:
+- **WiPay shows it succeeded:** tap **Paid**, paste WiPay's transaction ID, add a note. The student gets their tokens, or their order is paid (if the order was already cancelled, the money becomes tokens). It can never be applied twice.
+- **WiPay has no successful payment for it:** tap **Not paid** and add a note. Nothing moves.
+
+Every resolution records which admin did it and the note (`payments/{id}.resolvedBy`, `resolvedNote`).
+
+Also automatic: if WiPay's return arrived but applying it failed, the server retries every 5 minutes (`retryVerifiedPayments`), so those never need an admin.
+
