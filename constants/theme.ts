@@ -60,6 +60,7 @@ export const T = {
     gold: '#D4A537',         // coin face (graphic only, never text)
     goldDeep: '#7A5710',     // coin rim and stamp; 5.9:1 as text on goldTint
     goldLight: '#F0D27A',    // coin highlight
+    goldShade: '#B8871F',    // coin face, shadowed side (graphic only)
     goldTint: '#FBF3DC',     // wallet header band
 
     // Lines & feedback

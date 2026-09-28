@@ -22,7 +22,7 @@ const sections: Section[] = [
     title: 'What we collect',
     blocks: [
       { table: [
-        ['Account details', 'Name, email address, phone number, university, your role (student, dasher or admin), and optionally your major and expected graduation year. Your password is handled by Google Firebase Authentication. We never see or store it.'],
+        ['Account details', 'Name, email address, phone number, university, your role (student, dasher or admin), and optionally your major and expected graduation year. Your password is handled by Google Firebase Authentication. We never see or store it. If you sign in with Google, Google tells us your name and email address (and a profile picture link, which we don\'t use); you never give us a password.'],
         ['Orders', 'The store, items, quantities, prices, delivery fee, total, order status and times, the delivery address you type (for example "Block C, Room 204"), and any note you add for your dasher.'],
         ['Location at checkout', 'If you allow it, the GPS position of your phone when you place an order, so your dasher gets a map pin. If you say no, we store only the address you typed.'],
         ['Dasher location', 'Only for dashers, and only while "online" is switched on: if you allow it, your phone uses GPS to show your own position on your map. That position stays on your phone. DormDash does not send it to our servers or show it to customers. When you switch online or offline, the app tells our server, with the time you switched. While you are online and DormDash is open, it also tells our server about every 30 minutes that you are still around; if you are online but have not opened DormDash for 2 hours, we remind you and then switch you offline.'],
@@ -60,6 +60,7 @@ const sections: Section[] = [
       { p: 'We use a small number of service providers. They process data for us under their own privacy and security terms, and not for their own advertising.' },
       { table: [
         ['Google Firebase (Google LLC)', 'Sign-in, database, server functions, website hosting and push notifications. Stores all of the data described above. Servers may be outside Jamaica, including in the United States.'],
+        ['Sign in with Google (Google LLC)', 'Optional. If you choose "Continue with Google", you sign in on Google\'s page and Google shares your name and email address with DormDash. Google\'s privacy policy applies to your Google account.'],
         ['WiPay', 'Card payments. When you pay by card, you enter your card details on WiPay\'s page and WiPay receives your name, email, the amount and your card details. WiPay\'s own privacy policy applies to that.'],
         ['Google Maps (Google LLC)', 'Shows delivery maps. When a map is displayed, Google receives the coordinates being shown and may set its own cookies. Google\'s privacy policy applies to that content.'],
         ['Expo (650 Industries, Inc.)', 'Delivers push notifications to the DormDash app for iPhone and Android. Receives your device token and the text of the notification.'],

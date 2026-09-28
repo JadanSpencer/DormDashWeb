@@ -1,30 +1,85 @@
 // components/Coin.tsx
-// A DormDash token as a gold coin (original SVG): a dark rim, a gold face
-// with a soft highlight, a stamped inner ring, and the DormDash D struck in
-// the centre. CoinStack fans a few coins together to show an amount.
+// A DormDash token as a struck gold coin (original SVG):
+//   • a milled (reeded) edge, like real money
+//   • a domed face: light from the top left, deeper gold at the bottom right
+//   • a bevelled inner ring
+//   • the DormDash mark, the three speed stripes beside the D (as in
+//     components/Logo), struck into the face with a light lower edge
+// Small coins (under 22px) drop the milling and the ring so they stay crisp.
+// CoinStack fans a few coins together to show an amount.
 // Decorative: the amount is always also written in text beside it.
 
 import React from 'react';
 import { View } from 'react-native';
-import Svg, { Circle, Path } from 'react-native-svg';
+import Svg, { Circle, Defs, G, Path, RadialGradient, Stop } from 'react-native-svg';
 import { T } from '../constants/theme';
 
-// The D from components/Logo, centred in the coin's 40×40 space.
-const D_PATH =
-  'M14.5 12.5 L22 12.5 A7.5 7.5 0 0 1 22 27.5 L14.5 27.5 Z ' +
-  'M17.2 15.2 L17.2 24.8 L22 24.8 A4.8 4.8 0 0 0 22 15.2 Z';
+// ─── Geometry (40 × 40) ────────────────────────────────────────────────────
+// Milled edge: 60 short ridges between the rim and the face, one path.
+const MILLING = (() => {
+  let d = '';
+  for (let i = 0; i < 60; i++) {
+    const a = (i / 60) * Math.PI * 2;
+    const x1 = 20 + Math.cos(a) * 17.4, y1 = 20 + Math.sin(a) * 17.4;
+    const x2 = 20 + Math.cos(a) * 19.1, y2 = 20 + Math.sin(a) * 19.1;
+    d += `M${x1.toFixed(2)} ${y1.toFixed(2)}L${x2.toFixed(2)} ${y2.toFixed(2)}`;
+  }
+  return d;
+})();
+
+// The mark from components/Logo (viewBox 112 × 100, centre 58,50), scaled
+// to sit in the middle of the face.
+const MARK_SCALE = 0.235;
+const MARK_T = `translate(${(20 - 58 * MARK_SCALE).toFixed(2)} ${(20 - 50 * MARK_SCALE).toFixed(2)}) scale(${MARK_SCALE})`;
+const D_PATH = 'M42 22 L82 22 A28 28 0 0 1 82 78 L42 78 Z M52 32 L52 68 L78 68 A18 18 0 0 0 78 32 Z';
+const STRIPES = ['M14 38 L32 38', 'M6 50 L32 50', 'M14 62 L32 62'];
+
+function Mark({ color, dx = 0, dy = 0, small }: { color: string; dx?: number; dy?: number; small: boolean }) {
+  return (
+    <G transform={`translate(${dx} ${dy}) ${MARK_T}`}>
+      <G stroke={color} strokeWidth={small ? 9 : 7} strokeLinecap="round">
+        {STRIPES.map(d => <Path key={d} d={d} />)}
+      </G>
+      <Path d={D_PATH} fill={color} fillRule="evenodd" />
+    </G>
+  );
+}
 
 export function Coin({ size = 24 }: { size?: number }) {
   const c = T.color;
+  const small = size < 22;
   return (
     <Svg width={size} height={size} viewBox="0 0 40 40" accessibilityElementsHidden importantForAccessibility="no">
-      <Circle cx={20} cy={20} r={19.5} fill={c.goldDeep} />
-      <Circle cx={20} cy={20} r={17} fill={c.gold} />
-      {/* soft highlight across the upper-left of the face */}
-      <Path d="M8.5 16 A12.5 12.5 0 0 1 24 7.6" stroke={c.goldLight} strokeWidth={2.4}
-        strokeLinecap="round" fill="none" opacity={0.9} />
-      <Circle cx={20} cy={20} r={13} fill="none" stroke={c.goldDeep} strokeOpacity={0.45} strokeWidth={1.2} />
-      <Path d={D_PATH} fill={c.goldDeep} fillRule="evenodd" transform="translate(1.2 0)" />
+      <Defs>
+        <RadialGradient id="dd-coin-face" cx="36%" cy="30%" r="75%">
+          <Stop offset="0" stopColor={c.goldLight} />
+          <Stop offset="0.5" stopColor={c.gold} />
+          <Stop offset="1" stopColor={c.goldShade} />
+        </RadialGradient>
+      </Defs>
+
+      {/* Rim and milled edge */}
+      <Circle cx={20} cy={20} r={19.6} fill={c.goldDeep} />
+      {!small && <Path d={MILLING} stroke={c.goldShade} strokeWidth={0.9} />}
+
+      {/* Domed face */}
+      <Circle cx={20} cy={20} r={small ? 18 : 17.2} fill="url(#dd-coin-face)" />
+
+      {/* Bevelled inner ring: dark above, light below */}
+      {!small && (
+        <>
+          <Circle cx={20} cy={20} r={14.4} fill="none" stroke={c.goldDeep} strokeOpacity={0.35} strokeWidth={1} />
+          <Path d="M7.2 23.6 A13.4 13.4 0 0 0 32.8 23.6" stroke={c.goldLight} strokeOpacity={0.9} strokeWidth={0.9} fill="none" />
+        </>
+      )}
+
+      {/* Struck mark: a light lower edge, then the mark itself */}
+      <Mark color={c.goldLight} dx={0.35} dy={0.5} small={small} />
+      <Mark color={c.goldDeep} small={small} />
+
+      {/* Sheen on the upper left of the rim */}
+      <Path d="M7.4 14.2 A13.6 13.6 0 0 1 17 6.7" stroke={c.goldTint} strokeOpacity={0.8}
+        strokeWidth={small ? 1.8 : 1.4} strokeLinecap="round" fill="none" />
     </Svg>
   );
 }

@@ -24,7 +24,8 @@ import {
 } from 'react-native';
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { loginUser, resetPassword } from '../../services/auth';
+import { loginUser, resetPassword, signInWithGoogle, takeGoogleRedirectError, googleSignInAvailable } from '../../services/auth';
+import { GoogleButton, OrRule } from '../../components/GoogleButton';
 import { requestPushPermissionFromGesture } from '../../services/notifications';
 import { T } from '../../constants/theme';
 import { Logo } from '../../components/Logo';
@@ -42,6 +43,23 @@ export default function LoginScreen() {
   const [showPassword, setShowPassword] = useState(false);
   const [resetting, setResetting] = useState(false);
   const [focused, setFocused] = useState<'email' | 'password' | null>(null);
+  const [googleBusy, setGoogleBusy] = useState(false);
+
+  // Coming back from a Google redirect that failed (e.g. the email already
+  // has a password): say why. A success is picked up by the route guard.
+  useEffect(() => {
+    let alive = true;
+    takeGoogleRedirectError().then(m => { if (alive && m) setError(m); });
+    return () => { alive = false; };
+  }, []);
+
+  const continueWithGoogle = async () => {
+    setError('');
+    setGoogleBusy(true);
+    const r = await signInWithGoogle();
+    setGoogleBusy(false);
+    if (!r.success && r.error) setError(r.error);
+  };
 
 
   // ── Orchestrated entrance ────────────────────────────────────────────
@@ -231,6 +249,13 @@ export default function LoginScreen() {
                   )}
                 </Animated.View>
               </Pressable>
+
+              {googleSignInAvailable && (
+                <>
+                  <OrRule />
+                  <GoogleButton onPress={continueWithGoogle} busy={googleBusy} disabled={loading} />
+                </>
+              )}
             </View>
           </Animated.View>
 

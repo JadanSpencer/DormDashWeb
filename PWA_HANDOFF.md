@@ -546,3 +546,17 @@ On iOS, notifications only work in the Home Screen app, and websites can't show 
 - **Money** (`components/Money.tsx`): "J$" set smaller than the digits, tabular figures, on menu prices, cart/checkout lines and totals, order amounts.
 - "LIVE" badge is now "Live" (no all-caps).
 - Design QA: `?slow=3000` on any preview URL delays the fake data so loading states can be seen.
+- **Token coin** (`components/Coin.tsx`, 28 Sep): a struck coin with a milled edge, a domed gold face (radial light from the top left, `goldShade` bottom right), a bevelled inner ring, and the full DormDash mark (three speed stripes beside the D, as in `components/Logo`) struck in with a light lower edge. Under 22px the milling and ring are dropped so it stays crisp. Balance coin is 60px.
+
+### Sign in with Google (2026-09-28, web / PWA)
+"Continue with Google" on sign-in and sign-up, for students and dashers (`signInWithGoogle` in services/auth.ts, `components/GoogleButton.tsx`).
+- A Google account that already has a DormDash profile just signs in. A new one has no `users/{uid}`: `useAuth` reports `pendingProfile`, the route guard sends it to the sign-up form, which hides email/password, pre-fills the name and asks for role, phone, university and the 18+/terms box; `completeGoogleProfile` writes the same profile documents as an email sign-up (same Firestore rules). "Use a different account" signs out.
+- Phones and the installed app use a full-page redirect; computers a popup (falls back to redirect if blocked). Redirect errors show on the sign-in screen (`takeGoogleRedirectError`).
+- An email that already has a DormDash password: Firebase either links the Google sign-in to the same account (plain Gmail) or refuses with a message to use the password (other Google accounts).
+- `EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN` is now `dormdash-71035.web.app` (our own domain), so Safari and the installed iPhone app keep the sign-in (a firebaseapp.com auth domain is third-party there and redirects silently fail). Consequences: the service worker skips `/__/`, frames are allowed from the same origin (`X-Frame-Options: SAMEORIGIN`, `frame-ancestors 'self'`), and the CSP allows apis.google.com / accounts.google.com (firebase.json and vercel.json).
+- Native apps: not offered yet (needs a native Google sign-in module).
+- Preview: `?as=google` is a new Google user with no profile, to see the finish-sign-up flow.
+- **Owner setup, before deploying:**
+  1. Firebase console → Authentication → Sign-in method → Add new provider → Google → Enable, choose the support email, Save.
+  2. Google Cloud console (project dormdash-71035) → APIs & Services → Credentials → OAuth 2.0 Client IDs → "Web client (auto created by Google Service)" → Authorized redirect URIs → add `https://dormdash-71035.web.app/__/auth/handler` → Save. (Authorized JavaScript origins: add `https://dormdash-71035.web.app` if it isn't there.)
+  3. Firebase console → Authentication → Settings → Authorized domains: `dormdash-71035.web.app` should already be listed.

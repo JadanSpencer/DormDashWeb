@@ -41,7 +41,7 @@ installLiveSync();
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
 function RouteGuard({ introDone }: { introDone: boolean }) {
-  const { user, loading } = useAuth();
+  const { user, loading, pendingProfile } = useAuth();
   const segments = useSegments();
   const bannerRef = useRef<BannerHandle>(null);
 
@@ -66,6 +66,11 @@ function RouteGuard({ introDone }: { introDone: boolean }) {
     const inAdminGroup   = segments[0] === '(admin)';
 
     if (!user) {
+      // A new Google sign-up finishes on the sign-up form, and nowhere else.
+      if (pendingProfile) {
+        if (segments[1] !== 'register') router.replace('/(auth)/register');
+        return;
+      }
       if (!inAuthGroup) router.replace('/(auth)/login');
       return;
     }
@@ -77,7 +82,7 @@ function RouteGuard({ introDone }: { introDone: boolean }) {
     } else if (user.role === 'admin' && !inAdminGroup) {
       router.replace('/(admin)/(tabs)/dashboard');
     }
-  }, [user, loading, segments]);
+  }, [user, loading, segments, pendingProfile]);
 
   // Register this device for push once we know who is signed in.
   useEffect(() => {

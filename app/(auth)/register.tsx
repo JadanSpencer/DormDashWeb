@@ -21,7 +21,9 @@ import {
 } from 'react-native';
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { registerUser } from '../../services/auth';
+import { registerUser, signInWithGoogle, completeGoogleProfile, googleSignInAvailable, logoutUser } from '../../services/auth';
+import { useAuth } from '../../hooks/useAuth';
+import { GoogleButton, OrRule } from '../../components/GoogleButton';
 import { requestPushPermissionFromGesture } from '../../services/notifications';
 import { T } from '../../constants/theme';
 import { UserRole } from '../../types';
@@ -107,6 +109,23 @@ export default function RegisterScreen() {
   // Clickwrap: an explicit tick is much stronger evidence of agreement than
   // "by creating an account you agree". registerUser records when.
   const [agreed, setAgreed] = useState(false);
+  const [googleBusy, setGoogleBusy] = useState(false);
+
+  // Signed in with Google but no DormDash profile yet: finish signing up
+  // here (Google already gave us the email; no password needed).
+  const { pendingProfile, refreshUser } = useAuth();
+  const viaGoogle = !!pendingProfile;
+  useEffect(() => {
+    if (pendingProfile?.name && !name) setName(pendingProfile.name);
+  }, [pendingProfile]);
+
+  const continueWithGoogle = async () => {
+    setError('');
+    setGoogleBusy(true);
+    const r = await signInWithGoogle();
+    setGoogleBusy(false);
+    if (!r.success && r.error) setError(r.error);
+  };
 
   const handleRegister = async () => {
     // Must run before any await: browsers only allow the notification
@@ -124,6 +143,14 @@ export default function RegisterScreen() {
     }
     if (!agreed) {
       setError('Please confirm you are 18 or older and agree to the Terms and Privacy Policy.');
+      return;
+    }
+    if (viaGoogle) {
+      setLoading(true);
+      const done = await completeGoogleProfile(name, phone, university, selectedRole);
+      if (done.success) await refreshUser(); // the route guard takes it from here
+      setLoading(false);
+      if (!done.success) setError(done.error || 'Could not finish signing up.');
       return;
     }
     if (password !== confirmPassword) {
@@ -157,6 +184,8 @@ export default function RegisterScreen() {
     { key: 'confirm', label: 'Confirm password', value: confirmPassword, set: setConfirmPassword, placeholder: 'Repeat your password', props: { secureTextEntry: true } },
   ];
 
+  // Google sign-ups: Google holds the email and password.
+  const shownFields = viaGoogle ? fields.filter(f => !['email', 'password', 'confirm'].includes(f.key)) : fields;
   const selectedMeta = ROLES.find(r => r.role === selectedRole);
 
   return (
@@ -174,7 +203,7 @@ export default function RegisterScreen() {
           {/* ── TOP BAR ──────────────────────────────────────────────── */}
           <View style={styles.topBar}>
             <TouchableOpacity
-              onPress={() => step === 2 ? setStep(1) : router.back()}
+              onPress={() => step === 2 ? setStep(1) : viaGoogle ? logoutUser() : router.back()}
               hitSlop={8}
               style={styles.backBtn}
             >
@@ -200,9 +229,11 @@ export default function RegisterScreen() {
               <Seal size={26} />
             </View>
             <Text style={styles.subtitle}>
-              {step === 1
-                ? 'How will you use the app?'
-                : 'Fill in your information below'}
+              {viaGoogle
+                ? `Signed in with Google as ${pendingProfile?.email}. ${step === 1 ? 'How will you use the app?' : 'A few more details.'}`
+                : step === 1
+                  ? 'How will you use the app?'
+                  : 'Fill in your information below'}
             </Text>
           </View>
 
@@ -265,6 +296,18 @@ export default function RegisterScreen() {
                     <Icon name="arrow-forward" size={18} color={!selectedRole ? T.color.inkFaint : T.color.card} />
                   </Animated.View>
                 </Pressable>
+
+                {googleSignInAvailable && !viaGoogle && (
+                  <>
+                    <OrRule />
+                    <GoogleButton onPress={continueWithGoogle} busy={googleBusy} />
+                  </>
+                )}
+                {viaGoogle && (
+                  <TouchableOpacity onPress={() => logoutUser()} style={styles.otherAccount} hitSlop={8}>
+                    <Text style={styles.otherAccountText}>Use a different account</Text>
+                  </TouchableOpacity>
+                )}
               </View>
             )}
 
@@ -279,7 +322,7 @@ export default function RegisterScreen() {
                   </View>
                 )}
 
-                {fields.map(f => f.key === 'university' && selectedRole === 'student' ? (
+                {shownFields.map(f => f.key === 'university' && selectedRole === 'student' ? (
                   // Students pick from a fixed list (for now UWI Mona or Other),
                   // so every student at the same campus is recorded the same way.
                   <View key={f.key}>
@@ -365,7 +408,7 @@ export default function RegisterScreen() {
                     {loading ? (
                       <ActivityIndicator color={T.color.card} />
                     ) : (
-                      <Text style={styles.ctaText}>Create account</Text>
+                      <Text style={styles.ctaText}>{viaGoogle ? 'Finish signing up' : 'Create account'}</Text>
                     )}
                   </Animated.View>
                 </Pressable>
@@ -375,12 +418,14 @@ export default function RegisterScreen() {
           </Animated.View>
 
           {/* ── FOOTER ───────────────────────────────────────────────── */}
-          <View style={styles.footer}>
-            <Text style={styles.footerText}>Already have an account? </Text>
-            <TouchableOpacity onPress={() => router.replace('/(auth)/login')} hitSlop={8}>
-              <Text style={styles.footerLink}>Sign in</Text>
-            </TouchableOpacity>
-          </View>
+          {!viaGoogle && (
+            <View style={styles.footer}>
+              <Text style={styles.footerText}>Already have an account? </Text>
+              <TouchableOpacity onPress={() => router.replace('/(auth)/login')} hitSlop={8}>
+                <Text style={styles.footerLink}>Sign in</Text>
+              </TouchableOpacity>
+            </View>
+          )}
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -388,6 +433,8 @@ export default function RegisterScreen() {
 }
 
 const styles = StyleSheet.create({
+  otherAccount: { alignSelf: 'center', paddingVertical: 12 },
+  otherAccountText: { color: T.color.inkSoft, fontSize: 14, fontWeight: '700', textDecorationLine: 'underline' },
   safe: { flex: 1, backgroundColor: T.color.cream },
   flex: { flex: 1 },
   scroll: {

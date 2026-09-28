@@ -9,7 +9,12 @@ import {
     sendPasswordResetEmail,
     signOut,
     updateProfile,
+    GoogleAuthProvider,
+    signInWithPopup,
+    signInWithRedirect,
+    getRedirectResult,
   } from 'firebase/auth';
+  import { Platform } from 'react-native';
   import { doc, setDoc, getDoc } from 'firebase/firestore';
   import { auth, db, clearLocalData } from './firebase';
   import { LEGAL } from '../constants/legal';
@@ -196,6 +201,126 @@ export const resetPassword = async (
     }
   };
   
+  // ─── GOOGLE (web / PWA) ────────────────────────────────────────────────────
+  // "Continue with Google" on sign-in and sign-up. A Google account that
+  // already has a DormDash profile is simply signed in. A new one has no
+  // users/{uid} yet: useAuth reports it as `pendingProfile` and the route
+  // guard sends it to the sign-up form, which then asks only for what Google
+  // doesn't give us (student or dasher, phone, university, the terms box)
+  // and calls completeGoogleProfile.
+  //
+  // Phones and the installed app use a full-page redirect (popups open a
+  // separate window there that can't hand the result back); computers use a
+  // popup. This works because authDomain is DormDash's own domain, so the
+  // browser treats the sign-in handler (/__/auth/handler) as first-party.
+  // Native apps: not offered yet (needs a native Google sign-in module).
+
+  export const googleSignInAvailable = Platform.OS === 'web';
+
+  const googleErrorMessage = (code?: string): string | null => {
+    switch (code) {
+      case 'auth/popup-closed-by-user':
+      case 'auth/cancelled-popup-request':
+      case 'auth/user-cancelled':
+        return null; // they changed their mind: say nothing
+      case 'auth/account-exists-with-different-credential':
+        return 'This email already has a DormDash password. Sign in with your email and password instead.';
+      case 'auth/operation-not-allowed':
+        return 'Google sign-in isn\'t switched on yet. Use your email and password for now.';
+      case 'auth/unauthorized-domain':
+        return 'Google sign-in isn\'t set up for this address yet. Use your email and password.';
+      case 'auth/network-request-failed':
+        return 'Network error. Check your connection.';
+      case 'auth/user-disabled':
+        return 'Your account has been deactivated. Contact support.';
+      default:
+        return 'Google sign-in failed. Please try again.';
+    }
+  };
+
+  function preferRedirect(): boolean {
+    if (typeof window === 'undefined') return false;
+    const standalone = window.matchMedia?.('(display-mode: standalone)').matches || (navigator as any).standalone === true;
+    return standalone || /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+  }
+
+  /** Starts Google sign-in. With a redirect the page leaves and comes back. */
+  export const signInWithGoogle = async (): Promise<{ success: boolean; error?: string }> => {
+    if (!googleSignInAvailable) return { success: false, error: 'Google sign-in is only on the web app for now.' };
+    const provider = new GoogleAuthProvider();
+    provider.setCustomParameters({ prompt: 'select_account' });
+    try {
+      if (preferRedirect()) {
+        await signInWithRedirect(auth, provider);
+        return { success: true };
+      }
+      await signInWithPopup(auth, provider);
+      return { success: true };
+    } catch (e: any) {
+      if (e?.code === 'auth/popup-blocked') {
+        try { await signInWithRedirect(auth, provider); return { success: true }; }
+        catch (e2: any) { const m = googleErrorMessage(e2?.code); return m ? { success: false, error: m } : { success: true }; }
+      }
+      const m = googleErrorMessage(e?.code);
+      return m ? { success: false, error: m } : { success: true };
+    }
+  };
+
+  /**
+   * After a redirect: the result (or error) of the Google sign-in, if the
+   * page just came back from one. Call once when the sign-in screen opens.
+   */
+  export const takeGoogleRedirectError = async (): Promise<string | null> => {
+    if (!googleSignInAvailable) return null;
+    try {
+      await getRedirectResult(auth);
+      return null;
+    } catch (e: any) {
+      return googleErrorMessage(e?.code);
+    }
+  };
+
+  /** Creates the DormDash profile for a Google account signing up. */
+  export const completeGoogleProfile = async (
+    name: string, phone: string, university: string, role: UserRole,
+  ): Promise<{ success: boolean; error?: string }> => {
+    const u = auth.currentUser;
+    if (!u || !u.email) return { success: false, error: 'Your Google sign-in expired. Please continue with Google again.' };
+    if (role !== 'student' && role !== 'dasher') return { success: false, error: 'Please select a role.' };
+    const cleanName = sanitizeName(name);
+    const cleanPhone = phone.trim();
+    if (cleanName.length < 2) return { success: false, error: 'Please enter your full name.' };
+    if (!validatePhone(cleanPhone)) return { success: false, error: 'Please enter a valid phone number.' };
+    if (!university.trim()) return { success: false, error: 'Please enter your university.' };
+    try {
+      if (cleanName !== u.displayName) await updateProfile(u, { displayName: cleanName }).catch(() => {});
+      const userData: User = {
+        uid: u.uid,
+        email: sanitizeEmail(u.email),
+        name: cleanName,
+        role,
+        phone: cleanPhone,
+        university: university.trim(),
+        createdAt: Date.now(),
+        isActive: true,
+        termsAcceptedAt: Date.now(),
+        termsVersion: LEGAL.termsUpdated,
+      };
+      await setDoc(doc(db, 'users', u.uid), userData);
+      if (role === 'dasher') {
+        await setDoc(doc(db, 'dashers', u.uid), {
+          uid: u.uid, isOnline: false, rating: 5.0, totalDeliveries: 0, totalEarnings: 0, vehicleType: 'walking',
+        });
+      }
+      return { success: true };
+    } catch (e: any) {
+      if (e?.code === 'unavailable' || e?.code === 'auth/network-request-failed') {
+        return { success: false, error: 'Network error. Check your connection.' };
+      }
+      return { success: false, error: 'Could not finish signing up. Please try again.' };
+    }
+  };
+
   // ─── LOGIN ─────────────────────────────────────────────────────────────────
   export const loginUser = async (
     email: string,

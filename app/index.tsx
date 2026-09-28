@@ -18,7 +18,7 @@ import { T } from '../constants/theme';
 import { Backdrop } from '../components/Backdrop';
 
 export default function Index() {
-  const { user, loading } = useAuth();
+  const { user, loading, pendingProfile } = useAuth();
   const routed = useRef(false);
 
   useEffect(() => {
@@ -28,7 +28,7 @@ export default function Index() {
       if (routed.current) return;
       routed.current = true;
       if (!user) {
-        router.replace('/(auth)/login');
+        router.replace(pendingProfile ? '/(auth)/register' : '/(auth)/login');
       } else if (user.role === 'dasher') {
         router.replace('/(dasher)/dash');
       } else if (user.role === 'admin') {
@@ -38,7 +38,7 @@ export default function Index() {
       }
     }, 50);
     return () => clearTimeout(t);
-  }, [loading, user]);
+  }, [loading, user, pendingProfile]);
 
   return <View style={{ flex: 1, backgroundColor: T.color.cream }}><Backdrop tone="cream" /></View>;
 }

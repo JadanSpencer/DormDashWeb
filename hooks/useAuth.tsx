@@ -4,7 +4,7 @@
 // 2. Creates a useAuth hook — the "radio receiver" any screen uses to tune in
 
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { onAuthStateChanged } from 'firebase/auth';
+import { onAuthStateChanged, type User as FirebaseUser } from 'firebase/auth';
 import { auth } from '../services/firebase';
 import { getUserProfile } from '../services/users';
 import { User } from '../types';
@@ -12,10 +12,15 @@ import { User } from '../types';
 // ─── CONTEXT SHAPE ─────────────────────────────────────────────────────────
 // This defines exactly what data the context broadcasts.
 // Every screen that calls useAuth() gets these fields.
+// Signed in with Google but no DormDash profile yet (a new Google sign-up):
+// the route guard sends them to the sign-up form to finish.
+export type PendingProfile = { uid: string; email: string; name: string };
+
 interface AuthContextType {
   user: User | null;        // null = not logged in
   loading: boolean;         // true while we're checking auth state on startup
   refreshUser: () => Promise<void>; // call this to re-fetch user from Firestore
+  pendingProfile: PendingProfile | null;
 }
 
 // Create the context with a default value of null
@@ -28,23 +33,30 @@ const AuthContext = createContext<AuthContextType>({} as AuthContextType);
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true); // Start true — we don't know yet
+  const [pendingProfile, setPendingProfile] = useState<PendingProfile | null>(null);
 
-  // fetchUserProfile takes a Firebase uid and loads the full profile from Firestore
-  const fetchUserProfile = async (uid: string): Promise<User | null> => {
+  // Loads the profile. A Google account whose profile document definitely
+  // doesn't exist (not a network error) is a sign-up still to finish.
+  // Email sign-ups never count: their account exists a moment before their
+  // profile, and registerUser writes it straight away.
+  const load = async (fu: FirebaseUser) => {
+    let profile: User | null = null;
+    let missing = false;
     try {
-      return await getUserProfile(uid);
-    } catch {
-      return null;
-    }
+      profile = await getUserProfile(fu.uid);
+      missing = profile === null;
+    } catch { /* offline or blocked: treat as signed out, as before */ }
+    const google = (fu.providerData ?? []).some(p => p?.providerId === 'google.com');
+    setUser(profile);
+    setPendingProfile(missing && google
+      ? { uid: fu.uid, email: fu.email ?? '', name: fu.displayName ?? '' }
+      : null);
   };
 
   // refreshUser lets a screen manually re-fetch the user profile.
   // Useful after a user updates their profile — you want the UI to reflect it.
   const refreshUser = async () => {
-    if (auth.currentUser) {
-      const profile = await fetchUserProfile(auth.currentUser.uid);
-      setUser(profile);
-    }
+    if (auth.currentUser) await load(auth.currentUser);
   };
 
   useEffect(() => {
@@ -55,11 +67,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
         // User is logged in — fetch their full Firestore profile
-        const profile = await fetchUserProfile(firebaseUser.uid);
-        setUser(profile);
+        await load(firebaseUser);
       } else {
         // No user logged in
         setUser(null);
+        setPendingProfile(null);
       }
       // Either way, we now know the auth state — stop showing loading screen
       setLoading(false);
@@ -72,7 +84,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []); // Empty array = run this effect only once, when the app first mounts
 
   return (
-    <AuthContext.Provider value={{ user, loading, refreshUser }}>
+    <AuthContext.Provider value={{ user, loading, refreshUser, pendingProfile }}>
       {children}
     </AuthContext.Provider>
   );

@@ -14,8 +14,10 @@ function pickRole(): string {
 }
 
 const role = pickRole();
-const current = role === 'none' ? null : PREVIEW_USERS[role] ?? PREVIEW_USERS.student;
-const auth: any = { currentUser: current ? { uid: current.uid, email: current.email } : null };
+// ?as=google: a new Google sign-up with no DormDash profile yet.
+const GOOGLE_NEW = { uid: 'goo1', email: 'jordan.clarke@gmail.com', displayName: 'Jordan Clarke', providerData: [{ providerId: 'google.com' }] };
+const current = role === 'none' || role === 'google' ? null : PREVIEW_USERS[role] ?? PREVIEW_USERS.student;
+const auth: any = { currentUser: role === 'google' ? GOOGLE_NEW : current ? { uid: current.uid, email: current.email } : null };
 
 function emit() { listeners.forEach(l => l(auth.currentUser)); }
 
@@ -43,4 +45,8 @@ export async function sendPasswordResetEmail() {}
 export async function updateProfile() {}
 export async function updatePassword() {}
 export async function reauthenticateWithCredential() { return {}; }
+export class GoogleAuthProvider { setCustomParameters(_p: any) { return this; } }
+export async function signInWithPopup() { auth.currentUser = GOOGLE_NEW; emit(); return { user: GOOGLE_NEW }; }
+export async function signInWithRedirect() { auth.currentUser = GOOGLE_NEW; emit(); }
+export async function getRedirectResult() { return null; }
 export const EmailAuthProvider = { credential: (e: string, p: string) => ({ e, p }) };

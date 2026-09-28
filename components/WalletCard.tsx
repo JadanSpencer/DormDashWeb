@@ -49,7 +49,7 @@ export function WalletCard({ uid }: { uid: string }) {
     <View style={styles.card}>
       {/* Balance, on a gold band like the strip on a banknote. */}
       <View style={styles.band}>
-        <Coin size={52} />
+        <Coin size={60} />
         <View style={{ flex: 1 }}>
           <Text style={styles.bandLabel}>Token balance</Text>
           {wallet.loaded

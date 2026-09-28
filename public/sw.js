@@ -8,7 +8,7 @@
  * Bump VERSION whenever this file changes. App code updates don't need a
  * bump: JS bundles are content-hashed and navigations are network-first.
  */
-const VERSION = 'dd-v8';
+const VERSION = 'dd-v9';
 const SHELL = `${VERSION}-shell`;
 const RUNTIME = `${VERSION}-runtime`;
 
@@ -46,6 +46,9 @@ self.addEventListener('fetch', (event) => {
   // Server endpoints (e.g. /api/wipay-return, the card payment result) must
   // always go straight to the server and never be cached.
   if (url.pathname.startsWith('/api/')) return;
+  // Firebase's own pages (Google sign-in handler, /__/auth/*, /__/firebase/*):
+  // straight to the server, never cached as the app shell.
+  if (url.pathname.startsWith('/__/')) return;
 
   // Page loads (any route — it's a single-page app): network first, so a new
   // deploy is picked up immediately; fall back to the cached shell offline.
