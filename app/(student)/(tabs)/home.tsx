@@ -10,8 +10,7 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import {
   View, Text, StyleSheet, FlatList, ScrollView,
-  Pressable, TouchableOpacity, TextInput, ActivityIndicator,
-  Animated, RefreshControl, Dimensions,
+  Pressable, TouchableOpacity, TextInput, Animated, RefreshControl, Dimensions,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
@@ -22,6 +21,7 @@ import { formatJMD, DELIVERY_FEE_JMD } from '../../../constants';
 import { T } from '../../../constants/theme';
 import { Backdrop } from '../../../components/Backdrop';
 import { TideBand, StoreMark, StoreArt, pressPlate } from '../../../components/Tide';
+import { SkeletonGroup, StoreRowSkeleton, Bone } from '../../../components/Skeleton';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -75,9 +75,9 @@ const StoreRow: React.FC<{ store: Store; onPress: () => void }> = ({ store, onPr
     onPress={onPress}
     accessibilityRole="button"
     accessibilityLabel={`${store.name}, ${store.isOpen ? 'open' : 'closed'}`}
-    style={({ pressed }) => [styles.row, pressPlate(pressed)]}
+    style={({ pressed }) => [styles.row, !store.isOpen && styles.rowClosed, pressPlate(pressed)]}
   >
-    <StoreMark id={store.id} name={store.name} size={56} />
+    <StoreMark id={store.id} name={store.name} size={56} muted={!store.isOpen} />
     <View style={styles.rowContent}>
       <View style={styles.rowTop}>
         <Text style={styles.rowName} numberOfLines={1}>{store.name}</Text>
@@ -210,10 +210,12 @@ export default function StudentHome() {
         </ScrollView>
 
         {loading ? (
-          <View style={styles.loading}>
-            <ActivityIndicator size="large" color={T.color.cerulean} />
-            <Text style={styles.loadingText}>Loading stores…</Text>
-          </View>
+          <SkeletonGroup label="Loading stores…">
+            <View style={styles.sectionHead}><Bone w={140} h={24} /></View>
+            <View style={styles.rowList}>
+              {[0, 1, 2, 3].map(i => <StoreRowSkeleton key={i} />)}
+            </View>
+          </SkeletonGroup>
         ) : filtered.length === 0 ? (
           <View style={styles.empty}>
             <View style={styles.emptyTile}><View style={styles.emptyInner} /></View>
@@ -368,6 +370,8 @@ const styles = StyleSheet.create({
     gap: T.space.md,
     ...T.plate.card,
   },
+  // Low tide: a closed store sits flat, without its plate.
+  rowClosed: { backgroundColor: T.color.cream, borderColor: T.color.lineStrong, shadowOpacity: 0, elevation: 0 },
   rowContent: { flex: 1, gap: 3 },
   rowTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: T.space.sm },
   rowName: { flex: 1, ...T.type.body, fontSize: 16, fontWeight: '800', color: T.color.ink, letterSpacing: -0.2 },

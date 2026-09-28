@@ -37,6 +37,7 @@ import { T } from '../../constants/theme';
 import * as Location from 'expo-location';
 import { Backdrop } from '../../components/Backdrop';
 import { TideHeader } from '../../components/Tide';
+import { Money } from '../../components/Money';
 
 // Fallback-safe back — matches store screen behaviour.
 const safeGoBack = () => {
@@ -178,9 +179,9 @@ export default function CheckoutScreen() {
               </View>
               <Text style={styles.itemName} numberOfLines={1}>{item.menuItem.name}</Text>
               <View style={styles.itemPricePlate}>
-                <Text style={styles.itemPriceText}>
+                <Money style={styles.itemPriceText}>
                   {fmt(item.menuItem.price * item.quantity)}
-                </Text>
+                </Money>
               </View>
             </View>
           ))}
@@ -237,17 +238,17 @@ export default function CheckoutScreen() {
         <View style={styles.card}>
           <View style={styles.summaryRow}>
             <Text style={styles.summaryLabel}>Subtotal</Text>
-            <Text style={styles.summaryValue}>{fmt(subtotal)}</Text>
+            <Money style={styles.summaryValue}>{fmt(subtotal)}</Money>
           </View>
           <View style={styles.summaryRow}>
             <Text style={styles.summaryLabel}>Delivery</Text>
-            <Text style={styles.summaryValue}>{fmt(deliveryFee)}</Text>
+            <Money style={styles.summaryValue}>{fmt(deliveryFee)}</Money>
           </View>
           <View style={styles.divider} />
           <View style={styles.summaryRow}>
             <Text style={styles.totalLabel}>Total</Text>
             <View style={styles.totalPlate}>
-              <Text style={styles.totalText}>{fmt(total)}</Text>
+              <Money style={styles.totalText}>{fmt(total)}</Money>
             </View>
           </View>
         </View>
@@ -275,7 +276,7 @@ export default function CheckoutScreen() {
               <>
                 <Text style={styles.ctaText}>Place order</Text>
                 <View style={styles.ctaTotalPlate}>
-                  <Text style={styles.ctaTotalText}>{fmt(total)}</Text>
+                  <Money style={styles.ctaTotalText}>{fmt(total)}</Money>
                 </View>
               </>
             )}

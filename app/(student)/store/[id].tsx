@@ -8,7 +8,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, Pressable, TouchableOpacity,
-  ActivityIndicator, Alert, Animated, Easing,
+  Alert, Animated, Easing,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, router } from 'expo-router';
@@ -21,6 +21,8 @@ import { T, useReducedMotion } from '../../../constants/theme';
 import { Watermark } from '../../../components/Watermark';
 import { Backdrop } from '../../../components/Backdrop';
 import { TideBand, StoreMark, pressPlate } from '../../../components/Tide';
+import { SkeletonGroup, MenuItemSkeleton, Bone } from '../../../components/Skeleton';
+import { Money } from '../../../components/Money';
 
 // Fallback-safe navigation. When a user lands on a store via notification
 // or fresh app boot, there's no back stack — pop would leave a black screen.
@@ -37,7 +39,7 @@ const HollowPrice: React.FC<{ value: number; size?: number }> = ({ value, size =
   const text = fmt(value);
   return (
     <View style={styles.pricePlate}>
-      <Text style={[styles.hollowText, { fontSize: size }]}>{text}</Text>
+      <Money style={[styles.hollowText, { fontSize: size }]}>{text}</Money>
     </View>
   );
 };
@@ -190,7 +192,7 @@ export default function StoreMenuScreen() {
             </View>
 
             <View style={styles.heroMain}>
-              {store ? <StoreMark id={store.id} name={store.name} size={84} radius={T.radius.lg} style={styles.heroMark} /> : null}
+              {store ? <StoreMark id={store.id} name={store.name} size={84} radius={T.radius.lg} muted={!store.isOpen} style={styles.heroMark} /> : null}
               <View style={{ flex: 1 }}>
                 <Text style={styles.storeName}>{store?.name ?? ' '}</Text>
                 {store?.description ? <Text style={styles.storeDesc} numberOfLines={2}>{store.description}</Text> : null}
@@ -237,10 +239,10 @@ export default function StoreMenuScreen() {
         )}
 
         {loading ? (
-          <View style={styles.loading}>
-            <ActivityIndicator size="large" color={T.color.cerulean} />
-            <Text style={styles.loadingText}>Loading menu…</Text>
-          </View>
+          <SkeletonGroup label="Loading menu…" style={styles.menuList}>
+            <Bone w={110} h={22} style={{ marginTop: T.space.lg, marginBottom: T.space.md }} />
+            {[0, 1, 2].map(i => <View key={i} style={{ marginBottom: T.space.md + 2 }}><MenuItemSkeleton /></View>)}
+          </SkeletonGroup>
         ) : filtered.length === 0 ? (
           <View style={styles.empty}>
             <View style={styles.emptyIconTile}><View style={styles.emptyIconInner} /></View>
@@ -281,7 +283,7 @@ export default function StoreMenuScreen() {
             </View>
             <Text style={styles.cartBtnText}>View cart</Text>
             <View style={styles.cartTotalWrap}>
-              <Text style={styles.cartTotalText}>{fmt(cartTotal)}</Text>
+              <Money style={styles.cartTotalText}>{fmt(cartTotal)}</Money>
               <Text style={styles.cartArrow}>→</Text>
             </View>
           </Pressable>

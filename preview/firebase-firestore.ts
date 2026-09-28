@@ -104,7 +104,9 @@ export function onSnapshot(target: any, a: any, b?: any) {
   const meta = { metadata: { fromCache: false, hasPendingWrites: false } };
   const fire = () => cb({ ...(target.kind === 'doc' ? docSnap(target.path) : run(target)), ...meta });
   listeners.add(fire);
-  setTimeout(() => { if (!frozen) fire(); }, 0); // a dead connection delivers nothing
+  // ?slow=3000 delays the first answer, to see loading states in design QA.
+  const slow = typeof window !== 'undefined' ? Number(new URLSearchParams(window.location.search).get('slow')) || 0 : 0;
+  setTimeout(() => { if (!frozen) fire(); }, slow); // a dead connection delivers nothing
   return () => { listeners.delete(fire); };
 }
 

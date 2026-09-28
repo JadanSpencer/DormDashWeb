@@ -538,3 +538,11 @@ On iOS, notifications only work in the Home Screen app, and websites can't show 
 - Instagram, TikTok, Snapchat, Facebook etc. in-app browsers (and Chrome/Edge on iOS) get a first step "Open dormdash-71035.web.app in Safari" and a "Copy the link" button.
 - "I've added it" hides it for good in that browser. "Continue without alerts" appears after 6 seconds and only lasts for this visit, so it comes back next time.
 - The small install card no longer asks iPhone browser tabs to install (the gate does); alerts cards are unchanged.
+
+### Tide Print details (2026-09-28)
+- **Seal stamps** (`components/Seal.tsx`, `stamp` prop presses it in once on the native driver; still for reduce-motion): 寮 on a just-placed order (tracking), 走 when the dasher is on the way (tracking + live order card), 配 on delivered orders (tracking hero, past orders).
+- **Low tide:** a closed store's mark turns grey-blue (`StoreMark muted`) and its row sits flat without a plate (home, store page).
+- **Loading placeholders** (`components/Skeleton.tsx`): plate-shaped blanks in the shape of what's coming, one gentle opacity loop per group, replace the spinners on home, store menu, orders and order tracking. Screen readers hear one "Loading…".
+- **Money** (`components/Money.tsx`): "J$" set smaller than the digits, tabular figures, on menu prices, cart/checkout lines and totals, order amounts.
+- "LIVE" badge is now "Live" (no all-caps).
+- Design QA: `?slow=3000` on any preview URL delays the fake data so loading states can be seen.

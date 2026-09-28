@@ -7,7 +7,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import {
   View, Text, StyleSheet, FlatList, Pressable,
-  Alert, ActivityIndicator, Animated, Easing,
+  Alert, Animated, Easing,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
@@ -20,6 +20,9 @@ import { usePriceUnit } from '../../../hooks/usePriceUnit';
 import { T, useReducedMotion } from '../../../constants/theme';
 import { Backdrop } from '../../../components/Backdrop';
 import { TideHeader } from '../../../components/Tide';
+import { SkeletonGroup, OrderCardSkeleton, Bone } from '../../../components/Skeleton';
+import { Seal } from '../../../components/Seal';
+import { Money } from '../../../components/Money';
 
 
 // Compact money for tight stat cards — full formatJMD breaks layout at scale
@@ -199,12 +202,15 @@ const ActiveOrderCard: React.FC<{ order: Order; onCancel: () => void; reduced: b
             )}
             <View style={active.liveDot} />
           </View>
-          <Text style={active.liveText}>LIVE</Text>
+          <Text style={active.liveText}>Live</Text>
         </View>
         <Text style={active.id}>#{order.id.slice(-6).toUpperCase()}</Text>
       </View>
 
-      <Text style={active.store}>{order.storeName}</Text>
+      <View style={active.storeRow}>
+        <Text style={[active.store, { flex: 1 }]}>{order.storeName}</Text>
+        {order.status === 'on_the_way' && <Seal char="走" size={38} stamp />}
+      </View>
 
       {order.paymentMethod === 'card' && order.paymentStatus === 'awaiting_payment' && (
         <View style={active.payNeeded}>
@@ -214,7 +220,7 @@ const ActiveOrderCard: React.FC<{ order: Order; onCancel: () => void; reduced: b
 
       {/* Hollowed amount */}
       <View style={active.amountPlate}>
-        <Text style={active.amountText}>{fmt(order.totalAmount)}</Text>
+        <Money style={active.amountText}>{fmt(order.totalAmount)}</Money>
       </View>
 
       <Text style={active.items} numberOfLines={2}>
@@ -291,6 +297,7 @@ const active = StyleSheet.create({
   liveText: { fontSize: 12, fontWeight: '900', color: T.color.teal, letterSpacing: 0.2 },
   id: { fontSize: 12, color: T.color.inkFaint, fontVariant: ['tabular-nums'], fontWeight: '700' },
 
+  storeRow: { flexDirection: 'row', alignItems: 'flex-start', gap: T.space.sm },
   store: { ...T.type.title, fontSize: 22, color: T.color.ink, marginBottom: T.space.sm },
 
   amountPlate: {
@@ -359,15 +366,17 @@ const HistoryCard: React.FC<{ order: Order }> = ({ order }) => {
       onPress={() => router.push(`/(student)/order/${order.id}` as any)}
       style={({ pressed }) => [hist.card, pressed && { transform: [{ scale: 0.98 }] }]}
     >
-      <View style={hist.icon}>
-        <Text style={[hist.iconText, !isDelivered && { color: T.color.danger }]}>
-          {isDelivered ? '✓' : '×'}
-        </Text>
-      </View>
+      {isDelivered ? (
+        <Seal char="配" size={36} style={{ marginTop: 2 }} />
+      ) : (
+        <View style={[hist.icon, hist.iconCancelled]}>
+          <Text style={[hist.iconText, { color: T.color.danger }]}>×</Text>
+        </View>
+      )}
       <View style={hist.content}>
         <View style={hist.top}>
           <Text style={hist.store} numberOfLines={1}>{order.storeName}</Text>
-          <Text style={hist.amount}>{fmt(order.totalAmount)}</Text>
+          <Money style={hist.amount}>{fmt(order.totalAmount)}</Money>
         </View>
         <View style={hist.meta}>
           <Text style={hist.date}>{formatDate(order.createdAt)}</Text>
@@ -403,6 +412,7 @@ const hist = StyleSheet.create({
     justifyContent: 'center', alignItems: 'center',
   },
   iconText: { fontSize: 18, fontWeight: '900', color: T.color.teal },
+  iconCancelled: { backgroundColor: T.color.dangerTint },
   content: { flex: 1, gap: 4 },
   top: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' },
   store: { flex: 1, ...T.type.body, fontSize: 14, fontWeight: '800', color: T.color.ink, marginRight: T.space.sm },
@@ -465,9 +475,12 @@ export default function StudentOrders() {
     <View style={styles.root}>
       <Backdrop tone="cream" />
       {loading ? (
-        <View style={styles.loading}>
-          <View style={styles.loadingHead}><TideHeader title="Orders" /></View>
-          <ActivityIndicator size="large" color={T.color.cerulean} />
+        <View>
+          <TideHeader title="Orders" kicker="What's on the way, and what came before" />
+          <SkeletonGroup label="Loading your orders…" style={styles.skeleton}>
+            <Bone w="100%" h={84} r={T.radius.lg} />
+            <OrderCardSkeleton />
+          </SkeletonGroup>
         </View>
       ) : (
         <FlatList
@@ -560,8 +573,7 @@ const styles = StyleSheet.create({
     top: 260, left: -100,
   },
 
-  loading: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  loadingHead: { position: 'absolute', top: 0, left: 0, right: 0 },
+  skeleton: { paddingHorizontal: T.space.lg, paddingTop: T.space.md, gap: T.space.lg },
 
   // Stats: one teal strip, the numbers belong together.
   stats: {

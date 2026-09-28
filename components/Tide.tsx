@@ -5,7 +5,8 @@
 //                seigaiha waves etched into it and a scalloped foam edge
 //                where it meets the page. Put the screen's heading inside.
 //   <StoreMark>  a store's own tile: a sea colour picked from its id, the
-//                wave pattern, and its initial in the heading face.
+//                wave pattern, and its initial in the heading face. `muted`
+//                is "low tide" for a closed store.
 //   pressPlate() makes a Pressable sink onto its print plate when pressed.
 //
 // Pattern ids are per instance (useId), so several bands or marks on one
@@ -139,6 +140,9 @@ const MARK_SEAS: { bg: string; ink: string }[] = [
   { bg: T.color.ceruleanDeep, ink: T.color.ceruleanBright },
 ];
 
+// "Low tide": a closed store's mark, drained of colour.
+const LOW_TIDE = { bg: '#7D9298', ink: '#C3D0D3' };
+
 export function markSea(id: string) {
   let h = 0;
   for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
@@ -146,9 +150,9 @@ export function markSea(id: string) {
 }
 
 export function StoreMark({
-  id, name, size = 52, radius = T.radius.md, style,
-}: { id: string; name: string; size?: number; radius?: number; style?: StyleProp<ViewStyle> }) {
-  const sea = markSea(id);
+  id, name, size = 52, radius = T.radius.md, muted = false, style,
+}: { id: string; name: string; size?: number; radius?: number; muted?: boolean; style?: StyleProp<ViewStyle> }) {
+  const sea = muted ? LOW_TIDE : markSea(id);
   return (
     <View
       style={[{ width: size, height: size, borderRadius: radius, backgroundColor: sea.bg }, styles.mark, style]}
@@ -166,8 +170,8 @@ export function StoreMark({
  * The same store art filling its parent (e.g. a featured card's head):
  * waves across the whole area and a large initial cropped at the corner.
  */
-export function StoreArt({ id, name, initialSize = 120 }: { id: string; name: string; initialSize?: number }) {
-  const sea = markSea(id);
+export function StoreArt({ id, name, initialSize = 120, muted = false }: { id: string; name: string; initialSize?: number; muted?: boolean }) {
+  const sea = muted ? LOW_TIDE : markSea(id);
   return (
     <View
       pointerEvents="none"

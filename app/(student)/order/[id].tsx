@@ -37,6 +37,9 @@ import { useAuth } from '../../../hooks/useAuth';
 import { serverNow } from '../../../services/serverClock';
 import { Backdrop } from '../../../components/Backdrop';
 import { TideHeader, pressPlate } from '../../../components/Tide';
+import { SkeletonGroup, OrderCardSkeleton, Bone } from '../../../components/Skeleton';
+import { Seal } from '../../../components/Seal';
+import { Money } from '../../../components/Money';
 
 const STATUS_CONFIG: Record<OrderStatus, { label: string; color: string; description: string }> = {
   pending:    { label: 'Finding a dasher', color: T.color.warning,  description: 'Waiting for a dasher to accept your order' },
@@ -232,9 +235,14 @@ export default function OrderTracking() {
 
   if (loading) {
     return (
-      <View style={styles.centerFill}>
+      <View style={styles.root}>
         <Backdrop tone="cream" />
-        <ActivityIndicator color={T.color.cerulean} size="large" />
+        <TideHeader kicker="Your order" title="Tracking" onBack={goHome} />
+        <SkeletonGroup label="Loading your order…" style={styles.skeleton}>
+          <OrderCardSkeleton />
+          <Bone w={120} h={22} style={{ marginTop: T.space.md }} />
+          <Bone w="100%" h={160} r={T.radius.lg} />
+        </SkeletonGroup>
       </View>
     );
   }
@@ -283,9 +291,7 @@ export default function OrderTracking() {
         {/* ── STATUS HERO ─────────────────────────────────────────── */}
         {isDelivered ? (
           <View style={[styles.hero, styles.heroDelivered]}>
-            <View style={styles.deliveredMark}>
-              <Text style={styles.deliveredCheck}>✓</Text>
-            </View>
+            <Seal char="配" size={72} stamp style={styles.deliveredSeal} />
             <Text style={styles.deliveredTitle}>Order delivered</Text>
             <Text style={styles.deliveredSub}>
               Enjoy your food from {order.storeName}!
@@ -318,7 +324,10 @@ export default function OrderTracking() {
               </View>
               <Text style={[styles.statusLabel, { color: config.color }]}>{config.label}</Text>
             </View>
-            <Text style={styles.statusDesc}>{config.description}</Text>
+            <Text style={[styles.statusDesc, styles.withSeal]}>{config.description}</Text>
+            {/* 寮 when the order has just gone in, 走 once the dasher is on the way. */}
+            {order.status === 'pending' && <Seal char="寮" size={44} stamp label="Order placed" style={styles.heroSeal} />}
+            {order.status === 'on_the_way' && <Seal char="走" size={44} stamp style={styles.heroSeal} />}
 
             {order.dasherName && (
               <View style={styles.dasherChip}>
@@ -428,9 +437,9 @@ export default function OrderTracking() {
               </View>
               <Text style={styles.itemName} numberOfLines={1}>{item.menuItem.name}</Text>
               <View style={styles.itemPricePlate}>
-                <Text style={styles.itemPriceText}>
+                <Money style={styles.itemPriceText}>
                   {fmt(item.menuItem.price * item.quantity)}
-                </Text>
+                </Money>
               </View>
             </View>
           ))}
@@ -446,7 +455,7 @@ export default function OrderTracking() {
           <View style={styles.summaryRow}>
             <Text style={styles.totalLabel}>Total</Text>
             <View style={styles.totalPlate}>
-              <Text style={styles.totalText}>{fmt(order.totalAmount)}</Text>
+              <Money style={styles.totalText}>{fmt(order.totalAmount)}</Money>
             </View>
           </View>
         </View>
@@ -469,6 +478,7 @@ export default function OrderTracking() {
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: T.color.cream },
+  skeleton: { paddingHorizontal: T.space.lg, paddingTop: T.space.md, gap: T.space.md },
   centerFill: {
     flex: 1, backgroundColor: T.color.cream,
     justifyContent: 'center', alignItems: 'center', gap: T.space.md,
@@ -531,6 +541,9 @@ const styles = StyleSheet.create({
     ...T.plate.teal,
   },
   deliveredCheck: { color: T.color.card, fontSize: 36, fontWeight: '900' },
+  deliveredSeal: { marginBottom: T.space.md },
+  heroSeal: { position: 'absolute', top: T.space.lg, right: T.space.lg },
+  withSeal: { paddingRight: 52 },
   deliveredTitle: { ...T.type.title, fontSize: 24, color: T.color.ink, marginBottom: 4 },
   deliveredSub: { ...T.type.body, fontSize: 14, color: T.color.inkSoft, textAlign: 'center' },
 
