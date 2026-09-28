@@ -1,13 +1,13 @@
 // components/Flow.tsx
 // The flyer's background line work: wide contour loops sweeping in from the
-// corners (like the rings on the UWI Mona launch flyer), and the big faint
-// italic D behind the header. Line work only, low contrast, never behind
-// text at full strength. Computed once; the same on every device.
+// corners (like the rings on the UWI Mona launch flyer). Line work only, low
+// contrast, never behind text at full strength. Computed once; the same on
+// every device. (The big faint italic D behind the header is drawn by
+// TideBand in components/Tide.tsx.)
 
 import React from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
-import { FONT } from '../constants/theme';
 
 const W = 400;
 const H = 900;
@@ -57,23 +57,11 @@ export const FlowLines = React.memo(function FlowLines({ color, opacity, width =
   );
 });
 
-/** The flyer's huge faint italic D, cropped at the right edge of its parent. */
-export function BigD({ color, opacity, size = 420, top = -60, right = -90 }: {
-  color: string; opacity: number; size?: number; top?: number; right?: number;
-}) {
-  return (
-    <Text
-      pointerEvents="none"
-      accessibilityElementsHidden
-      importantForAccessibility="no"
-      allowFontScaling={false}
-      style={[styles.d, { color, opacity, fontSize: size, lineHeight: size * 1.1, top, right }]}
-    >
-      D
-    </Text>
-  );
-}
-
-const styles = StyleSheet.create({
-  d: { position: 'absolute', fontFamily: FONT.heading },
-});
+/**
+ * The same loops as raw paths in a W×H drawing space, for drawing inside
+ * another SVG (TideBand draws them under its fade mask, so they dissolve
+ * into the page instead of stopping at an edge).
+ */
+export const FLOW_LOOPS = LOOPS;
+export const FLOW_W = W;
+export const FLOW_H = H;

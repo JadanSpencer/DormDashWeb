@@ -7,7 +7,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import {
   View, Text, StyleSheet, FlatList, Pressable,
-  Alert, Animated, Easing,
+  Alert, Animated, Easing, LayoutAnimation, Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
@@ -23,6 +23,7 @@ import { TideHeader } from '../../../components/Tide';
 import { SkeletonGroup, OrderCardSkeleton, Bone } from '../../../components/Skeleton';
 import { Seal } from '../../../components/Seal';
 import { Money } from '../../../components/Money';
+import { Icon } from '../../../components/TabIcon';
 
 
 const STATUS_CONFIG: Record<OrderStatus, { label: string; description: string; color: string }> = {
@@ -157,7 +158,12 @@ const rail = StyleSheet.create({
 });
 
 // ─── ACTIVE ORDER CARD ──────────────────────────────────────────────
-const ActiveOrderCard: React.FC<{ order: Order; onCancel: () => void; reduced: boolean }> = ({ order, onCancel, reduced }) => {
+// With more than one order in progress, each card is a drawer: closed, it
+// is one row (store, status, amount, and "Payment needed" when it is), and
+// tapping it opens the full card. One drawer is open at a time.
+type Drawer = { open: boolean; onToggle: () => void };
+
+const ActiveOrderCard: React.FC<{ order: Order; onCancel: () => void; reduced: boolean; drawer?: Drawer }> = ({ order, onCancel, reduced, drawer }) => {
   const { fmt } = usePriceUnit();
   const cfg = STATUS_CONFIG[order.status];
   const glow = useRef(new Animated.Value(0)).current;
@@ -176,6 +182,48 @@ const ActiveOrderCard: React.FC<{ order: Order; onCancel: () => void; reduced: b
 
   const liveScale = glow.interpolate({ inputRange: [0, 1], outputRange: [1, 1.3] });
   const liveOpacity = glow.interpolate({ inputRange: [0, 1], outputRange: [0.6, 0] });
+  const code = order.id.slice(-6).toUpperCase();
+  const needsPay = order.paymentMethod === 'card' && order.paymentStatus === 'awaiting_payment';
+
+  const liveDot = (
+    <View style={active.liveWrap}>
+      {!reduced && (
+        <Animated.View
+          style={[active.livePulse, { transform: [{ scale: liveScale }], opacity: liveOpacity }]}
+        />
+      )}
+      <View style={active.liveDot} />
+    </View>
+  );
+
+  if (drawer && !drawer.open) {
+    return (
+      <Pressable
+        onPress={drawer.onToggle}
+        accessibilityRole="button"
+        accessibilityState={{ expanded: false }}
+        accessibilityLabel={`${order.storeName}, ${cfg.label}${needsPay ? ', payment needed' : ''}. Show details`}
+        style={({ pressed }) => [active.card, active.drawerClosed, pressed && { transform: [{ scale: 0.99 }] }]}
+      >
+        <View style={active.drawerRow}>
+          {liveDot}
+          <View style={{ flex: 1 }}>
+            <Text style={active.drawerStore} numberOfLines={1}>{order.storeName}</Text>
+            <Text style={[active.drawerMeta, { color: cfg.color }]} numberOfLines={1}>
+              {cfg.label}<Text style={active.drawerCode}>{`  #${code}`}</Text>
+            </Text>
+          </View>
+          <Money style={active.drawerAmount}>{fmt(order.totalAmount)}</Money>
+          <Icon name="chevron-down" size={18} color={T.color.inkSoft} />
+        </View>
+        {needsPay && (
+          <View style={[active.payNeeded, active.drawerPay]}>
+            <Text style={active.payNeededText}>{`Payment needed within ${PAY_WINDOW_MIN} minutes`}</Text>
+          </View>
+        )}
+      </Pressable>
+    );
+  }
 
   return (
     <Pressable
@@ -187,17 +235,26 @@ const ActiveOrderCard: React.FC<{ order: Order; onCancel: () => void; reduced: b
     >
       <View style={active.head}>
         <View style={active.live}>
-          <View style={active.liveWrap}>
-            {!reduced && (
-              <Animated.View
-                style={[active.livePulse, { transform: [{ scale: liveScale }], opacity: liveOpacity }]}
-              />
-            )}
-            <View style={active.liveDot} />
-          </View>
+          {liveDot}
           <Text style={active.liveText}>Live</Text>
         </View>
-        <Text style={active.id}>#{order.id.slice(-6).toUpperCase()}</Text>
+        <View style={active.headRight}>
+          <Text style={active.id}>#{code}</Text>
+          {drawer && (
+            <Pressable
+              onPress={(e) => { e.stopPropagation?.(); drawer.onToggle(); }}
+              hitSlop={10}
+              accessibilityRole="button"
+              accessibilityState={{ expanded: true }}
+              accessibilityLabel="Collapse"
+              style={active.collapse}
+            >
+              <View style={{ transform: [{ rotate: '180deg' }] }}>
+                <Icon name="chevron-down" size={18} color={T.color.inkSoft} />
+              </View>
+            </Pressable>
+          )}
+        </View>
       </View>
 
       <View style={active.storeRow}>
@@ -205,7 +262,7 @@ const ActiveOrderCard: React.FC<{ order: Order; onCancel: () => void; reduced: b
         {order.status === 'on_the_way' && <Seal char="走" size={54} stamp />}
       </View>
 
-      {order.paymentMethod === 'card' && order.paymentStatus === 'awaiting_payment' && (
+      {needsPay && (
         <View style={active.payNeeded}>
           <Text style={active.payNeededText}>{`Payment needed. Tap to pay within ${PAY_WINDOW_MIN} minutes.`}</Text>
         </View>
@@ -278,6 +335,20 @@ const active = StyleSheet.create({
     ...T.plate.teal,
   },
   head: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: T.space.md },
+  headRight: { flexDirection: 'row', alignItems: 'center', gap: T.space.sm },
+  collapse: {
+    width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center',
+    backgroundColor: T.color.creamDeep,
+  },
+
+  // Closed drawer (more than one order in progress)
+  drawerClosed: { paddingVertical: T.space.md, marginBottom: T.space.md },
+  drawerRow: { flexDirection: 'row', alignItems: 'center', gap: T.space.sm },
+  drawerStore: { ...T.type.title, fontSize: 18, color: T.color.ink },
+  drawerMeta: { ...T.type.body, fontSize: 13, fontWeight: '800', marginTop: 1 },
+  drawerCode: { color: T.color.inkFaint, fontWeight: '700', fontVariant: ['tabular-nums'] },
+  drawerAmount: { fontSize: 17, fontWeight: '900', color: T.color.cerulean, letterSpacing: -0.3 },
+  drawerPay: { marginTop: T.space.sm, marginBottom: 0 },
   live: {
     flexDirection: 'row', alignItems: 'center', gap: 8,
     backgroundColor: T.color.tealTint,
@@ -433,6 +504,14 @@ export default function StudentOrders() {
   const activeOrders = useStudentActiveOrders(user?.uid);
   const { pastOrders, loading, totals } = useStudentOrderHistory(user?.uid, visiblePast);
 
+  // More than one order in progress: drawers, one open at a time.
+  const drawers = activeOrders.length > 1;
+  const [openId, setOpenId] = useState<string | null>(null);
+  const toggleDrawer = (id: string) => {
+    if (!reduced && Platform.OS !== 'web') LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setOpenId(cur => (cur === id ? null : id));
+  };
+
   const handleCancel = (activeOrder: Order) => {
     const accepted = activeOrder.status === 'accepted';
     Alert.alert(
@@ -485,9 +564,18 @@ export default function StudentOrders() {
             <>
               <TideHeader title="Orders" kicker="What's on the way, and what came before" />
               <View style={{ height: T.space.md }} />
+              {drawers && (
+                <Text style={styles.activeLabel}>{activeOrders.length} orders in progress</Text>
+              )}
               {activeOrders.length > 0 ? (
                 activeOrders.map(o => (
-                  <ActiveOrderCard key={o.id} order={o} onCancel={() => handleCancel(o)} reduced={reduced} />
+                  <ActiveOrderCard
+                    key={o.id}
+                    order={o}
+                    onCancel={() => handleCancel(o)}
+                    reduced={reduced}
+                    drawer={drawers ? { open: openId === o.id, onToggle: () => toggleDrawer(o.id) } : undefined}
+                  />
                 ))
               ) : (
                 <View style={styles.noActiveCard}>
@@ -583,6 +671,12 @@ const styles = StyleSheet.create({
     ...T.plate.card, shadowOffset: { width: 0, height: 3 },
   },
   moreText: { ...T.type.body, fontSize: 14, fontWeight: '700', color: T.color.ceruleanDeep },
+  activeLabel: {
+    ...T.type.body, fontSize: 14, fontWeight: '800',
+    color: T.color.inkSoft,
+    paddingHorizontal: T.space.lg,
+    paddingBottom: T.space.sm,
+  },
   historyLabel: {
     ...T.type.title, fontSize: 21,
     color: T.color.ink,

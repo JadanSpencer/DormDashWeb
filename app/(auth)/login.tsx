@@ -21,6 +21,7 @@ import {
   Animated,
   Easing,
   ActivityIndicator,
+  Image,
 } from 'react-native';
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -28,13 +29,16 @@ import { loginUser, resetPassword, signInWithGoogle, takeGoogleRedirectError, go
 import { GoogleButton, OrRule } from '../../components/GoogleButton';
 import { requestPushPermissionFromGesture } from '../../services/notifications';
 import { T, FONT } from '../../constants/theme';
-import { Logo } from '../../components/Logo';
 import { Backdrop } from '../../components/Backdrop';
 import { TideBand } from '../../components/Tide';
 import { Swoosh } from '../../components/Swoosh';
 
 // Small-screen handling: compact the hero + spacing under 700px tall
 const SMALL = Dimensions.get('window').height < 700;
+
+// The real app icon (the same tile as the home-screen icon and the launch
+// intro). Web serves it from public/brand (the service worker precaches it).
+const APP_ICON = Platform.OS === 'web' ? { uri: '/brand/dormdash-tile.png' } : require('../../assets/icon.png');
 
 export default function LoginScreen() {
   const [email, setEmail] = useState('');
@@ -152,10 +156,14 @@ export default function LoginScreen() {
           {/* ── HERO: the launch flyer ──────────────────────────────── */}
           <TideBand style={styles.band}>
             <Animated.View style={[styles.hero, { opacity: heroFade, transform: [{ translateY: heroRise }] }]}>
+              {/* Brand: the app icon and the name, centred. The headline below stays left. */}
               <View style={styles.brandRow}>
-                <View style={styles.logoTile}>
-                  <Logo size={SMALL ? 30 : 34} variant="inverse" />
-                </View>
+                <Image
+                  source={APP_ICON}
+                  style={styles.appIcon}
+                  resizeMode="contain"
+                  accessible={false}
+                />
                 <Text style={styles.wordmark} numberOfLines={1} maxFontSizeMultiplier={1.1}>DormDash</Text>
               </View>
               <Text style={styles.hungry} accessibilityRole="header">Hungry?</Text>
@@ -311,19 +319,14 @@ const styles = StyleSheet.create({
 
   // Hero (on the flyer header)
   hero: { paddingHorizontal: T.space.lg, paddingTop: SMALL ? T.space.lg : T.space.xl },
-  brandRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: SMALL ? T.space.md : T.space.lg },
-  logoTile: {
-    width: SMALL ? 48 : 54, height: SMALL ? 48 : 54, borderRadius: 16,
-    justifyContent: 'center', alignItems: 'center',
-    backgroundColor: T.color.seaTeal,
-    borderWidth: 1.5, borderColor: 'rgba(207, 230, 238, 0.35)',
-  },
+  brandRow: { alignItems: 'center', gap: SMALL ? 6 : 8, marginBottom: SMALL ? T.space.md : T.space.lg },
+  appIcon: { width: SMALL ? 64 : 76, height: SMALL ? 64 : 76 },
   hungry: { ...T.type.display, fontSize: SMALL ? 50 : 60, lineHeight: SMALL ? 56 : 66, color: T.color.card },
   dontMove: { ...T.type.display, fontSize: SMALL ? 50 : 60, lineHeight: SMALL ? 56 : 66, color: T.color.mustard },
   script: { fontFamily: FONT.script, fontSize: SMALL ? 24 : 28, color: T.color.card, marginTop: T.space.sm, transform: [{ rotate: '-3deg' }] },
   eyebrow: { ...T.type.label, color: T.color.teal, marginBottom: 4 },
   wordmarkRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  wordmark: { ...T.type.display, fontSize: SMALL ? 30 : 34, color: T.color.card, flexShrink: 1 },
+  wordmark: { ...T.type.display, fontSize: SMALL ? 30 : 34, color: T.color.card, textAlign: 'center' },
   tagline: { ...T.type.body, color: T.color.inkSoft, marginTop: 6 },
 
   // Form + route rail

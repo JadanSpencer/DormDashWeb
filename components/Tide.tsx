@@ -19,32 +19,52 @@
 import React, { useId, useState } from 'react';
 import { Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Svg, { Defs, LinearGradient, Mask, Rect, Stop } from 'react-native-svg';
+import Svg, { Defs, G, LinearGradient, Mask, Path, Rect, Stop, Text as SvgText } from 'react-native-svg';
 import { T, FONT } from '../constants/theme';
-import { FlowLines, BigD } from './Flow';
+import { FlowLines, FLOW_LOOPS, FLOW_W, FLOW_H } from './Flow';
 
 // ─── The header band ───────────────────────────────────────────────────────
 // The last FADE px dissolve into the page on an ease curve, so there's no
 // edge line. Content stays in the top of the fade, where the band is still
 // ~90% solid, so cream text keeps its contrast.
+//
+// The contour loops and the big faint italic D are drawn in the same SVG,
+// under the same fade, so they melt into the page with the band instead of
+// stopping at a hard edge. The D is sized to fit the band (never cropped at
+// the top or the right) and its foot dissolves in the fade.
 const FADE = 110;
 const FADE_STOPS: [number, number][] = [[0, 1], [0.2, 0.9], [0.4, 0.66], [0.6, 0.34], [0.8, 0.1], [1, 0]];
 
+// Fraunces Black Italic: cap height and the italic's lean past its advance,
+// as fractions of the font size (for placing the D inside the band).
+const D_CAP = 0.72;
+const D_LEAN = 0.16;
+const D_TOP = 14; // px from the top of the band to the top of the D
+
 export function TideBand({ children, style }: { children?: React.ReactNode; style?: StyleProp<ViewStyle> }) {
   const [h, setH] = useState(0);
+  const [w, setW] = useState(0);
   const uid = useId().replace(/:/g, '');
   const stop = h > FADE ? (h - FADE) / h : 0.7;
   const at = (i: number) => String(stop + (1 - stop) * FADE_STOPS[i][0]);
   const op = (i: number) => String(FADE_STOPS[i][1]);
+  // Loops: scaled to cover the band, centred (like preserveAspectRatio slice).
+  const loopScale = Math.max(w / FLOW_W, h / FLOW_H) || 1;
+  const loopX = (w - FLOW_W * loopScale) / 2;
+  const loopY = (h - FLOW_H * loopScale) / 2;
+  // The D: as big as fits, its cap inside the band's height and width.
+  const dSize = Math.max(0, Math.round(Math.min(380, w * 0.8, (h - D_TOP) / D_CAP)));
   return (
     <View
       style={[styles.band, h === 0 && styles.bandUnmeasured, style]}
       onLayout={e => {
         const next = Math.round(e.nativeEvent.layout.height);
+        const nextW = Math.round(e.nativeEvent.layout.width);
         if (next !== h) setH(next);
+        if (nextW !== w) setW(nextW);
       }}
     >
-      {h > 0 && (
+      {h > 0 && w > 0 && (
         <View pointerEvents="none" style={StyleSheet.absoluteFill}>
           <Svg style={StyleSheet.absoluteFill} width="100%" height={h}>
             <Defs>
@@ -68,12 +88,27 @@ export function TideBand({ children, style }: { children?: React.ReactNode; styl
               </Mask>
             </Defs>
             <Rect x="0" y="0" width="100%" height={h} fill={`url(#sea-${uid})`} mask={`url(#mask-${uid})`} />
+            <G mask={`url(#mask-${uid})`}>
+              {/* The loops cover the band like the page's (slice), faint. */}
+              <G transform={`translate(${loopX} ${loopY}) scale(${loopScale})`}>
+                {FLOW_LOOPS.map((d, i) => (
+                  <Path key={i} d={d} fill="none" stroke={T.color.card} strokeOpacity={0.09}
+                    strokeWidth={2 / loopScale} />
+                ))}
+              </G>
+              <SvgText
+                x={w - dSize * D_LEAN}
+                y={D_TOP + dSize * D_CAP}
+                textAnchor="end"
+                fontFamily={FONT.heading}
+                fontSize={dSize}
+                fill={T.color.card}
+                fillOpacity={0.07}
+              >
+                D
+              </SvgText>
+            </G>
           </Svg>
-          {/* Line work stays in the solid part, above the fade. */}
-          <View style={[styles.art, { height: Math.max(0, h - FADE * 0.6) }]}>
-            <FlowLines color={T.color.card} opacity={0.09} />
-            <BigD color={T.color.card} opacity={0.06} />
-          </View>
         </View>
       )}
       {children}
@@ -183,7 +218,6 @@ export function pressPlate(pressed: boolean, depth = 4): ViewStyle | null {
 const styles = StyleSheet.create({
   band: { overflow: 'hidden', paddingBottom: FADE - 36 },
   bandUnmeasured: { backgroundColor: T.color.sea },
-  art: { position: 'absolute', top: 0, left: 0, right: 0, overflow: 'hidden' },
   mark: { overflow: 'hidden', alignItems: 'center', justifyContent: 'center' },
   markInitial: { fontFamily: FONT.heading, textAlign: 'center' },
   head: { paddingHorizontal: T.space.lg },

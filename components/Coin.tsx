@@ -3,8 +3,8 @@
 //   • a milled (reeded) edge, like real money
 //   • a domed face: light from the top left, deeper gold at the bottom right
 //   • a bevelled inner ring
-//   • the DormDash mark, the three speed stripes beside the D (as in
-//     components/Logo), struck into the face with a light lower edge
+//   • the DormDash mark, the three speed stripes beside the D, struck
+//     into the face with a light lower edge
 // Small coins (under 22px) drop the milling and the ring so they stay crisp.
 // CoinStack fans a few coins together to show an amount.
 // Decorative: the amount is always also written in text beside it.
@@ -27,8 +27,8 @@ const MILLING = (() => {
   return d;
 })();
 
-// The mark from components/Logo (viewBox 112 × 100, centre 58,50), scaled
-// to sit in the middle of the face.
+// The DormDash mark (drawn in a 112 × 100 box, centre 58,50), scaled to sit
+// in the middle of the face.
 const MARK_SCALE = 0.235;
 const MARK_T = `translate(${(20 - 58 * MARK_SCALE).toFixed(2)} ${(20 - 50 * MARK_SCALE).toFixed(2)}) scale(${MARK_SCALE})`;
 const D_PATH = 'M42 22 L82 22 A28 28 0 0 1 82 78 L42 78 Z M52 32 L52 68 L78 68 A18 18 0 0 0 78 32 Z';

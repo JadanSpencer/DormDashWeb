@@ -454,7 +454,7 @@ The app is styled like an ukiyo-e woodblock print, using **original** vector art
 - **Fonts** in `assets/fonts/` (OFL, commercial use allowed), subset to Latin: 132 KB + a 4 KB seal font containing only 寮 配 走. See `assets/fonts/README.md` to add characters.
 - **`components/Backdrop.tsx`** (replaces TopoBackground; first child of every screen root, and of the full-screen loading / not-found views): seigaiha pattern in bands at the top and bottom that fade out behind content. **Pattern only**: an etched wave and sakura petals were tried and removed at the owner's request (27 Sep).
 - **`components/Seal.tsx`:** vermilion hanko with 寮 ("dormitory") beside the wordmark on sign-in and register.
-- **Logo** (`components/Logo.tsx`): the D with three solid speed stripes (short, long, short). The earlier gradient stripes didn't render on the web.
+- **Logo:** the generated SVG logo (`components/Logo.tsx`) was removed on 28 Sep; screens use the real app icon image (see "Login, order drawers, header D" below).
 - **Money section** (`components/WalletCard.tsx`, `components/Coin.tsx`): gold DormDash coins (original SVG, the D struck in the centre), a banknote-style balance band (`goldTint`), coin-stack token packs (1–4 coins by size) with indigo price pills, and a ledger for recent activity. Gold tokens in `T.color`: `gold` / `goldLight` are for graphics only; `goldDeep` passes AA as text.
 - **Rules:** the pattern stays at the edges and faint; the middle of the screen stays clear for content. No large filled shapes, glows, gradients on text, or a filled red sun (that is an "orb"). New screens and full-screen states add `<Backdrop tone="…" />`. Check changes with `npm run preview:web` screenshots before shipping.
 
@@ -542,7 +542,7 @@ On iOS, notifications only work in the Home Screen app, and websites can't show 
 - **Money** (`components/Money.tsx`): "J$" set smaller than the digits, tabular figures, on menu prices, cart/checkout lines and totals, order amounts.
 - "LIVE" badge is now "Live" (no all-caps).
 - Design QA: `?slow=3000` on any preview URL delays the fake data so loading states can be seen.
-- **Token coin** (`components/Coin.tsx`, 28 Sep): a struck coin with a milled edge, a domed gold face (radial light from the top left, `goldShade` bottom right), a bevelled inner ring, and the full DormDash mark (three speed stripes beside the D, as in `components/Logo`) struck in with a light lower edge. Under 22px the milling and ring are dropped so it stays crisp. Balance coin is 60px.
+- **Token coin** (`components/Coin.tsx`, 28 Sep): a struck coin with a milled edge, a domed gold face (radial light from the top left, `goldShade` bottom right), a bevelled inner ring, and the full DormDash mark (three speed stripes beside the D) struck in with a light lower edge. Under 22px the milling and ring are dropped so it stays crisp. Balance coin is 60px.
 
 ### Sign in with Google (2026-09-28, web / PWA)
 "Continue with Google" on sign-in and sign-up, for students and dashers (`signInWithGoogle` in services/auth.ts, `components/GoogleButton.tsx`).
@@ -586,4 +586,9 @@ The student screens, sign-in and sign-up now match the UWI Mona launch flyer (Do
 - `vercel.json` proxies `/api/wipay-return` and `/__/*` to Firebase Hosting (card payments and Google sign-in broke on Vercel).
 - WiPay: checked the API document (p. 35): the return `hash` is sent for successful transactions only, so a declined return can't be edited into a success. No change needed.
 - Privacy policy: says open orders are visible to online dashers (not just "your dasher"), lists group search data, and the new deletion conditions.
+
+### Login, order drawers, header D (2026-09-28)
+- **Sign-in:** the real app icon (`/brand/dormdash-tile.png` on web, `assets/icon.png` on native, the same tile as the launch intro) and "DormDash", centred; the "Hungry? Don't move." headline stays left. The generated SVG logo component was deleted.
+- **Orders tab:** with more than one order in progress, each is a drawer (one row: store, status, code, amount; "Payment needed" stays visible while closed). One open at a time; tap the chevron to collapse. One order looks as before.
+- **Header D and loops** (`TideBand`, components/Tide.tsx): drawn inside the band's SVG under its fade mask, so they dissolve into the page instead of stopping at a hard edge. The D is sized to fit the band (never cropped at the top or right). Applies to every student header, sign-in and sign-up.
 
