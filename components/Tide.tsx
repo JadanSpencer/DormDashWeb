@@ -59,9 +59,15 @@ function WaveFill({ r, canvas, ink, opacity }: { r: number; canvas: string; ink:
 
 // ─── The sea band ─────────────────────────────────────────────────────────
 // The last FADE px of the band dissolve into the page, so the sea and the
-// page's pattern run into each other with no edge. Content stays clear of
-// the fade (paddingBottom), so cream text always sits on solid sea.
-const FADE = 84;
+// page's pattern run into each other with no edge. The band's waves are
+// the same size and start from the same point as the page's (Backdrop), so
+// in the fade the two line up and it reads as one set of waves changing
+// colour, not two patterns crossing. The fade follows an ease curve (no
+// visible start or end line). Content stays in the top of the fade, where
+// the sea is still ~90% solid, so cream text keeps its contrast.
+const FADE = 110;
+// Smoothstep samples: opacity at points through the fade.
+const FADE_STOPS: [number, number][] = [[0, 1], [0.2, 0.9], [0.4, 0.66], [0.6, 0.34], [0.8, 0.1], [1, 0]];
 
 /**
  * The sea band that opens a student screen. Content goes inside (cream
@@ -71,6 +77,8 @@ export function TideBand({ children, style }: { children?: React.ReactNode; styl
   const [h, setH] = useState(0);
   const uid = useId().replace(/:/g, '');
   const stop = h > FADE ? (h - FADE) / h : 0.7;
+  const at = (i: number) => String(stop + (1 - stop) * FADE_STOPS[i][0]);
+  const op = (i: number) => String(FADE_STOPS[i][1]);
   return (
     <View
       style={[styles.band, h === 0 && styles.bandUnmeasured, style]}
@@ -87,9 +95,12 @@ export function TideBand({ children, style }: { children?: React.ReactNode; styl
             </Pattern>
             <LinearGradient id={`fade-${uid}`} x1="0" y1="0" x2="0" y2={h} gradientUnits="userSpaceOnUse">
               <Stop offset="0" stopColor="#fff" stopOpacity="1" />
-              <Stop offset={String(stop)} stopColor="#fff" stopOpacity="1" />
-              <Stop offset={String(stop + (1 - stop) * 0.55)} stopColor="#fff" stopOpacity="0.35" />
-              <Stop offset="1" stopColor="#fff" stopOpacity="0" />
+              <Stop offset={at(0)} stopColor="#fff" stopOpacity={op(0)} />
+              <Stop offset={at(1)} stopColor="#fff" stopOpacity={op(1)} />
+              <Stop offset={at(2)} stopColor="#fff" stopOpacity={op(2)} />
+              <Stop offset={at(3)} stopColor="#fff" stopOpacity={op(3)} />
+              <Stop offset={at(4)} stopColor="#fff" stopOpacity={op(4)} />
+              <Stop offset={at(5)} stopColor="#fff" stopOpacity={op(5)} />
             </LinearGradient>
             <Mask id={`mask-${uid}`} maskUnits="userSpaceOnUse" x="0" y="0" width="100%" height={h}>
               <Rect x="0" y="0" width="100%" height={h} fill={`url(#fade-${uid})`} />
@@ -210,7 +221,7 @@ export function pressPlate(pressed: boolean, depth = 4): ViewStyle | null {
 }
 
 const styles = StyleSheet.create({
-  band: { overflow: 'hidden', paddingBottom: FADE - 12 },
+  band: { overflow: 'hidden', paddingBottom: FADE - 36 },
   bandUnmeasured: { backgroundColor: T.color.sea },
   mark: { overflow: 'hidden', alignItems: 'center', justifyContent: 'center' },
   markInitial: { fontFamily: FONT.heading, color: T.color.card, textAlign: 'center' },

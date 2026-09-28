@@ -289,9 +289,7 @@ const styles = StyleSheet.create({
     backgroundColor: T.color.card,
     borderRadius: T.radius.pill,
     height: 52, paddingHorizontal: T.space.md,
-    borderWidth: 2, borderColor: T.color.card,
     gap: T.space.sm,
-    ...T.plate.sea,
   },
   searchIcon: { fontSize: 18, color: T.color.cerulean, fontWeight: '700' },
   // No focus ring inside the pill (web draws one on the input by default).

@@ -107,11 +107,14 @@ export const Backdrop = React.memo(function Backdrop({
 });
 
 // ─── Students: the whole page, cerulean fading to teal ─────────────────────
+// Drawn in real pixels (no viewBox scaling) from the top-left of the screen,
+// with the same wave size as the sea header (components/Tide), so where the
+// header fades out the two patterns line up exactly.
 const TideBackdrop = React.memo(function TideBackdrop() {
   const canvas = T.color.cream;
   return (
     <View pointerEvents="none" style={StyleSheet.absoluteFill}>
-      <Svg width="100%" height="100%" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMid slice">
+      <Svg width="100%" height="100%">
         <Defs>
           <Pattern id="tide-cer" patternUnits="userSpaceOnUse" width={2 * R} height={R}>
             <SeigaihaTile canvas={canvas} ink={T.color.cerulean} opacity={0.16} />
@@ -122,26 +125,26 @@ const TideBackdrop = React.memo(function TideBackdrop() {
           {/* Cerulean: strong at the top, a whisper by the bottom. */}
           <LinearGradient id="tide-cer-g" x1="0" y1="0" x2="0" y2="1">
             <Stop offset="0" stopColor="#fff" stopOpacity="1" />
-            <Stop offset="0.3" stopColor="#fff" stopOpacity="0.55" />
+            <Stop offset="0.3" stopColor="#fff" stopOpacity="0.6" />
             <Stop offset="0.65" stopColor="#fff" stopOpacity="0.35" />
-            <Stop offset="1" stopColor="#fff" stopOpacity="0" />
+            <Stop offset="1" stopColor="#fff" stopOpacity="0.05" />
           </LinearGradient>
           {/* Teal: rises through the lower half. */}
           <LinearGradient id="tide-teal-g" x1="0" y1="0" x2="0" y2="1">
             <Stop offset="0" stopColor="#fff" stopOpacity="0" />
-            <Stop offset="0.45" stopColor="#fff" stopOpacity="0.15" />
-            <Stop offset="0.8" stopColor="#fff" stopOpacity="0.7" />
+            <Stop offset="0.45" stopColor="#fff" stopOpacity="0.12" />
+            <Stop offset="0.8" stopColor="#fff" stopOpacity="0.65" />
             <Stop offset="1" stopColor="#fff" stopOpacity="1" />
           </LinearGradient>
-          <Mask id="tide-cer-m" maskUnits="userSpaceOnUse" x="0" y="0" width={W} height={H}>
-            <Rect x="0" y="0" width={W} height={H} fill="url(#tide-cer-g)" />
+          <Mask id="tide-cer-m">
+            <Rect x="0" y="0" width="100%" height="100%" fill="url(#tide-cer-g)" />
           </Mask>
-          <Mask id="tide-teal-m" maskUnits="userSpaceOnUse" x="0" y="0" width={W} height={H}>
-            <Rect x="0" y="0" width={W} height={H} fill="url(#tide-teal-g)" />
+          <Mask id="tide-teal-m">
+            <Rect x="0" y="0" width="100%" height="100%" fill="url(#tide-teal-g)" />
           </Mask>
         </Defs>
-        <Rect x="0" y="0" width={W} height={H} fill="url(#tide-cer)" mask="url(#tide-cer-m)" />
-        <Rect x="0" y="0" width={W} height={H} fill="url(#tide-teal)" mask="url(#tide-teal-m)" />
+        <Rect x="0" y="0" width="100%" height="100%" fill="url(#tide-cer)" mask="url(#tide-cer-m)" />
+        <Rect x="0" y="0" width="100%" height="100%" fill="url(#tide-teal)" mask="url(#tide-teal-m)" />
       </Svg>
     </View>
   );
