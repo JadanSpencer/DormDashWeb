@@ -47,6 +47,12 @@ export const T = {
     shu: '#B7412E',          // vermilion (shu-iro): 5.1:1 on cream
     shuTint: '#F6E4DF',
 
+    // Money (DormDash tokens): coin graphics and the wallet's banknote band
+    gold: '#D4A537',         // coin face (graphic only, never text)
+    goldDeep: '#7A5710',     // coin rim and stamp; 5.9:1 as text on goldTint
+    goldLight: '#F0D27A',    // coin highlight
+    goldTint: '#FBF3DC',     // wallet header band
+
     // Support
     teal: '#0A7D6E',         // AA as small text on cream (was #0FA893, 2.8:1)
     tealDeep: '#0B8676',

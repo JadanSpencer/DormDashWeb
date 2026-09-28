@@ -26,6 +26,7 @@ import { DDAlertHost } from '../components/DDAlertHost';
 import { installWebAlert } from '../services/webAlert';
 import { syncServerClock } from '../services/serverClock';
 import { installLiveSync, resyncLiveData } from '../services/liveSync';
+import { Backdrop } from '../components/Backdrop';
 
 // Web/PWA only: make Alert.alert work in the browser (no-op on native).
 installWebAlert();
@@ -108,6 +109,7 @@ function RouteGuard({ introDone }: { introDone: boolean }) {
   if (loading) {
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: T.color.cream }}>
+        <Backdrop tone="cream" />
         <ActivityIndicator size="large" color={T.color.cerulean} />
       </View>
     );
@@ -146,7 +148,7 @@ export default function RootLayout() {
     [FONT.seal]: require('../assets/fonts/YujiSyuku-Seal.ttf'),
   });
   if (!fontsLoaded && !fontError) {
-    return <View style={{ flex: 1, backgroundColor: T.color.cream }} />;
+    return <View style={{ flex: 1, backgroundColor: T.color.cream }}><Backdrop tone="cream" /></View>;
   }
   return (
     <AuthProvider>

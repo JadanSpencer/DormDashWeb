@@ -15,6 +15,7 @@ import { View } from 'react-native';
 import { router } from 'expo-router';
 import { useAuth } from '../hooks/useAuth';
 import { T } from '../constants/theme';
+import { Backdrop } from '../components/Backdrop';
 
 export default function Index() {
   const { user, loading } = useAuth();
@@ -39,5 +40,5 @@ export default function Index() {
     return () => clearTimeout(t);
   }, [loading, user]);
 
-  return <View style={{ flex: 1, backgroundColor: T.color.cream }} />;
+  return <View style={{ flex: 1, backgroundColor: T.color.cream }}><Backdrop tone="cream" /></View>;
 }

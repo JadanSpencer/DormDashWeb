@@ -228,6 +228,7 @@ export default function OrderTracking() {
   if (loading) {
     return (
       <View style={styles.centerFill}>
+        <Backdrop tone="cream" />
         <ActivityIndicator color={T.color.cerulean} size="large" />
       </View>
     );
@@ -236,6 +237,7 @@ export default function OrderTracking() {
   if (!order) {
     return (
       <View style={styles.centerFill}>
+        <Backdrop tone="cream" />
         <View style={styles.notFoundTile}><Text style={styles.notFoundMark}>?</Text></View>
         <Text style={styles.notFoundTitle}>Order not found</Text>
         <Pressable

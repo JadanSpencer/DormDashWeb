@@ -185,7 +185,7 @@ export default function StudentHome() {
 
   return (
     <View style={styles.root}>
-      <Backdrop tone="cream" variant="petals" />
+      <Backdrop tone="cream" />
       <ScrollView
         showsVerticalScrollIndicator={false}
         refreshControl={

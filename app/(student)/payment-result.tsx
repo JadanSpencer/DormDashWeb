@@ -68,7 +68,7 @@ export default function PaymentResult() {
   const { pay, loaded } = usePayment<Pay>(pid ? String(pid) : undefined);
 
   if (!loaded) {
-    return <View style={styles.center}><ActivityIndicator color={T.color.cerulean} size="large" /></View>;
+    return <View style={styles.center}><Backdrop tone="cream" /><ActivityIndicator color={T.color.cerulean} size="large" /></View>;
   }
 
   const ok = pay?.status === 'paid' || pay?.status === 'credited';

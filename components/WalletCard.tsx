@@ -1,14 +1,17 @@
 // components/WalletCard.tsx
 // Student Profile: DormDash token balance, buy tokens by card (WiPay), how to
 // get tokens with cash, recent token activity, and the J$ / Tokens switch.
+// Styled as the app's money section: gold coins (components/Coin), a
+// banknote-style balance band, coin-stack packs and a ledger.
 // Read-only view of data that only Cloud Functions can change.
 
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, Pressable, ActivityIndicator, Alert } from 'react-native';
-import { T } from '../constants/theme';
+import { FONT, T } from '../constants/theme';
 import { formatJMD } from '../constants';
 import { useWallet, useWalletHistory } from '../hooks/useWallet';
-import { buyTokens, formatTokens, TOKEN_JMD, TOKEN_PACKS } from '../services/payments';
+import { buyTokens, formatTokens, jmdToTokens, TOKEN_JMD, TOKEN_PACKS } from '../services/payments';
+import { Coin, CoinStack } from './Coin';
 import { PriceUnitToggle } from './PriceUnitToggle';
 
 const TX_LABEL: Record<string, string> = {
@@ -38,83 +41,132 @@ export function WalletCard({ uid }: { uid: string }) {
     }
   };
 
+  const balance = Math.round(jmdToTokens(wallet.availableJmd) * 100) / 100;
+
   return (
     <View style={styles.card}>
-      <View style={styles.balanceRow}>
+      {/* Balance, on a gold band like the strip on a banknote. */}
+      <View style={styles.band}>
+        <Coin size={52} />
         <View style={{ flex: 1 }}>
-          <Text style={styles.label}>Token balance</Text>
+          <Text style={styles.bandLabel}>Token balance</Text>
           {wallet.loaded
-            ? <Text style={styles.balance}>{formatTokens(wallet.availableJmd)}</Text>
-            : <ActivityIndicator color={T.color.cerulean} style={{ alignSelf: 'flex-start' }} />}
-          <Text style={styles.sub}>
-            1 token = {formatJMD(TOKEN_JMD)}
-            {wallet.reservedJmd > 0 ? ` · ${formatTokens(wallet.reservedJmd)} held for open orders` : ''}
+            ? <Text style={styles.balance} accessibilityLabel={formatTokens(wallet.availableJmd)}>
+                {balance.toLocaleString('en-JM', { maximumFractionDigits: 2 })}
+                <Text style={styles.balanceUnit}>{balance === 1 ? ' token' : ' tokens'}</Text>
+              </Text>
+            : <ActivityIndicator color={T.color.goldDeep} style={{ alignSelf: 'flex-start', marginVertical: 8 }} />}
+          <Text style={styles.bandSub}>
+            Worth {formatJMD(wallet.availableJmd)} · 1 token = {formatJMD(TOKEN_JMD)}
           </Text>
         </View>
       </View>
 
-      <Text style={styles.label}>Show prices in</Text>
-      <PriceUnitToggle />
+      <View style={styles.body}>
+        {wallet.reservedJmd > 0 && (
+          <View style={styles.held}>
+            <Coin size={16} />
+            <Text style={styles.heldText}>{formatTokens(wallet.reservedJmd)} held for open orders</Text>
+          </View>
+        )}
 
-      <Text style={[styles.label, { marginTop: T.space.sm }]}>Buy tokens by card</Text>
-      <View style={styles.packs}>
-        {TOKEN_PACKS.map(p => (
-          <Pressable
-            key={p}
-            onPress={() => buy(p)}
-            disabled={!!busyPack}
-            style={({ pressed }) => [styles.pack, (pressed || busyPack === p) && { opacity: 0.8 }]}
-            accessibilityRole="button"
-            accessibilityLabel={`Buy ${p} tokens for ${formatJMD(p * TOKEN_JMD)}`}
-          >
-            {busyPack === p
-              ? <ActivityIndicator color={T.color.card} />
-              : <>
-                  <Text style={styles.packTokens}>{p} tokens</Text>
-                  <Text style={styles.packPrice}>{formatJMD(p * TOKEN_JMD)}</Text>
-                </>}
-          </Pressable>
-        ))}
-      </View>
-      <Text style={styles.fine}>
-        Paid on WiPay's secure page (card fee added by WiPay). Paying cash? A DormDash admin can add tokens for you.
-      </Text>
+        <Text style={styles.label}>Show prices in</Text>
+        <PriceUnitToggle />
 
-      {tx.length > 0 && (
-        <>
-          <Text style={[styles.label, { marginTop: T.space.sm }]}>Recent activity</Text>
-          {tx.map(r => (
-            <View key={r.id} style={styles.txRow}>
-              <Text style={styles.txText} numberOfLines={1}>{TX_LABEL[r.type] ?? 'Balance change'}</Text>
-              <Text style={[styles.txAmt, { color: r.amountJmd < 0 ? T.color.inkSoft : T.color.teal }]}>
-                {r.amountJmd > 0 ? '+' : r.amountJmd < 0 ? '−' : ''}{formatTokens(Math.abs(r.amountJmd))}
-              </Text>
-            </View>
+        <Text style={[styles.label, { marginTop: T.space.sm }]}>Buy tokens by card</Text>
+        <View style={styles.packs}>
+          {TOKEN_PACKS.map(p => (
+            <Pressable
+              key={p}
+              onPress={() => buy(p)}
+              disabled={!!busyPack}
+              style={({ pressed }) => [styles.pack, (pressed || busyPack === p) && styles.packPressed]}
+              accessibilityRole="button"
+              accessibilityLabel={`Buy ${p} tokens for ${formatJMD(p * TOKEN_JMD)}`}
+            >
+              {busyPack === p
+                ? <ActivityIndicator color={T.color.goldDeep} />
+                : <>
+                    <CoinStack count={COINS_FOR_PACK[p] ?? 1} size={24} />
+                    <Text style={styles.packTokens}>{p} tokens</Text>
+                    <View style={styles.pricePill}>
+                      <Text style={styles.priceText}>{formatJMD(p * TOKEN_JMD)}</Text>
+                    </View>
+                  </>}
+            </Pressable>
           ))}
-        </>
-      )}
+        </View>
+        <Text style={styles.fine}>
+          Paid on WiPay's secure page (card fee added by WiPay). Paying cash? A DormDash admin can add tokens for you.
+        </Text>
+
+        {tx.length > 0 && (
+          <>
+            <Text style={[styles.label, { marginTop: T.space.sm }]}>Recent activity</Text>
+            <View style={styles.ledger}>
+              {tx.map((r, i) => {
+                const into = r.amountJmd > 0;
+                return (
+                  <View key={r.id} style={[styles.txRow, i < tx.length - 1 && styles.txDivider]}>
+                    <View style={[styles.txIcon, !into && { opacity: 0.45 }]}><Coin size={18} /></View>
+                    <Text style={styles.txText} numberOfLines={1}>{TX_LABEL[r.type] ?? 'Balance change'}</Text>
+                    <Text style={[styles.txAmt, { color: into ? T.color.teal : T.color.inkSoft }]}>
+                      {into ? '+' : r.amountJmd < 0 ? '−' : ''}{formatTokens(Math.abs(r.amountJmd))}
+                    </Text>
+                  </View>
+                );
+              })}
+            </View>
+          </>
+        )}
+      </View>
     </View>
   );
 }
 
+// How many coins each pack shows: a bigger pack, a bigger stack.
+const COINS_FOR_PACK: Record<number, number> = { 5: 1, 10: 2, 20: 3, 50: 4 };
+
 const styles = StyleSheet.create({
   card: {
     backgroundColor: T.color.card, marginHorizontal: T.space.lg, borderRadius: T.radius.lg,
-    borderWidth: 1, borderColor: T.color.line, padding: T.space.md, gap: 8,
+    borderWidth: 1, borderColor: 'rgba(122, 87, 16, 0.22)', overflow: 'hidden',
   },
-  balanceRow: { flexDirection: 'row', alignItems: 'center' },
+  band: {
+    flexDirection: 'row', alignItems: 'center', gap: 14,
+    backgroundColor: T.color.goldTint, padding: T.space.md,
+    borderBottomWidth: 1, borderBottomColor: 'rgba(122, 87, 16, 0.18)',
+  },
+  bandLabel: { ...T.type.label, color: T.color.goldDeep },
+  balance: { fontFamily: FONT.heading, fontSize: 32, lineHeight: 40, color: T.color.ink },
+  balanceUnit: { fontFamily: FONT.heading, fontSize: 17, color: T.color.inkSoft },
+  bandSub: { fontSize: 12, color: T.color.inkSoft },
+  body: { padding: T.space.md, gap: 8 },
+  held: {
+    flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start',
+    backgroundColor: T.color.creamDeep, borderRadius: T.radius.pill, paddingHorizontal: 10, paddingVertical: 5,
+  },
+  heldText: { fontSize: 12, fontWeight: '700', color: T.color.inkSoft },
   label: { ...T.type.label, color: T.color.inkSoft },
-  balance: { fontSize: 28, fontWeight: '900', color: T.color.cerulean, letterSpacing: -0.6 },
-  sub: { fontSize: 12, color: T.color.inkSoft },
-  packs: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  packs: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   pack: {
-    flexGrow: 1, flexBasis: '45%', minHeight: 56, borderRadius: T.radius.md,
-    backgroundColor: T.color.cerulean, alignItems: 'center', justifyContent: 'center', paddingVertical: 8,
+    flexGrow: 1, flexBasis: '45%', minHeight: 116, borderRadius: T.radius.md,
+    backgroundColor: T.color.card, borderWidth: 1.5, borderColor: 'rgba(212, 165, 55, 0.6)',
+    alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 12,
   },
-  packTokens: { color: T.color.card, fontSize: 15, fontWeight: '900' },
-  packPrice: { color: T.color.card, fontSize: 12, fontWeight: '700', opacity: 0.9 },
+  packPressed: { backgroundColor: T.color.goldTint, transform: [{ scale: 0.98 }] },
+  packTokens: { fontFamily: FONT.heading, fontSize: 18, color: T.color.ink },
+  pricePill: {
+    backgroundColor: T.color.cerulean, borderRadius: T.radius.pill, paddingHorizontal: 12, paddingVertical: 4,
+  },
+  priceText: { color: T.color.card, fontSize: 13, fontWeight: '800' },
   fine: { fontSize: 11, lineHeight: 16, color: T.color.inkFaint },
-  txRow: { flexDirection: 'row', justifyContent: 'space-between', gap: 8, paddingVertical: 4 },
+  ledger: {
+    borderRadius: T.radius.md, borderWidth: 1, borderColor: T.color.line, paddingHorizontal: 12,
+  },
+  txRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10 },
+  txDivider: { borderBottomWidth: 1, borderBottomColor: T.color.line, borderStyle: 'dashed' },
+  txIcon: { width: 18, height: 18 },
   txText: { flex: 1, fontSize: 13, color: T.color.ink },
   txAmt: { fontSize: 13, fontWeight: '800' },
 });
