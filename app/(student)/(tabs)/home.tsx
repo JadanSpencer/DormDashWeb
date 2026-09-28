@@ -105,7 +105,6 @@ export default function StudentHome() {
   const { stores, loading, refresh, refreshedAt } = useStores();
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
-  const [searchFocused, setSearchFocused] = useState(false);
 
   // Entrance motion
   const headerFade = useRef(new Animated.Value(0.5)).current;
@@ -164,7 +163,7 @@ export default function StudentHome() {
           </Animated.View>
 
           <View style={styles.searchWrap}>
-            <View style={[styles.search, searchFocused && styles.searchFocused]}>
+            <View style={styles.search}>
               <Text style={styles.searchIcon}>⌕</Text>
               <TextInput
                 style={styles.searchInput}
@@ -172,8 +171,6 @@ export default function StudentHome() {
                 placeholderTextColor={T.color.inkFaint}
                 value={searchQuery}
                 onChangeText={setSearchQuery}
-                onFocus={() => setSearchFocused(true)}
-                onBlur={() => setSearchFocused(false)}
                 returnKeyType="search"
               />
               {searchQuery.length > 0 && (
@@ -296,9 +293,9 @@ const styles = StyleSheet.create({
     gap: T.space.sm,
     ...T.plate.sea,
   },
-  searchFocused: { borderColor: T.color.tealBright },
   searchIcon: { fontSize: 18, color: T.color.cerulean, fontWeight: '700' },
-  searchInput: { flex: 1, ...T.type.body, color: T.color.ink, fontSize: 15 },
+  // No focus ring inside the pill (web draws one on the input by default).
+  searchInput: { flex: 1, ...T.type.body, color: T.color.ink, fontSize: 15, outlineStyle: 'none', borderWidth: 0 } as any,
   searchClear: { color: T.color.inkFaint, fontSize: 16, fontWeight: '700' },
 
   // Chips: teal plates
