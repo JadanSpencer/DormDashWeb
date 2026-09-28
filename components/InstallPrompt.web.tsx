@@ -26,9 +26,19 @@
 //     us, because the Home Screen app and Safari keep separate storage).
 // If the browser later offers to install again (beforeinstallprompt), that
 // means it was uninstalled, so the card comes back.
+//
+// iPHONE / iPAD: a full-screen warning instead (IOSInstallGate below). On
+// iOS, notifications only work in the Home Screen app, and there is no
+// install button a website can offer, so people have to follow the steps.
+// It covers the screen whenever DormDash is open in a browser tab (signed in
+// or not: the Home Screen app has its own sign-in, so installing first saves
+// signing in twice). "Continue without alerts" appears after a few seconds
+// and only lasts for this visit.
 import React, { useEffect, useState } from 'react';
 import { View, Text, Pressable, StyleSheet, Image, ScrollView } from 'react-native';
-import { T } from '../constants/theme';
+import { T, FONT } from '../constants/theme';
+import { PAY_WINDOW_MIN } from '../constants';
+import { TideBand, pressPlate } from './Tide';
 import { enableWebPush, webPushPermission } from '../services/notifications';
 
 const INSTALL_KEY = 'dd_install_dismissed_at';
@@ -154,7 +164,107 @@ function snooze(key: string) {
   store(key, String(Date.now()));
 }
 
+// ─── iPhone / iPad: full-screen "add to Home Screen" warning ─────────────
+const IOS_SKIP_KEY = 'dd_ios_gate_skipped'; // sessionStorage: this visit only
+const IOS_SKIP_DELAY_MS = 6000;             // read first, then the way out
+
+// Links opened inside Instagram, TikTok, Snapchat, Facebook, Gmail's or
+// Google's app, etc. can't be added to the Home Screen from there.
+function inAppBrowser() {
+  return /Instagram|FBAN|FBAV|FB_IAB|TikTok|musical_ly|Snapchat|Line\/|GSA\/|LinkedInApp|Twitter/i.test(navigator.userAgent);
+}
+function iosNonSafari() {
+  return /CriOS|EdgiOS|FxiOS|OPiOS/.test(navigator.userAgent);
+}
+
+function needsIOSGate(role?: string) {
+  if (typeof window === 'undefined' || !isIOS() || isStandalone()) return false;
+  if (role === 'admin') return false;
+  if (read(INSTALLED_KEY) === '1') return false;
+  // Coming back from the card payment page, or reading the legal pages.
+  if (/^\/(payment-result|legal)/.test(window.location.pathname)) return false;
+  try { if (sessionStorage.getItem(IOS_SKIP_KEY)) return false; } catch {}
+  return true;
+}
+
+function IOSInstallGate({ onClose }: { onClose: () => void }) {
+  const [canSkip, setCanSkip] = useState(false);
+  const [copied, setCopied] = useState(false);
+  useEffect(() => {
+    const t = setTimeout(() => setCanSkip(true), IOS_SKIP_DELAY_MS);
+    return () => clearTimeout(t);
+  }, []);
+
+  const wrongBrowser = inAppBrowser() || iosNonSafari();
+  const link = window.location.origin;
+  const copy = async () => {
+    try { await navigator.clipboard.writeText(link); setCopied(true); } catch { setCopied(false); }
+  };
+  const added = () => { store(INSTALLED_KEY, '1'); onClose(); };
+  const skip = () => {
+    try { sessionStorage.setItem(IOS_SKIP_KEY, '1'); } catch {}
+    onClose();
+  };
+
+  const steps: { n: number; text: React.ReactNode }[] = [
+    ...(wrongBrowser ? [{ n: 0, text: <>Open <Text style={gate.strong}>{link.replace(/^https?:\/\//, '')}</Text> in <Text style={gate.strong}>Safari</Text></> }] : []),
+    { n: 0, text: <>Tap <Text style={gate.key}> ⋯ </Text> at the bottom of Safari</> },
+    { n: 0, text: <>Tap <Text style={gate.key}> More </Text></> },
+    { n: 0, text: <>Tap <Text style={gate.key}> Add to Home Screen </Text>, then Add</> },
+    { n: 0, text: <>Open DormDash from your <Text style={gate.strong}>Home Screen</Text>. Done.</> },
+  ].map((st, i) => ({ ...st, n: i + 1 }));
+
+  return (
+    <View style={gate.screen} accessibilityRole="alert" accessibilityViewIsModal>
+      <ScrollView contentContainerStyle={gate.scroll} bounces={false}>
+        <TideBand>
+          <View style={gate.head}>
+            <View style={gate.warnMark}><Text style={gate.warnMarkText}>!</Text></View>
+            <Text style={gate.kicker}>iPhone users, read this</Text>
+            <Text style={gate.title}>Add DormDash to your Home Screen</Text>
+            <Text style={gate.warn}>
+              Skip this and you <Text style={gate.warnStrong}>won't get order alerts</Text>. Miss the "Pay now" alert and your order is cancelled after {PAY_WINDOW_MIN} minutes.
+            </Text>
+          </View>
+        </TideBand>
+
+        <View style={gate.body}>
+          <Text style={gate.takes}>Takes 10 seconds:</Text>
+          {steps.map(st => (
+            <View key={st.n} style={gate.step}>
+              <View style={gate.num}><Text style={gate.numText}>{st.n}</Text></View>
+              <Text style={gate.stepText}>{st.text}</Text>
+            </View>
+          ))}
+          {wrongBrowser && (
+            <Pressable onPress={copy} style={({ pressed }) => [gate.copy, pressPlate(pressed, 3)]} accessibilityRole="button">
+              <Text style={gate.copyText}>{copied ? 'Link copied. Paste it in Safari.' : 'Copy the link'}</Text>
+            </Pressable>
+          )}
+          <Text style={gate.older}>Older iPhone? Tap the Share button (square with an arrow), then Add to Home Screen.</Text>
+
+          <Pressable onPress={added} style={({ pressed }) => [gate.primary, pressPlate(pressed)]} accessibilityRole="button">
+            <Text style={gate.primaryText}>I've added it</Text>
+          </Pressable>
+          {canSkip ? (
+            <Pressable onPress={skip} style={gate.skip} accessibilityRole="button">
+              <Text style={gate.skipText}>Continue without alerts</Text>
+            </Pressable>
+          ) : <View style={gate.skip} />}
+        </View>
+      </ScrollView>
+    </View>
+  );
+}
+
 export function InstallPrompt({ uid, role }: { uid?: string | null; role?: string }) {
+  const [iosGate, setIosGate] = useState(() => needsIOSGate(role));
+  useEffect(() => { setIosGate(needsIOSGate(role)); }, [role]);
+  if (iosGate) return <IOSInstallGate onClose={() => setIosGate(false)} />;
+  return <InstallCard uid={uid} role={role} />;
+}
+
+function InstallCard({ uid, role }: { uid?: string | null; role?: string }) {
   const [mode, setMode] = useState<Mode>('hidden');
   const [busy, setBusy] = useState(false);
   const [showAll, setShowAll] = useState(false);
@@ -182,7 +292,9 @@ export function InstallPrompt({ uid, role }: { uid?: string | null; role?: strin
     let cancelled = false;
 
     const decide = async () => {
-      if (!(await isInstalled()) && !snoozed(INSTALL_KEY)) {
+      // iPhone browser tab: IOSInstallGate already asked this visit.
+      const iosTab = isIOS() && !isStandalone();
+      if (!iosTab && !(await isInstalled()) && !snoozed(INSTALL_KEY)) {
         return !cancelled && setMode(m => (m === 'steps' ? m : 'ask'));
       }
       const next = await alertsMode();
@@ -377,7 +489,7 @@ const styles = StyleSheet.create({
     backgroundColor: T.color.cerulean, borderRadius: T.radius.pill,
     paddingHorizontal: 16, paddingVertical: 8,
   },
-  primaryText: { color: '#FFFFFF', fontWeight: '700', fontSize: 14 },
+  primaryText: { color: T.color.card, fontWeight: '700', fontSize: 14 },
   secondary: { paddingHorizontal: 12, paddingVertical: 8 },
   secondaryText: { color: T.color.inkSoft, fontWeight: '700', fontSize: 14 },
   allList: { maxHeight: 220, marginTop: T.space.sm },
@@ -385,4 +497,56 @@ const styles = StyleSheet.create({
   allLabel: { fontSize: 13, fontWeight: '800', color: T.color.ink, marginTop: 4 },
   link: { alignSelf: 'flex-start', paddingVertical: 4, marginTop: 2 },
   linkText: { color: T.color.inkSoft, fontSize: 12, textDecorationLine: 'underline' },
+});
+
+const gate = StyleSheet.create({
+  screen: {
+    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 100,
+    backgroundColor: T.color.cream,
+  },
+  scroll: { flexGrow: 1 },
+  head: { paddingHorizontal: T.space.lg, paddingTop: T.space.xl + 8, paddingBottom: T.space.xl, maxWidth: 520 },
+  warnMark: {
+    width: 52, height: 52, borderRadius: T.radius.md, backgroundColor: T.color.shu,
+    alignItems: 'center', justifyContent: 'center', marginBottom: T.space.md,
+    borderWidth: 2, borderColor: T.color.card, ...T.plate.sea,
+  },
+  warnMarkText: { fontFamily: FONT.heading, fontSize: 32, lineHeight: 40, color: T.color.card },
+  kicker: { fontSize: 15, fontWeight: '800', color: T.color.seaFoam, marginBottom: 4 },
+  title: { ...T.type.display, fontSize: 36, lineHeight: 42, color: T.color.card },
+  warn: { fontSize: 17, lineHeight: 25, fontWeight: '600', color: T.color.seaSoft, marginTop: T.space.md },
+  warnStrong: { color: T.color.card, fontWeight: '900' },
+
+  body: { paddingHorizontal: T.space.lg, paddingTop: T.space.lg, paddingBottom: T.space.xl, gap: T.space.md, maxWidth: 520 },
+  takes: { ...T.type.title, fontSize: 22, color: T.color.ink },
+  step: {
+    flexDirection: 'row', alignItems: 'center', gap: T.space.md,
+    backgroundColor: T.color.card, borderRadius: T.radius.lg, padding: T.space.md,
+    borderWidth: 1.5, borderColor: T.color.line, ...T.plate.card,
+  },
+  num: {
+    width: 40, height: 40, borderRadius: 20, backgroundColor: T.color.teal,
+    alignItems: 'center', justifyContent: 'center', ...T.plate.teal, shadowOffset: { width: 0, height: 2 },
+  },
+  numText: { fontFamily: FONT.heading, fontSize: 20, color: T.color.card },
+  stepText: { flex: 1, fontSize: 17, lineHeight: 26, fontWeight: '600', color: T.color.ink },
+  strong: { fontWeight: '900', color: T.color.ink },
+  key: {
+    fontWeight: '900', color: T.color.cerulean, backgroundColor: T.color.ceruleanTint,
+    borderRadius: 6, overflow: 'hidden',
+  },
+  copy: {
+    alignSelf: 'flex-start', backgroundColor: T.color.card, borderRadius: T.radius.pill,
+    paddingHorizontal: T.space.md, paddingVertical: 10, borderWidth: 1.5, borderColor: T.color.cerulean,
+    ...T.plate.card, shadowOffset: { width: 0, height: 3 },
+  },
+  copyText: { fontSize: 15, fontWeight: '800', color: T.color.cerulean },
+  older: { fontSize: 13, lineHeight: 19, color: T.color.inkSoft },
+  primary: {
+    marginTop: T.space.sm, backgroundColor: T.color.teal, borderRadius: T.radius.pill, height: 58,
+    alignItems: 'center', justifyContent: 'center', ...T.plate.teal, shadowColor: '#03352D',
+  },
+  primaryText: { ...T.type.button, fontSize: 17, color: T.color.card },
+  skip: { height: 44, alignItems: 'center', justifyContent: 'center' },
+  skipText: { fontSize: 14, fontWeight: '700', color: T.color.inkSoft, textDecorationLine: 'underline' },
 });

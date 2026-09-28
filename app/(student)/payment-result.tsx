@@ -13,6 +13,7 @@ import { T, useReducedMotion } from '../../constants/theme';
 import { formatTokens } from '../../services/payments';
 import { formatJMD } from '../../constants';
 import { Backdrop } from '../../components/Backdrop';
+import { pressPlate } from '../../components/Tide';
 
 type Pay = { status: string; purpose: 'order' | 'tokens'; amountJmd: number; tokens?: number; orderId?: string | null };
 
@@ -122,7 +123,7 @@ export default function PaymentResult() {
       <View style={styles.actions}>
         <Pressable
           onPress={() => router.replace('/(student)/(tabs)/home' as any)}
-          style={({ pressed }) => [styles.primary, pressed && { transform: [{ scale: 0.97 }] }]}
+          style={({ pressed }) => [styles.primary, pressPlate(pressed)]}
           accessibilityRole="button"
         >
           <Text style={styles.primaryText}>Back to shopping</Text>
@@ -150,16 +151,17 @@ const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: T.color.cream, paddingHorizontal: T.space.lg, justifyContent: 'space-between' },
   center: { flex: 1, backgroundColor: T.color.cream, alignItems: 'center', justifyContent: 'center' },
   body: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: T.space.md },
-  mark: { width: 84, height: 84, borderRadius: 42, alignItems: 'center', justifyContent: 'center' },
-  markOk: { backgroundColor: T.color.tealTint },
-  markBad: { backgroundColor: T.color.dangerTint },
+  mark: { width: 96, height: 96, borderRadius: 48, alignItems: 'center', justifyContent: 'center', borderWidth: 3, borderColor: T.color.card },
+  markOk: { backgroundColor: T.color.tealTint, ...T.plate.teal },
+  markBad: { backgroundColor: T.color.dangerTint, ...T.plate.card, shadowColor: '#E6BDB9' },
   markText: { fontSize: 40, fontWeight: '900' },
-  title: { ...T.type.title, color: T.color.ink, textAlign: 'center' },
+  title: { ...T.type.title, fontSize: 28, color: T.color.ink, textAlign: 'center' },
   text: { ...T.type.body, color: T.color.inkSoft, textAlign: 'center', lineHeight: 22, maxWidth: 360 },
   actions: { gap: T.space.sm },
   primary: {
-    backgroundColor: T.color.cerulean, borderRadius: 999, height: 54,
+    backgroundColor: T.color.cerulean, borderRadius: 999, height: 56,
     alignItems: 'center', justifyContent: 'center',
+    ...T.plate.cerulean, shadowColor: '#063E5B',
   },
   primaryText: { ...T.type.button, color: T.color.card },
   secondary: { height: 48, alignItems: 'center', justifyContent: 'center' },

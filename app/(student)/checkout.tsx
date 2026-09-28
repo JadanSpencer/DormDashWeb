@@ -19,7 +19,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, Pressable,
-  TouchableOpacity, TextInput, Alert, ActivityIndicator,
+  TextInput, Alert, ActivityIndicator,
   Animated,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -36,6 +36,7 @@ import { sanitizeText, sanitizeAddress, sanitizeNote, isValidCoordinate } from '
 import { T } from '../../constants/theme';
 import * as Location from 'expo-location';
 import { Backdrop } from '../../components/Backdrop';
+import { TideHeader } from '../../components/Tide';
 
 // Fallback-safe back — matches store screen behaviour.
 const safeGoBack = () => {
@@ -164,16 +165,8 @@ export default function CheckoutScreen() {
         keyboardShouldPersistTaps="handled"
       >
         {/* Header */}
-        <View style={[styles.header, { paddingTop: insets.top + T.space.md }]}>
-          <View style={styles.headerRow}>
-            <TouchableOpacity onPress={safeGoBack} style={styles.backBtn} hitSlop={12}>
-              <Text style={styles.backText}>←</Text>
-            </TouchableOpacity>
-          </View>
-          <Text style={styles.eyebrow}>Reviewing your order from</Text>
-          <Text style={styles.storeName}>{params.storeName}</Text>
-          <View style={{ marginTop: T.space.sm }}><PriceUnitToggle /></View>
-        </View>
+        <TideHeader kicker="Your order from" title={params.storeName ?? ''} onBack={safeGoBack} />
+        <View style={styles.toggleRow}><PriceUnitToggle /></View>
 
         {/* Cart summary */}
         <Text style={styles.sectionLabel}>Your order</Text>
@@ -308,21 +301,11 @@ const styles = StyleSheet.create({
     top: 300, left: -100,
   },
 
-  header: { paddingHorizontal: T.space.lg, paddingBottom: T.space.md },
-  headerRow: { flexDirection: 'row', alignItems: 'center', marginBottom: T.space.md },
-  backBtn: {
-    width: 40, height: 40, borderRadius: 20,
-    backgroundColor: T.color.card,
-    justifyContent: 'center', alignItems: 'center',
-    ...T.shadow.card,
-  },
-  backText: { fontSize: 20, fontWeight: '700', color: T.color.ink },
-  eyebrow: { ...T.type.label, color: T.color.teal, marginBottom: 4 },
-  storeName: { ...T.type.display, fontSize: 30, color: T.color.ink },
+  toggleRow: { paddingHorizontal: T.space.lg, paddingTop: T.space.md },
 
   sectionLabel: {
-    ...T.type.label,
-    color: T.color.inkSoft,
+    ...T.type.title, fontSize: 20,
+    color: T.color.ink,
     paddingHorizontal: T.space.lg,
     paddingTop: T.space.lg,
     paddingBottom: T.space.sm,
@@ -332,8 +315,9 @@ const styles = StyleSheet.create({
     marginHorizontal: T.space.lg,
     borderRadius: T.radius.lg,
     padding: T.space.md,
-    borderWidth: 1, borderColor: T.color.line,
+    borderWidth: 1.5, borderColor: T.color.line,
     gap: T.space.sm,
+    ...T.plate.card,
   },
 
   // Cart lines
@@ -346,7 +330,7 @@ const styles = StyleSheet.create({
     backgroundColor: T.color.ceruleanTint,
     justifyContent: 'center', alignItems: 'center',
     paddingHorizontal: 6,
-    borderWidth: 1, borderColor: 'rgba(14, 143, 181, 0.2)',
+    borderWidth: 1, borderColor: T.color.line,
   },
   qtyBadgeText: { color: T.color.cerulean, fontSize: 12, fontWeight: '900' },
   itemName: { flex: 1, ...T.type.body, fontSize: 14, color: T.color.ink, fontWeight: '600' },
@@ -354,7 +338,7 @@ const styles = StyleSheet.create({
   itemPriceText: { fontSize: 14, fontWeight: '800', color: T.color.ink, letterSpacing: -0.2 },
 
   // Inputs
-  inputHint: { ...T.type.label, color: T.color.inkFaint, fontSize: 10, marginBottom: 4 },
+  inputHint: { ...T.type.label, color: T.color.inkSoft, fontSize: 12, marginBottom: 4 },
   input: {
     backgroundColor: T.color.cream,
     borderWidth: 1.5, borderColor: T.color.line,
@@ -363,7 +347,7 @@ const styles = StyleSheet.create({
     color: T.color.ink,
     ...T.type.body,
   },
-  inputFocused: { borderColor: T.color.cerulean, backgroundColor: T.color.card },
+  inputFocused: { borderColor: T.color.teal, backgroundColor: T.color.card },
   noteInput: { height: 84, paddingTop: T.space.sm },
   gpsHint: { fontSize: 11, color: T.color.inkFaint, marginTop: 4 },
   charCount: { fontSize: 11, color: T.color.inkFaint, textAlign: 'right', marginTop: 4 },
@@ -396,10 +380,10 @@ const styles = StyleSheet.create({
   footer: {
     position: 'absolute',
     bottom: 0, left: 0, right: 0,
-    backgroundColor: T.color.cream,
+    backgroundColor: T.color.sea,
+    borderTopLeftRadius: T.radius.xl, borderTopRightRadius: T.radius.xl,
     paddingHorizontal: T.space.lg,
     paddingTop: T.space.md,
-    borderTopWidth: 1, borderTopColor: T.color.line,
   },
   warning: {
     backgroundColor: T.color.dangerTint,
@@ -410,13 +394,13 @@ const styles = StyleSheet.create({
   warningText: { color: T.color.danger, fontSize: 12, fontWeight: '700', textAlign: 'center' },
   cta: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    backgroundColor: T.color.cerulean,
+    backgroundColor: T.color.teal,
     borderRadius: T.radius.pill,
-    height: 56, paddingHorizontal: T.space.md,
-    ...T.shadow.button,
+    height: 58, paddingHorizontal: T.space.lg,
+    ...T.plate.teal, shadowColor: '#03352D', shadowOffset: { width: 0, height: 5 },
   },
   ctaBusy: { opacity: 0.85 },
   ctaText: { color: T.color.card, fontSize: 15, fontWeight: '800', letterSpacing: 0.3 },
-  ctaTotalPlate: {},
-  ctaTotalText: { color: T.color.card, fontSize: 14, fontWeight: '900' },
+  ctaTotalPlate: { backgroundColor: T.color.card, borderRadius: T.radius.pill, paddingHorizontal: 12, paddingVertical: 5 },
+  ctaTotalText: { color: T.color.teal, fontSize: 15, fontWeight: '900' },
 });

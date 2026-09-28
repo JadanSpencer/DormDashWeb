@@ -1,20 +1,11 @@
 // app/(student)/(tabs)/home.tsx
-// DormDash — Student home (Route identity).
+// DormDash — Student home, "Tide Print" style (constants/theme.ts).
 //
-// FUNCTIONALITY UNCHANGED. Same Firestore hooks (real-time stores listener),
-// same filtering (category + search), same navigate handler.
-//
-// What's new is entirely visual:
-//   • Cream canvas, ink type, cerulean action, teal accents. No yellow.
-//   • Editorial header — small teal "campus delivery" eyebrow, greeting,
-//     large ink display name.
-//   • Compact search bar rests below the header, keeps its focus ring.
-//   • Category chips scroll horizontally, cerulean-tinted on select.
-//   • Featured row: one big open store per card, monogram tile with soft
-//     drifting shapes, hollowed delivery-fee treatment.
-//   • Store row: neat left-aligned cards with initial mark, name, meta.
-//   • Empty and loading states are on-brand.
-//   • Extra bottom padding accounts for the new floating tab bar.
+// Same data and behaviour: live stores (useStores), category + search
+// filtering, pull to refresh, tap a store to open it.
+// Look: greeting and search on the sea band (components/Tide), category
+// chips as teal plates, featured stores as big coloured store marks, and
+// every card on a print plate.
 
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import {
@@ -30,6 +21,7 @@ import { Store } from '../../../types';
 import { formatJMD, DELIVERY_FEE_JMD } from '../../../constants';
 import { T } from '../../../constants/theme';
 import { Backdrop } from '../../../components/Backdrop';
+import { TideBand, StoreMark, StoreArt, pressPlate } from '../../../components/Tide';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -43,96 +35,63 @@ const greeting = () => {
 };
 
 // ─── FEATURED STORE CARD ────────────────────────────────────────────
-const FeaturedCard: React.FC<{ store: Store; onPress: () => void }> = ({ store, onPress }) => {
-  return (
-    <Pressable
-      onPress={onPress}
-      style={({ pressed }) => [
-        styles.featured,
-        pressed && { transform: [{ scale: 0.98 }] },
-      ]}
-    >
-      <View style={styles.featuredHead}>
-        <View style={styles.featuredMono}>
-          <Text style={styles.featuredInitial}>{store.name.charAt(0)}</Text>
-        </View>
+const OpenTag: React.FC<{ open: boolean; onSea?: boolean }> = ({ open, onSea }) => (
+  <View style={[styles.openTag, onSea ? styles.openTagSea : open ? styles.openTagOn : styles.openTagOff]}>
+    <View style={[styles.openDot, { backgroundColor: open ? T.color.tealBright : T.color.danger }]} />
+    <Text style={[styles.openText, { color: onSea ? T.color.card : open ? T.color.teal : T.color.danger }]}>
+      {open ? 'Open' : 'Closed'}
+    </Text>
+  </View>
+);
 
-        <View style={[
-          styles.openBadge,
-          { backgroundColor: store.isOpen ? T.color.tealTint : T.color.dangerTint },
-        ]}>
-          <View style={[
-            styles.openDot,
-            { backgroundColor: store.isOpen ? T.color.teal : T.color.danger },
-          ]} />
-          <Text style={[
-            styles.openText,
-            { color: store.isOpen ? T.color.teal : T.color.danger },
-          ]}>
-            {store.isOpen ? 'Open' : 'Closed'}
-          </Text>
-        </View>
+const FeaturedCard: React.FC<{ store: Store; onPress: () => void }> = ({ store, onPress }) => (
+  <Pressable
+    onPress={onPress}
+    accessibilityRole="button"
+    accessibilityLabel={`${store.name}, ${store.isOpen ? 'open' : 'closed'}`}
+    style={({ pressed }) => [styles.featured, pressPlate(pressed)]}
+  >
+    <View style={styles.featuredHead}>
+      <StoreArt id={store.id} name={store.name} />
+      <OpenTag open={store.isOpen} onSea />
+    </View>
+    <View style={styles.featuredBody}>
+      <Text style={styles.featuredName} numberOfLines={1}>{store.name}</Text>
+      <Text style={styles.featuredDesc} numberOfLines={2}>{store.description}</Text>
+      <View style={styles.featuredMeta}>
+        <Text style={styles.metaText}>★ {store.rating.toFixed(1)}</Text>
+        <View style={styles.metaDot} />
+        <Text style={styles.metaText}>{store.estimatedTime}</Text>
+        <View style={styles.metaDot} />
+        <Text style={styles.feeText}>{formatJMD(DELIVERY_FEE_JMD)}</Text>
       </View>
-
-      <View style={styles.featuredBody}>
-        <Text style={styles.featuredName} numberOfLines={1}>{store.name}</Text>
-        <Text style={styles.featuredDesc} numberOfLines={2}>{store.description}</Text>
-
-        <View style={styles.featuredMeta}>
-          <Text style={styles.metaText}>★ {store.rating.toFixed(1)}</Text>
-          <View style={styles.metaDot} />
-          <Text style={styles.metaText}>{store.estimatedTime}</Text>
-          <View style={styles.metaDot} />
-          <View style={styles.feePlate}>
-            <Text style={styles.feeText}>{formatJMD(DELIVERY_FEE_JMD)}</Text>
-          </View>
-        </View>
-      </View>
-    </Pressable>
-  );
-};
+    </View>
+  </Pressable>
+);
 
 // ─── STORE ROW CARD ─────────────────────────────────────────────────
 const StoreRow: React.FC<{ store: Store; onPress: () => void }> = ({ store, onPress }) => (
   <Pressable
     onPress={onPress}
-    style={({ pressed }) => [styles.row, pressed && { transform: [{ scale: 0.98 }] }]}
+    accessibilityRole="button"
+    accessibilityLabel={`${store.name}, ${store.isOpen ? 'open' : 'closed'}`}
+    style={({ pressed }) => [styles.row, pressPlate(pressed)]}
   >
-    <View style={styles.rowMono}>
-      <Text style={styles.rowInitial}>{store.name.charAt(0)}</Text>
-    </View>
-
+    <StoreMark id={store.id} name={store.name} size={56} />
     <View style={styles.rowContent}>
       <View style={styles.rowTop}>
         <Text style={styles.rowName} numberOfLines={1}>{store.name}</Text>
-        <View style={[
-          styles.rowStatus,
-          { backgroundColor: store.isOpen ? T.color.tealTint : T.color.dangerTint },
-        ]}>
-          <View style={[
-            styles.rowStatusDot,
-            { backgroundColor: store.isOpen ? T.color.teal : T.color.danger },
-          ]} />
-          <Text style={[
-            styles.rowStatusText,
-            { color: store.isOpen ? T.color.teal : T.color.danger },
-          ]}>
-            {store.isOpen ? 'Open' : 'Closed'}
-          </Text>
-        </View>
+        <OpenTag open={store.isOpen} />
       </View>
-
       <Text style={styles.rowDesc} numberOfLines={1}>{store.description}</Text>
-
       <View style={styles.rowMeta}>
         <Text style={styles.metaText}>★ {store.rating.toFixed(1)}</Text>
         <View style={styles.metaDot} />
         <Text style={styles.metaText}>{store.estimatedTime}</Text>
         <View style={styles.metaDot} />
-        <Text style={styles.metaText}>{formatJMD(DELIVERY_FEE_JMD)}</Text>
+        <Text style={styles.feeText}>{formatJMD(DELIVERY_FEE_JMD)}</Text>
       </View>
     </View>
-
     <Text style={styles.rowChevron}>›</Text>
   </Pressable>
 );
@@ -191,38 +150,40 @@ export default function StudentHome() {
         }
         contentContainerStyle={{ paddingBottom: 120 + insets.bottom }}
       >
-        {/* Header */}
-        <Animated.View
-          style={[
-            styles.header,
-            { paddingTop: insets.top + T.space.md, opacity: headerFade, transform: [{ translateY: headerRise }] },
-          ]}
-        >
-          <Text style={styles.greeting}>{greeting()},</Text>
-          <Text style={styles.name}>{firstName}.</Text>
-        </Animated.View>
+        {/* Sea band: greeting and search */}
+        <TideBand>
+          <Animated.View
+            style={[
+              styles.header,
+              { paddingTop: insets.top + T.space.lg, opacity: headerFade, transform: [{ translateY: headerRise }] },
+            ]}
+          >
+            <Text style={styles.greeting}>{greeting()},</Text>
+            <Text style={styles.name}>{firstName}.</Text>
+            <Text style={styles.headerNote}>Anything on campus, to your door for {formatJMD(DELIVERY_FEE_JMD)}.</Text>
+          </Animated.View>
 
-        {/* Search */}
-        <View style={styles.searchWrap}>
-          <View style={[styles.search, searchFocused && styles.searchFocused]}>
-            <Text style={styles.searchIcon}>⌕</Text>
-            <TextInput
-              style={styles.searchInput}
-              placeholder="Search stores, food…"
-              placeholderTextColor={T.color.inkFaint}
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-              onFocus={() => setSearchFocused(true)}
-              onBlur={() => setSearchFocused(false)}
-              returnKeyType="search"
-            />
-            {searchQuery.length > 0 && (
-              <TouchableOpacity onPress={() => setSearchQuery('')} hitSlop={8}>
-                <Text style={styles.searchClear}>✕</Text>
-              </TouchableOpacity>
-            )}
+          <View style={styles.searchWrap}>
+            <View style={[styles.search, searchFocused && styles.searchFocused]}>
+              <Text style={styles.searchIcon}>⌕</Text>
+              <TextInput
+                style={styles.searchInput}
+                placeholder="Search stores, food…"
+                placeholderTextColor={T.color.inkFaint}
+                value={searchQuery}
+                onChangeText={setSearchQuery}
+                onFocus={() => setSearchFocused(true)}
+                onBlur={() => setSearchFocused(false)}
+                returnKeyType="search"
+              />
+              {searchQuery.length > 0 && (
+                <TouchableOpacity onPress={() => setSearchQuery('')} hitSlop={8} accessibilityLabel="Clear search">
+                  <Text style={styles.searchClear}>✕</Text>
+                </TouchableOpacity>
+              )}
+            </View>
           </View>
-        </View>
+        </TideBand>
 
         {/* Categories */}
         <ScrollView
@@ -237,7 +198,7 @@ export default function StudentHome() {
               style={({ pressed }) => [
                 styles.chip,
                 selectedCategory === cat && styles.chipActive,
-                pressed && { transform: [{ scale: 0.96 }] },
+                pressPlate(pressed, 3),
               ]}
             >
               <Text style={[
@@ -276,7 +237,7 @@ export default function StudentHome() {
               <>
                 <View style={styles.sectionHead}>
                   <Text style={styles.sectionTitle}>Featured</Text>
-                  <Text style={styles.sectionCount}>{featured.length} open</Text>
+                  <View style={styles.countTag}><Text style={styles.sectionCount}>{featured.length} open</Text></View>
                 </View>
                 <FlatList
                   data={featured}
@@ -297,7 +258,7 @@ export default function StudentHome() {
               <Text style={styles.sectionTitle}>
                 {selectedCategory === 'All' && !searchQuery ? 'All stores' : 'Results'}
               </Text>
-              <Text style={styles.sectionCount}>{filtered.length}</Text>
+              <View style={styles.countTag}><Text style={styles.sectionCount}>{filtered.length}</Text></View>
             </View>
 
             <View style={styles.rowList}>
@@ -312,172 +273,119 @@ export default function StudentHome() {
   );
 }
 
-const FEATURED_WIDTH = SCREEN_WIDTH * 0.75;
+const FEATURED_WIDTH = Math.min(SCREEN_WIDTH * 0.75, 320);
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: T.color.cream },
 
-  canvas: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, overflow: 'hidden', zIndex: -1 },
-  blobTeal: {
-    position: 'absolute', width: 300, height: 300, borderRadius: 150,
-    backgroundColor: T.color.teal, opacity: 0.06,
-    top: -100, right: -100,
-  },
-  blobCerulean: {
-    position: 'absolute', width: 260, height: 260, borderRadius: 130,
-    backgroundColor: T.color.cerulean, opacity: 0.05,
-    top: 240, left: -120,
-  },
-
-  // Header
+  // Sea band
   header: { paddingHorizontal: T.space.lg, paddingBottom: T.space.md },
-  eyebrow: { ...T.type.label, color: T.color.teal, marginBottom: 4 },
-  greeting: { ...T.type.body, color: T.color.inkSoft, fontSize: 15, marginBottom: 2 },
-  name: { ...T.type.display, color: T.color.ink },
+  greeting: { ...T.type.body, color: T.color.seaSoft, fontSize: 15, marginBottom: 2 },
+  name: { ...T.type.display, color: T.color.card },
+  headerNote: { ...T.type.body, color: T.color.seaFoam, fontSize: 13, fontWeight: '700', marginTop: 6 },
 
-  // Search
-  searchWrap: { paddingHorizontal: T.space.lg, paddingTop: T.space.sm, paddingBottom: T.space.sm },
+  searchWrap: { paddingHorizontal: T.space.lg, paddingBottom: T.space.lg + 6 },
   search: {
     flexDirection: 'row', alignItems: 'center',
     backgroundColor: T.color.card,
     borderRadius: T.radius.pill,
-    height: 50, paddingHorizontal: T.space.md,
-    borderWidth: 1.5, borderColor: T.color.line,
+    height: 52, paddingHorizontal: T.space.md,
+    borderWidth: 2, borderColor: T.color.card,
     gap: T.space.sm,
+    ...T.plate.sea,
   },
-  searchFocused: {
-    borderColor: T.color.cerulean,
-    ...T.shadow.card, shadowOpacity: 0.06,
-  },
-  searchIcon: { fontSize: 18, color: T.color.inkFaint, fontWeight: '700' },
-  searchInput: { flex: 1, ...T.type.body, color: T.color.ink, fontSize: 14 },
+  searchFocused: { borderColor: T.color.tealBright },
+  searchIcon: { fontSize: 18, color: T.color.cerulean, fontWeight: '700' },
+  searchInput: { flex: 1, ...T.type.body, color: T.color.ink, fontSize: 15 },
   searchClear: { color: T.color.inkFaint, fontSize: 16, fontWeight: '700' },
 
-  // Chips
-  chipRow: { paddingHorizontal: T.space.lg, paddingVertical: T.space.sm, gap: T.space.sm },
+  // Chips: teal plates
+  chipRow: { paddingHorizontal: T.space.lg, paddingTop: T.space.md, paddingBottom: T.space.sm + 4, gap: T.space.sm },
   chip: {
-    paddingHorizontal: T.space.md, paddingVertical: 8,
+    paddingHorizontal: T.space.md, paddingVertical: 9,
     borderRadius: T.radius.pill,
     backgroundColor: T.color.card,
-    borderWidth: 1.5, borderColor: T.color.line,
+    borderWidth: 1.5, borderColor: T.color.lineStrong,
+    ...T.plate.card, shadowOffset: { width: 0, height: 3 },
   },
-  chipActive: { backgroundColor: T.color.ceruleanTint, borderColor: T.color.cerulean },
-  chipText: { ...T.type.body, fontSize: 13, fontWeight: '700', color: T.color.inkSoft },
-  chipTextActive: { color: T.color.cerulean },
+  chipActive: { backgroundColor: T.color.teal, borderColor: T.color.teal, ...T.plate.teal, shadowOffset: { width: 0, height: 3 } },
+  chipText: { ...T.type.body, fontSize: 13, fontWeight: '800', color: T.color.inkSoft },
+  chipTextActive: { color: T.color.card },
 
   // Section heads
   sectionHead: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline',
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
     paddingHorizontal: T.space.lg,
     paddingTop: T.space.lg, paddingBottom: T.space.sm,
   },
-  sectionTitle: { ...T.type.title, fontSize: 22, color: T.color.ink },
-  sectionCount: { ...T.type.label, color: T.color.teal, fontSize: 11 },
+  sectionTitle: { ...T.type.title, fontSize: 24, color: T.color.ink },
+  countTag: {
+    backgroundColor: T.color.ceruleanTint, borderRadius: T.radius.pill,
+    paddingHorizontal: 10, paddingVertical: 4,
+  },
+  sectionCount: { ...T.type.label, color: T.color.cerulean, fontSize: 12 },
 
   // Featured
-  featuredRow: { paddingHorizontal: T.space.lg, paddingBottom: T.space.md },
+  featuredRow: { paddingHorizontal: T.space.lg, paddingBottom: T.space.lg },
   featured: {
     width: FEATURED_WIDTH,
     backgroundColor: T.color.card,
     borderRadius: T.radius.xl,
-    overflow: 'hidden',
-    borderWidth: 1, borderColor: T.color.line,
-    ...T.shadow.card, shadowOpacity: 0.06,
+    borderWidth: 1.5, borderColor: T.color.line,
+    ...T.plate.card,
   },
   featuredHead: {
-    height: 140,
+    height: 132,
+    borderTopLeftRadius: T.radius.xl - 1.5, borderTopRightRadius: T.radius.xl - 1.5,
+    overflow: 'hidden',
     padding: T.space.md,
-    backgroundColor: T.color.ceruleanTint,
-    justifyContent: 'space-between',
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    overflow: 'hidden',
+    flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'flex-start',
   },
-  featuredMono: {
-    width: 72, height: 72, borderRadius: 20,
-    backgroundColor: T.color.card,
-    justifyContent: 'center', alignItems: 'center',
-    overflow: 'hidden',
-    borderWidth: 1, borderColor: T.color.line,
-  },
-  featuredCircle1: {
-    position: 'absolute',
-    width: 60, height: 60, borderRadius: 30,
-    backgroundColor: T.color.cerulean, opacity: 0.15,
-    top: -15, right: -15,
-  },
-  featuredCircle2: {
-    position: 'absolute',
-    width: 40, height: 40, borderRadius: 20,
-    backgroundColor: T.color.teal, opacity: 0.15,
-    bottom: -8, left: -8,
-  },
-  featuredInitial: { fontSize: 30, fontWeight: '900', color: T.color.cerulean },
   featuredBody: { padding: T.space.md, gap: 4 },
-  featuredName: { ...T.type.body, fontSize: 17, fontWeight: '800', color: T.color.ink, letterSpacing: -0.3 },
-  featuredDesc: { ...T.type.body, fontSize: 12, color: T.color.inkSoft, lineHeight: 17, minHeight: 34 },
-  featuredMeta: {
-    flexDirection: 'row', alignItems: 'center',
-    gap: 6, marginTop: 4,
-  },
+  featuredName: { ...T.type.title, fontSize: 20, color: T.color.ink },
+  featuredDesc: { ...T.type.body, fontSize: 13, color: T.color.inkSoft, lineHeight: 18, minHeight: 36 },
+  featuredMeta: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 },
 
-  openBadge: {
-    flexDirection: 'row', alignItems: 'center', gap: 6,
-    paddingHorizontal: 10, paddingVertical: 5,
-    borderRadius: T.radius.pill,
+  openTag: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    paddingHorizontal: 9, paddingVertical: 4,
+    borderRadius: T.radius.pill, flexShrink: 0,
   },
+  openTagOn: { backgroundColor: T.color.tealTint },
+  openTagOff: { backgroundColor: T.color.dangerTint },
+  openTagSea: { backgroundColor: 'rgba(7, 42, 64, 0.55)' },
   openDot: { width: 6, height: 6, borderRadius: 3 },
-  openText: { fontSize: 10, fontWeight: '800', letterSpacing: 0.6 },
+  openText: { fontSize: 11, fontWeight: '800', letterSpacing: 0.3 },
 
-  // Row cards
-  rowList: { paddingHorizontal: T.space.lg, gap: T.space.sm, paddingBottom: T.space.md },
+  // Rows
+  rowList: { paddingHorizontal: T.space.lg, gap: T.space.md, paddingBottom: T.space.md },
   row: {
     flexDirection: 'row', alignItems: 'center',
     backgroundColor: T.color.card,
     borderRadius: T.radius.lg,
-    padding: T.space.md,
-    borderWidth: 1, borderColor: T.color.line,
+    padding: T.space.md - 2,
+    borderWidth: 1.5, borderColor: T.color.line,
     gap: T.space.md,
+    ...T.plate.card,
   },
-  rowMono: {
-    width: 52, height: 52, borderRadius: 16,
-    backgroundColor: T.color.ceruleanTint,
-    justifyContent: 'center', alignItems: 'center',
-    borderWidth: 1, borderColor: 'rgba(14, 143, 181, 0.15)',
-  },
-  rowInitial: { fontSize: 22, fontWeight: '900', color: T.color.cerulean },
   rowContent: { flex: 1, gap: 3 },
-  rowTop: {
-    flexDirection: 'row', alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: T.space.sm,
-  },
-  rowName: { flex: 1, ...T.type.body, fontSize: 15, fontWeight: '800', color: T.color.ink, letterSpacing: -0.2 },
-  rowStatus: {
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-    paddingHorizontal: 8, paddingVertical: 3,
-    borderRadius: T.radius.pill,
-    flexShrink: 0,
-  },
-  rowStatusDot: { width: 5, height: 5, borderRadius: 3 },
-  rowStatusText: { fontSize: 10, fontWeight: '800', letterSpacing: 0.4 },
-  rowDesc: { ...T.type.body, fontSize: 12, color: T.color.inkSoft },
+  rowTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: T.space.sm },
+  rowName: { flex: 1, ...T.type.body, fontSize: 16, fontWeight: '800', color: T.color.ink, letterSpacing: -0.2 },
+  rowDesc: { ...T.type.body, fontSize: 13, color: T.color.inkSoft },
   rowMeta: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 2 },
-  rowChevron: { fontSize: 22, color: T.color.cerulean, fontWeight: '700', flexShrink: 0 },
+  rowChevron: { fontSize: 24, color: T.color.cerulean, fontWeight: '700', flexShrink: 0 },
 
-  // Meta text (shared)
+  // Meta (shared)
   metaText: { fontSize: 12, color: T.color.inkSoft, fontWeight: '700' },
   metaDot: { width: 3, height: 3, borderRadius: 2, backgroundColor: T.color.lineStrong },
-
-  feePlate: {},
-  feeText: { fontSize: 12, color: T.color.cerulean, fontWeight: '800' },
+  feeText: { fontSize: 12, color: T.color.teal, fontWeight: '800' },
 
   // Loading
   loading: { paddingTop: 60, alignItems: 'center', gap: T.space.md },
   loadingText: { ...T.type.body, color: T.color.inkSoft, fontWeight: '600' },
 
   // Empty
-  empty: { paddingTop: 60, alignItems: 'center', paddingHorizontal: T.space.xl, gap: T.space.sm },
+  empty: { paddingTop: 48, alignItems: 'center', paddingHorizontal: T.space.xl, gap: T.space.sm },
   emptyTile: {
     width: 64, height: 64, borderRadius: 20,
     backgroundColor: T.color.ceruleanTint,
@@ -492,7 +400,7 @@ const styles = StyleSheet.create({
     backgroundColor: T.color.cerulean,
     borderRadius: T.radius.pill,
     paddingHorizontal: T.space.lg, paddingVertical: 10,
-    ...T.shadow.button,
+    ...T.plate.cerulean,
   },
   emptyResetText: { color: T.color.card, fontSize: 13, fontWeight: '800' },
 });

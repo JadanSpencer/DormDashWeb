@@ -11,14 +11,15 @@ const TABS = {
   profile: { icon: 'person-outline', iconActive: 'person', label: 'Profile' },
 };
 
+// Tide Print: a sea-glass bar, the active tab a teal plate.
 const PALETTE = {
-  glass: 'rgba(255, 253, 248, 0.72)',
-  solid: T.color.card,
-  edge: T.color.line,
-  highlight: 'rgba(255, 255, 255, 0.9)',
-  active: T.color.cerulean,
-  activeText: '#FFFDF8',
-  idle: T.color.inkSoft,
+  glass: 'rgba(11, 60, 90, 0.9)',
+  solid: T.color.sea,
+  edge: 'rgba(127, 214, 200, 0.28)',
+  highlight: 'rgba(169, 211, 230, 0.25)',
+  active: T.color.teal,
+  activeText: T.color.card,
+  idle: T.color.seaSoft,
 };
 
 export default function StudentTabsLayout() {

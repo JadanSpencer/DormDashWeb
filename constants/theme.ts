@@ -1,21 +1,18 @@
 // constants/theme.ts
-// DormDash design system — "Route" identity, in a Japanese print style.
-// Washi-cream canvas · teal-ink type · indigo (ai-iro) action · teal
-// support · vermilion (shu-iro) seal accent. Headings are set in
-// Shippori Mincho B1 (assets/fonts, OFL); body text stays in the system font
-// for readability. Token names are historical: `cerulean` now holds indigo.
-// Artwork (seigaiha, etched wave, petals, seal): components/Backdrop.tsx
-// and components/Seal.tsx. See PWA_HANDOFF.md "Japanese print style".
-//
-// Sits SEPARATELY from constants/index.ts on purpose:
-//   - constants/index.ts holds functional constants (CAMPUS_CENTER, limits,
-//     intervals, formatJMD) and the ORIGINAL dark-navy COLORS used by screens
-//     that haven't been restyled yet.
-//   - constants/theme.ts (this file) holds the NEW design tokens used only
-//     by restyled screens. Import as: `import { T } from '../constants/theme'`.
-//
-// Screens migrate one at a time. Old and new coexist during migration.
-// Do not hardcode hex in screens.
+// DormDash design system for STUDENTS (and sign-in): "Tide Print".
+// Seigaiha waves printed in two inks, teal and cerulean, on sea-foam paper:
+//   • Tide band: every student screen opens under a deep cerulean "sea"
+//     band with the wave pattern etched in and a scalloped wave edge where
+//     it meets the page (components/Tide.tsx).
+//   • Print plates: cards and buttons sit on a solid offset layer (a second
+//     ink plate), never a blurred glow. Pressing a button sinks it onto its
+//     plate. Use T.plate.* rather than shadows.
+//   • Store marks: each store has its own sea-coloured tile with the wave
+//     pattern and its initial (components/Tide.tsx StoreMark).
+// Headings are set in Shippori Mincho B1 (assets/fonts, OFL); body text stays
+// in the system font. Vermilion (shu) is the rare accent: the seal, alerts.
+// Dasher (themeDark) and admin (themeMid) have their own palettes.
+// Import as: `import { T } from '../constants/theme'`. No hex in screens.
 
 import { useEffect, useState } from 'react';
 import { AccessibilityInfo } from 'react-native';
@@ -28,23 +25,35 @@ export const FONT = {
 
 export const T = {
   color: {
-    // Canvas
-    cream: '#FAF5EC',
-    creamDeep: '#F1E9DB',
-    card: '#FFFDF9',        // warm white, never pure #FFF
+    // Paper (token names are historical: "cream" is now sea-foam)
+    cream: '#EEF5F3',       // page
+    creamDeep: '#DEEBE8',   // sunken areas, dividers between sections
+    card: '#FAFCFB',        // cards: near-white foam, never pure #FFF
 
-    // Ink (never pure black — deep teal-ink ties text to palette)
-    ink: '#12333B',
-    inkSoft: '#4E6B72',
-    inkFaint: '#5C7379',     // AA 4.6:1 on cream (was #8AA0A5, 2.5:1)
+    // Ink (never pure black: deep sea ink)
+    ink: '#0E2F3A',
+    inkSoft: '#43616A',      // 6.0:1 on page
+    inkFaint: '#557079',     // 4.8:1 on page, 5.1:1 on cards
 
-    // Action
-    cerulean: '#1F4E79',     // indigo (ai-iro): 8.0:1 on cream, with cream text
-    ceruleanDeep: '#193F63',
-    ceruleanTint: '#E4ECF4',
+    // Sea: the tide band and deep surfaces (cream text on it: 11:1)
+    sea: '#0B3C5A',
+    seaSoft: '#A9D3E6',      // secondary text on sea (7.3:1)
+    seaFoam: '#7FD6C8',      // teal highlights on sea (6.8:1)
+
+    // Cerulean: the action colour
+    cerulean: '#0A6694',     // 5.7:1 on page; card-coloured text on it 6.1:1
+    ceruleanDeep: '#08557B', // pressed / plate under cerulean buttons
+    ceruleanBright: '#2E9FD3', // graphic only (pattern, marks), never text
+    ceruleanTint: '#E4F1F7',
+
+    // Teal: the second ink
+    teal: '#08705F',         // text-safe: 5.4:1 on page, 5.0:1 on tealTint
+    tealDeep: '#065547',     // plate under teal fills
+    tealBright: '#22B3A0',   // graphic only
+    tealTint: '#D6EFE9',
 
     // Seal accent
-    shu: '#B7412E',          // vermilion (shu-iro): 5.1:1 on cream
+    shu: '#B7412E',          // vermilion: 5.0:1 on page
     shuTint: '#F6E4DF',
 
     // Money (DormDash tokens): coin graphics and the wallet's banknote band
@@ -53,48 +62,52 @@ export const T = {
     goldLight: '#F0D27A',    // coin highlight
     goldTint: '#FBF3DC',     // wallet header band
 
-    // Support
-    teal: '#0A7D6E',         // AA as small text on cream (was #0FA893, 2.8:1)
-    tealDeep: '#0B8676',
-    tealTint: '#E2F4F1',
-
     // Lines & feedback
-    line: 'rgba(18, 51, 59, 0.12)',
-    lineStrong: 'rgba(18, 51, 59, 0.22)',
-    danger: '#C94F4F',
-    dangerTint: '#F9E9E9',
+    line: 'rgba(14, 47, 58, 0.12)',
+    lineStrong: 'rgba(14, 47, 58, 0.22)',
+    danger: '#B23E3A',
+    dangerTint: '#F8E6E4',
     warning: '#D9963A',
   },
 
   space: { xs: 6, sm: 10, md: 16, lg: 24, xl: 32, xxl: 48 },
 
-  radius: { sm: 8, md: 12, lg: 14, xl: 18, pill: 999 },
+  radius: { sm: 8, md: 12, lg: 16, xl: 20, pill: 999 },
 
   type: {
-display: { fontFamily: FONT.heading, fontSize: 40, letterSpacing: -0.6 },
-title:   { fontFamily: FONT.heading, fontSize: 26, letterSpacing: -0.2 },
+    display: { fontFamily: FONT.heading, fontSize: 40, letterSpacing: -0.6 },
+    title:   { fontFamily: FONT.heading, fontSize: 26, letterSpacing: -0.2 },
     body:    { fontSize: 15, fontWeight: '500' as const, letterSpacing: 0 },
     label:   { fontSize: 12, fontWeight: '700' as const, letterSpacing: 0.1, textTransform: 'none' as const },
     button:  { fontSize: 16, fontWeight: '700' as const, letterSpacing: 0.2 },
   },
 
+  // Print plates: a solid layer offset below, like a second ink plate.
+  // No blur, so it reads as depth, not glow.
+  plate: {
+    card: plate('#C9DFDA', 4),          // foam-deep plate under cards
+    teal: plate('#065547', 4),          // under teal fills
+    cerulean: plate('#08557B', 4),      // under cerulean buttons
+    sea: plate('#072A40', 5),           // under sea surfaces
+    pressed: plate('#C9DFDA', 1),       // a pressed card or button
+  },
+
+  // Kept for screens that haven't moved to plates; same values as plates.
   shadow: {
-    card: {
-      shadowColor: '#12333B',
-      shadowOffset: { width: 0, height: 1 },
-      shadowOpacity: 0.06,
-      shadowRadius: 2,
-      elevation: 1,
-    },
-    button: {
-      shadowColor: '#1F4E79',
-      shadowOffset: { width: 0, height: 1 },
-      shadowOpacity: 0.06,
-      shadowRadius: 2,
-      elevation: 1,
-    },
+    card: plate('#C9DFDA', 4),
+    button: plate('#08557B', 4),
   },
 };
+
+function plate(color: string, y: number) {
+  return {
+    shadowColor: color,
+    shadowOffset: { width: 0, height: y },
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    elevation: y > 1 ? 3 : 1,
+  };
+}
 
 // Respect the user's reduce-motion setting: looping/ambient animation
 // should check this and stay still when true. One-shot entrances may run.

@@ -19,6 +19,7 @@ import { formatJMD, STATUS_STEPS, PAY_WINDOW_MIN } from '../../../constants';
 import { usePriceUnit } from '../../../hooks/usePriceUnit';
 import { T, useReducedMotion } from '../../../constants/theme';
 import { Backdrop } from '../../../components/Backdrop';
+import { TideHeader } from '../../../components/Tide';
 
 
 // Compact money for tight stat cards — full formatJMD breaks layout at scale
@@ -263,8 +264,8 @@ const ActiveOrderCard: React.FC<{ order: Order; onCancel: () => void; reduced: b
 
 const active = StyleSheet.create({
   payNeeded: {
-    alignSelf: 'flex-start', marginTop: 6, paddingHorizontal: 10, paddingVertical: 6,
-    borderRadius: 999, backgroundColor: T.color.ceruleanTint,
+    alignSelf: 'flex-start', marginTop: 2, marginBottom: T.space.sm, paddingHorizontal: 12, paddingVertical: 6,
+    borderRadius: T.radius.md, backgroundColor: T.color.ceruleanTint,
   },
   payNeededText: { fontSize: 12, fontWeight: '800', color: T.color.ceruleanDeep },
   card: {
@@ -273,10 +274,9 @@ const active = StyleSheet.create({
     marginBottom: T.space.lg,
     borderRadius: T.radius.xl,
     padding: T.space.lg,
-    borderWidth: 1,
-    borderColor: T.color.line,
-    ...T.shadow.card,
-    shadowOpacity: 0.06,
+    borderWidth: 2,
+    borderColor: T.color.teal,
+    ...T.plate.teal,
   },
   head: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: T.space.md },
   live: {
@@ -288,8 +288,8 @@ const active = StyleSheet.create({
   liveWrap: { width: 8, height: 8, justifyContent: 'center', alignItems: 'center' },
   livePulse: { position: 'absolute', width: 8, height: 8, borderRadius: 4, backgroundColor: T.color.teal },
   liveDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: T.color.teal },
-  liveText: { fontSize: 10, fontWeight: '900', color: T.color.teal, letterSpacing: 0.2 },
-  id: { fontSize: 11, color: T.color.inkFaint, fontVariant: ['tabular-nums'], fontWeight: '700' },
+  liveText: { fontSize: 12, fontWeight: '900', color: T.color.teal, letterSpacing: 0.2 },
+  id: { fontSize: 12, color: T.color.inkFaint, fontVariant: ['tabular-nums'], fontWeight: '700' },
 
   store: { ...T.type.title, fontSize: 22, color: T.color.ink, marginBottom: T.space.sm },
 
@@ -391,10 +391,11 @@ const hist = StyleSheet.create({
     flexDirection: 'row', alignItems: 'flex-start', gap: T.space.md,
     backgroundColor: T.color.card,
     marginHorizontal: T.space.lg,
-    marginBottom: T.space.sm,
+    marginBottom: T.space.md,
     borderRadius: T.radius.lg,
     padding: T.space.md,
-    borderWidth: 1, borderColor: T.color.line,
+    borderWidth: 1.5, borderColor: T.color.line,
+    ...T.plate.card,
   },
   icon: {
     width: 40, height: 40, borderRadius: 12,
@@ -407,11 +408,11 @@ const hist = StyleSheet.create({
   store: { flex: 1, ...T.type.body, fontSize: 14, fontWeight: '800', color: T.color.ink, marginRight: T.space.sm },
   amount: { ...T.type.body, fontSize: 15, fontWeight: '900', color: T.color.cerulean },
   meta: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 },
-  date: { fontSize: 11, color: T.color.inkSoft, fontWeight: '700' },
-  time: { fontSize: 11, color: T.color.inkFaint, fontWeight: '600' },
+  date: { fontSize: 12, color: T.color.inkSoft, fontWeight: '700' },
+  time: { fontSize: 12, color: T.color.inkFaint, fontWeight: '600' },
   metaDot: { width: 2, height: 2, borderRadius: 1, backgroundColor: T.color.lineStrong },
   statusChip: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: T.radius.pill },
-  statusText: { fontSize: 9, fontWeight: '800', letterSpacing: 0.4 },
+  statusText: { fontSize: 11, fontWeight: '800', letterSpacing: 0.3 },
   items: { ...T.type.body, fontSize: 12, color: T.color.inkFaint, marginTop: 2 },
 });
 
@@ -463,12 +464,9 @@ export default function StudentOrders() {
   return (
     <View style={styles.root}>
       <Backdrop tone="cream" />
-      <View style={[styles.header, { paddingTop: insets.top + T.space.md }]}>
-        <Text style={styles.title}>Orders</Text>
-      </View>
-
       {loading ? (
         <View style={styles.loading}>
+          <View style={styles.loadingHead}><TideHeader title="Orders" /></View>
           <ActivityIndicator size="large" color={T.color.cerulean} />
         </View>
       ) : (
@@ -479,6 +477,7 @@ export default function StudentOrders() {
           showsVerticalScrollIndicator={false}
           ListHeaderComponent={
             <>
+              <TideHeader title="Orders" kicker="What's on the way, and what came before" />
               {/* Stats */}
               <View style={styles.stats}>
                 <View style={styles.statCard}>
@@ -492,7 +491,7 @@ export default function StudentOrders() {
                   <Text style={styles.statLabel}>Total spent</Text>
                 </View>
                 <View style={styles.statCard}>
-                  <Text style={[styles.statValue, activeOrders.length > 0 && { color: T.color.teal }]}>
+                  <Text style={styles.statValue}>
                     {activeOrders.length}
                   </Text>
                   <Text style={styles.statLabel}>Active</Text>
@@ -561,25 +560,19 @@ const styles = StyleSheet.create({
     top: 260, left: -100,
   },
 
-  header: {
-    paddingHorizontal: T.space.lg,
-    paddingBottom: T.space.md,
-  },
-  eyebrow: { ...T.type.label, color: T.color.teal, marginBottom: 4 },
-  title: { ...T.type.display, color: T.color.ink },
+  loading: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  loadingHead: { position: 'absolute', top: 0, left: 0, right: 0 },
 
-  loading: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-
-  // Stats
-  // One summary strip, not three boxes: the numbers belong together.
+  // Stats: one teal strip, the numbers belong together.
   stats: {
     flexDirection: 'row',
     marginHorizontal: T.space.lg,
-    marginBottom: T.space.md,
-    backgroundColor: T.color.card,
-    borderRadius: T.radius.md,
-    borderWidth: 1, borderColor: T.color.line,
-    paddingVertical: T.space.sm,
+    marginTop: T.space.md,
+    marginBottom: T.space.lg,
+    backgroundColor: T.color.teal,
+    borderRadius: T.radius.lg,
+    paddingVertical: T.space.md,
+    ...T.plate.teal, shadowColor: '#03352D',
   },
   statCard: {
     flex: 1,
@@ -587,11 +580,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 4,
   },
-  statValue: { fontSize: 20, fontWeight: '900', color: T.color.cerulean, letterSpacing: -0.4 },
+  statValue: { fontSize: 24, fontWeight: '900', color: T.color.card, letterSpacing: -0.4 },
   statHollow: {},
-  statDivided: { borderLeftWidth: 1, borderRightWidth: 1, borderColor: T.color.line },
-  statValueHollow: { fontSize: 15, fontWeight: '900', color: T.color.cerulean, letterSpacing: -0.3 },
-  statLabel: { ...T.type.label, fontSize: 10, color: T.color.inkFaint },
+  statDivided: { borderLeftWidth: 1, borderRightWidth: 1, borderColor: 'rgba(250, 252, 251, 0.25)' },
+  statValueHollow: { fontSize: 18, lineHeight: 29, fontWeight: '900', color: T.color.card, letterSpacing: -0.3 },
+  statLabel: { ...T.type.label, fontSize: 12, color: T.color.tealTint },
 
   // No active
   noActiveCard: {
@@ -601,8 +594,9 @@ const styles = StyleSheet.create({
     borderRadius: T.radius.xl,
     padding: T.space.xl,
     alignItems: 'center',
-    borderWidth: 1, borderColor: T.color.line,
+    borderWidth: 1.5, borderColor: T.color.line,
     gap: T.space.sm,
+    ...T.plate.card,
   },
   noActiveTile: {
     width: 56, height: 56, borderRadius: 18,
@@ -620,14 +614,15 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: 20,
     borderRadius: 999,
-    borderWidth: 1,
-    borderColor: T.color.line,
+    borderWidth: 1.5,
+    borderColor: T.color.lineStrong,
     backgroundColor: T.color.card,
+    ...T.plate.card, shadowOffset: { width: 0, height: 3 },
   },
   moreText: { ...T.type.body, fontSize: 14, fontWeight: '700', color: T.color.ceruleanDeep },
   historyLabel: {
-    ...T.type.label,
-    color: T.color.teal,
+    ...T.type.title, fontSize: 21,
+    color: T.color.ink,
     paddingHorizontal: T.space.lg,
     paddingTop: T.space.md,
     paddingBottom: T.space.sm,

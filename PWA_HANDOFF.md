@@ -523,3 +523,18 @@ Every new order used to go to every free online dasher at once: at 50+ dashers t
 - Checkout, the store page, home and the admin stores list all show the constant. The admin store form no longer has a fee field; saving a store writes `deliveryFee: DELIVERY_FEE_JMD` so the stored value stays in step (the rules still require a valid number there).
 - Terms updated (28 Sep 2026): "DormDash charges one delivery fee on every order".
 - To change the fee: edit `DELIVERY_FEE_JMD`, deploy functions and web, and update the live store docs' `deliveryFee` to match.
+
+### "Tide Print": the student look, teal and cerulean (2026-09-28)
+Students (and sign-in) only; dasher (`themeDark`) and admin (`themeMid`) are unchanged. Tokens in `constants/theme.ts`, pieces in `components/Tide.tsx`:
+- **Tide band** (`TideBand`, `TideHeader`): every student screen opens under a deep cerulean "sea" (`T.color.sea`) with the seigaiha pattern etched in and a scalloped foam edge where it meets the page. Headings sit on it in cream (`T.color.card`), secondary text in `seaSoft`, highlights in `seaFoam`.
+- **Print plates** (`T.plate.card | teal | cerulean | sea`): cards and buttons sit on a solid offset layer, like a second ink plate. No blur, no glow. `pressPlate(pressed)` makes a surface sink onto its plate when tapped.
+- **Store marks** (`StoreMark`, `StoreArt`): each store gets its own sea colour (picked from its id) with the wave pattern and its initial, on home, featured cards and the store page.
+- Colour roles: cerulean = actions; teal = the second ink (active chips, the order button, live orders, stats); vermilion (`shu`) = the rare warning; gold = money only. Page is sea-foam (`#EEF5F3`), cards `#FAFCFB` (never pure white). All text pairs checked for WCAG AA (ratios noted next to the tokens).
+- Screens: home, store, checkout, orders, order tracking, profile, payment result, student tab bar (sea glass, teal active tab), wallet card (gold plates).
+
+### iPhone: full-screen "Add to Home Screen" warning (2026-09-28)
+On iOS, notifications only work in the Home Screen app, and websites can't show an install button. So `IOSInstallGate` (components/InstallPrompt.web.tsx) covers the screen whenever DormDash is open in an iPhone/iPad browser tab, before or after sign-in (the Home Screen app has its own sign-in, so installing first saves signing in twice). Not for admins, not on /payment-result or /legal.
+- Copy: "Skip this and you won't get order alerts. Miss the 'Pay now' alert and your order is cancelled after 10 minutes." Steps: ⋯ → More → Add to Home Screen → open from the Home Screen. A footnote covers older iPhones (Share button).
+- Instagram, TikTok, Snapchat, Facebook etc. in-app browsers (and Chrome/Edge on iOS) get a first step "Open dormdash-71035.web.app in Safari" and a "Copy the link" button.
+- "I've added it" hides it for good in that browser. "Continue without alerts" appears after 6 seconds and only lasts for this visit, so it comes back next time.
+- The small install card no longer asks iPhone browser tabs to install (the gate does); alerts cards are unchanged.

@@ -17,10 +17,11 @@ import { auth } from '../../../services/firebase';
 import { useAuth } from '../../../hooks/useAuth';
 import { logoutUser } from '../../../services/auth';
 import { isValidPassword } from '../../../services/sanitize';
-import { T } from '../../../constants/theme';
+import { T, FONT } from '../../../constants/theme';
 import { WalletCard } from '../../../components/WalletCard';
 import { AccountActions } from '../../../components/AccountActions';
 import { Backdrop } from '../../../components/Backdrop';
+import { TideBand } from '../../../components/Tide';
 
 interface UserProfile {
   name: string; email: string; phone: string;
@@ -163,8 +164,9 @@ export default function StudentProfile() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: 120 + insets.bottom }}
       >
+        <TideBand>
         <View style={[styles.header, { paddingTop: insets.top + T.space.md }]}>
-          <Text style={styles.title}>Profile</Text>
+          <Text style={styles.title} accessibilityRole="header">Profile</Text>
         </View>
 
         {/* Avatar block */}
@@ -182,6 +184,7 @@ export default function StudentProfile() {
             <Text style={styles.roleText}>Student</Text>
           </View>
         </View>
+        </TideBand>
 
         {/* Tokens */}
         <Text style={styles.sectionLabel}>DormDash tokens</Text>
@@ -396,62 +399,61 @@ const styles = StyleSheet.create({
     top: 260, left: -110,
   },
 
-  header: { paddingHorizontal: T.space.lg, paddingBottom: T.space.md },
-  eyebrow: { ...T.type.label, color: T.color.teal, marginBottom: 4 },
-  title: { ...T.type.display, color: T.color.ink },
+  header: { paddingHorizontal: T.space.lg },
+  title: { ...T.type.display, fontSize: 34, color: T.color.card },
 
   loading: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: T.space.md },
   loadingText: { ...T.type.body, color: T.color.inkSoft },
 
-  // Avatar
+  // Avatar (on the sea band)
   avatarBlock: {
     alignItems: 'center',
-    marginBottom: T.space.xl,
-    marginTop: T.space.md,
+    paddingTop: T.space.sm,
+    paddingBottom: T.space.xl,
     paddingHorizontal: T.space.lg,
   },
-  avatarWrap: { position: 'relative', marginBottom: T.space.md },
+  avatarWrap: { position: 'relative', marginBottom: T.space.sm },
   avatarRing: {
     position: 'absolute',
-    width: 108, height: 108, borderRadius: 54,
-    borderWidth: 2,
-    borderColor: T.color.cerulean,
-    top: -6, left: -6,
-    opacity: 0.4,
+    width: 112, height: 112, borderRadius: 56,
+    borderWidth: 2, borderColor: T.color.seaFoam, borderStyle: 'dashed',
+    top: -8, left: -8,
   },
   avatar: {
     width: 96, height: 96, borderRadius: 48,
-    backgroundColor: T.color.ceruleanTint,
+    backgroundColor: T.color.teal,
     justifyContent: 'center', alignItems: 'center',
-    borderWidth: 1, borderColor: T.color.cerulean,
+    borderWidth: 3, borderColor: T.color.card,
+    ...T.plate.sea,
   },
-  avatarText: { fontSize: 38, fontWeight: '900', color: T.color.cerulean, letterSpacing: -1 },
-  userName: { ...T.type.title, fontSize: 22, color: T.color.ink, marginTop: T.space.sm },
-  userEmail: { ...T.type.body, fontSize: 13, color: T.color.inkSoft, marginTop: 2 },
+  avatarText: { fontFamily: FONT.heading, fontSize: 38, color: T.color.card },
+  userName: { ...T.type.title, fontSize: 24, color: T.color.card, marginTop: T.space.sm },
+  userEmail: { ...T.type.body, fontSize: 14, color: T.color.seaSoft, marginTop: 2 },
   roleBadge: {
     flexDirection: 'row', alignItems: 'center', gap: 6,
     marginTop: T.space.sm,
-    backgroundColor: T.color.tealTint,
+    backgroundColor: 'rgba(7, 42, 64, 0.6)',
+    borderWidth: 1, borderColor: 'rgba(127, 214, 200, 0.35)',
     paddingHorizontal: 12, paddingVertical: 5,
     borderRadius: T.radius.pill,
   },
-  roleDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: T.color.teal },
-  roleText: { fontSize: 11, fontWeight: '800', color: T.color.teal, letterSpacing: 0.8 },
+  roleDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: T.color.tealBright },
+  roleText: { fontSize: 12, fontWeight: '800', color: T.color.card, letterSpacing: 0.3 },
 
   // Section
   sectionLabel: {
-    ...T.type.label,
-    color: T.color.teal,
+    ...T.type.title, fontSize: 20,
+    color: T.color.ink,
     paddingHorizontal: T.space.lg,
-    paddingTop: T.space.md,
+    paddingTop: T.space.lg,
     paddingBottom: T.space.sm,
   },
   card: {
     backgroundColor: T.color.card,
     marginHorizontal: T.space.lg,
     borderRadius: T.radius.lg,
-    borderWidth: 1, borderColor: T.color.line,
-    overflow: 'hidden',
+    borderWidth: 1.5, borderColor: T.color.line,
+    ...T.plate.card,
   },
 
   row: {
@@ -459,7 +461,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: T.space.md, paddingVertical: T.space.md,
     gap: T.space.sm,
   },
-  rowLabel: { ...T.type.label, color: T.color.inkFaint, fontSize: 10 },
+  rowLabel: { ...T.type.label, color: T.color.inkFaint, fontSize: 12 },
   rowValue: { ...T.type.body, fontSize: 14, fontWeight: '700', color: T.color.ink },
   rowValueMuted: { color: T.color.inkFaint, fontWeight: '600' },
   editIcon: { fontSize: 16, color: T.color.cerulean, fontWeight: '700' },
@@ -473,7 +475,7 @@ const styles = StyleSheet.create({
     borderRadius: T.radius.pill,
     height: 52,
     justifyContent: 'center', alignItems: 'center',
-    borderWidth: 1, borderColor: 'rgba(201, 79, 79, 0.25)',
+    borderWidth: 1.5, borderColor: 'rgba(178, 62, 58, 0.3)',
   },
   signOutText: { color: T.color.danger, fontSize: 15, fontWeight: '800', letterSpacing: 0.3 },
 

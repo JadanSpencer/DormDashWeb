@@ -1,5 +1,6 @@
 // app/(student)/store/[id].tsx
-// DormDash — Store detail (Route identity).
+// DormDash — Store detail, "Tide Print" style (constants/theme.ts): the
+// store's mark and details on the sea band, menu items on print plates.
 // Same as previous; only change is safeGoBack — router.back() failed silently
 // when there was no navigation history (deep link, notification open, cold
 // boot). Now falls through to the student home if there's nothing to pop.
@@ -19,6 +20,7 @@ import { PriceUnitToggle } from '../../../components/PriceUnitToggle';
 import { T, useReducedMotion } from '../../../constants/theme';
 import { Watermark } from '../../../components/Watermark';
 import { Backdrop } from '../../../components/Backdrop';
+import { TideBand, StoreMark, pressPlate } from '../../../components/Tide';
 
 // Fallback-safe navigation. When a user lands on a store via notification
 // or fresh app boot, there's no back stack — pop would leave a black screen.
@@ -137,7 +139,7 @@ export default function StoreMenuScreen() {
         style={[styles.sticky, { paddingTop: insets.top + 8, opacity: stickyOpacity, transform: [{ translateY: stickyTranslate }] }]}
       >
         <View style={styles.stickyRow}>
-          <TouchableOpacity onPress={safeGoBack} style={styles.stickyBack} hitSlop={12}>
+          <TouchableOpacity onPress={safeGoBack} style={styles.stickyBack} hitSlop={12} accessibilityLabel="Back">
             <Text style={styles.stickyBackText}>←</Text>
           </TouchableOpacity>
           <Text style={styles.stickyTitle} numberOfLines={1}>{store?.name ?? ''}</Text>
@@ -149,7 +151,7 @@ export default function StoreMenuScreen() {
               <Pressable
                 key={cat}
                 onPress={() => setSelectedCategory(cat)}
-                style={({ pressed }) => [styles.chip, selectedCategory === cat && styles.chipActive, pressed && { transform: [{ scale: 0.96 }] }]}
+                style={({ pressed }) => [styles.chip, selectedCategory === cat && styles.chipActive, pressPlate(pressed, 3)]}
               >
                 <Text style={[styles.chipText, selectedCategory === cat && styles.chipTextActive]}>{cat}</Text>
               </Pressable>
@@ -173,50 +175,49 @@ export default function StoreMenuScreen() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: cartCount > 0 ? 140 : 80 + insets.bottom }}
       >
-        <Animated.View style={[styles.hero, { paddingTop: insets.top + T.space.md, opacity: heroFade, transform: [{ translateY: heroRise }] }]}>
-          <View style={styles.heroTop}>
-            <TouchableOpacity onPress={safeGoBack} style={styles.backBtn} hitSlop={12}>
-              <Text style={styles.backText}>←</Text>
-            </TouchableOpacity>
-            {store && (
-              <View style={[styles.openBadge, { backgroundColor: store.isOpen ? T.color.tealTint : T.color.dangerTint }]}>
-                <View style={[styles.openDot, { backgroundColor: store.isOpen ? T.color.teal : T.color.danger }]} />
-                <Text style={[styles.openText, { color: store.isOpen ? T.color.teal : T.color.danger }]}>
-                  {store.isOpen ? 'Open now' : 'Closed'}
-                </Text>
-              </View>
-            )}
-          </View>
+        <TideBand>
+          <Animated.View style={[styles.hero, { paddingTop: insets.top + T.space.md, opacity: heroFade, transform: [{ translateY: heroRise }] }]}>
+            <View style={styles.heroTop}>
+              <Pressable onPress={safeGoBack} style={({ pressed }) => [styles.backBtn, pressPlate(pressed, 3)]} hitSlop={12} accessibilityRole="button" accessibilityLabel="Back">
+                <Text style={styles.backText}>←</Text>
+              </Pressable>
+              {store && (
+                <View style={styles.openBadge}>
+                  <View style={[styles.openDot, { backgroundColor: store.isOpen ? T.color.tealBright : T.color.danger }]} />
+                  <Text style={styles.openText}>{store.isOpen ? 'Open now' : 'Closed'}</Text>
+                </View>
+              )}
+            </View>
 
-          <View style={styles.monogramTile}>
-            <Text style={styles.monogramText}>{store?.name.charAt(0) ?? '?'}</Text>
-          </View>
-
-          <Text style={styles.storeName}>{store?.name ?? ' '}</Text>
-          {store?.description ? <Text style={styles.storeDesc} numberOfLines={2}>{store.description}</Text> : null}
-
-          {store && (
-            <View style={styles.infoRow}>
-              <View style={styles.infoPill}>
-                <Text style={styles.infoIcon}>★</Text>
-                <Text style={styles.infoText}>{store.rating.toFixed(1)}</Text>
-              </View>
-              <View style={styles.infoDot} />
-              <View style={styles.infoPill}>
-                <Text style={styles.infoIcon}>◷</Text>
-                <Text style={styles.infoText}>{store.estimatedTime}</Text>
-              </View>
-              <View style={styles.infoDot} />
-              <View style={styles.infoPill}>
-                <Text style={styles.infoIcon}>◇</Text>
-                <Text style={styles.infoText}>{fmt(DELIVERY_FEE_JMD)}</Text>
+            <View style={styles.heroMain}>
+              {store ? <StoreMark id={store.id} name={store.name} size={84} radius={T.radius.lg} style={styles.heroMark} /> : null}
+              <View style={{ flex: 1 }}>
+                <Text style={styles.storeName}>{store?.name ?? ' '}</Text>
+                {store?.description ? <Text style={styles.storeDesc} numberOfLines={2}>{store.description}</Text> : null}
               </View>
             </View>
-          )}
-        </Animated.View>
+
+            {store && (
+              <View style={styles.infoRow}>
+                <View style={styles.infoPill}>
+                  <Text style={styles.infoIcon}>★</Text>
+                  <Text style={styles.infoText}>{store.rating.toFixed(1)}</Text>
+                </View>
+                <View style={styles.infoPill}>
+                  <Text style={styles.infoIcon}>◷</Text>
+                  <Text style={styles.infoText}>{store.estimatedTime}</Text>
+                </View>
+                <View style={styles.infoPill}>
+                  <Text style={styles.infoIcon}>◇</Text>
+                  <Text style={styles.infoText}>{fmt(DELIVERY_FEE_JMD)} delivery</Text>
+                </View>
+              </View>
+            )}
+          </Animated.View>
+        </TideBand>
 
         {!loading && (
-          <View style={{ paddingHorizontal: T.space.lg, paddingTop: T.space.sm }}>
+          <View style={{ paddingHorizontal: T.space.lg, paddingTop: T.space.md }}>
             <PriceUnitToggle />
           </View>
         )}
@@ -227,7 +228,7 @@ export default function StoreMenuScreen() {
               <Pressable
                 key={cat}
                 onPress={() => setSelectedCategory(cat)}
-                style={({ pressed }) => [styles.chip, selectedCategory === cat && styles.chipActive, pressed && { transform: [{ scale: 0.96 }] }]}
+                style={({ pressed }) => [styles.chip, selectedCategory === cat && styles.chipActive, pressPlate(pressed, 3)]}
               >
                 <Text style={[styles.chipText, selectedCategory === cat && styles.chipTextActive]}>{cat}</Text>
               </Pressable>
@@ -273,7 +274,7 @@ export default function StoreMenuScreen() {
         <Animated.View style={[styles.cartBar, { paddingBottom: insets.bottom + T.space.md, transform: [{ scale: cartPulse }] }]}>
           <Pressable
             onPress={goCheckout}
-            style={({ pressed }) => [styles.cartBtn, pressed && { transform: [{ scale: 0.97 }] }]}
+            style={({ pressed }) => [styles.cartBtn, pressPlate(pressed)]}
           >
             <View style={styles.cartBadge}>
               <Text style={styles.cartBadgeText}>{cartCount}</Text>
@@ -336,7 +337,7 @@ const ItemCard: React.FC<{
         {qty === 0 ? (
           <Pressable
             onPress={() => { onAdd(); springPlus(); }}
-            style={({ pressed }) => [styles.addBtn, pressed && { transform: [{ scale: 0.94 }] }]}
+            style={({ pressed }) => [styles.addBtn, pressPlate(pressed, 3)]}
           >
             <Animated.View style={{ transform: [{ scale: plusScale }] }}>
               <Text style={styles.addBtnText}>＋ Add</Text>
@@ -369,107 +370,108 @@ const styles = StyleSheet.create({
   blobTeal: { position: 'absolute', width: 240, height: 240, borderRadius: 120, backgroundColor: T.color.teal, opacity: 0.06, top: 80, right: -80 },
   blobCerulean: { position: 'absolute', width: 300, height: 300, borderRadius: 150, backgroundColor: T.color.cerulean, opacity: 0.05, top: 300, left: -120 },
 
-  hero: { paddingHorizontal: T.space.lg, paddingBottom: T.space.lg, alignItems: 'flex-start' },
-  heroTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', alignSelf: 'stretch', marginBottom: T.space.lg },
+  hero: { paddingHorizontal: T.space.lg, paddingBottom: T.space.lg + 4 },
+  heroTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: T.space.lg },
   backBtn: {
-    width: 40, height: 40, borderRadius: 20, backgroundColor: T.color.card,
-    justifyContent: 'center', alignItems: 'center', ...T.shadow.card,
+    width: 42, height: 42, borderRadius: 21, backgroundColor: T.color.card,
+    justifyContent: 'center', alignItems: 'center', ...T.plate.sea, shadowOffset: { width: 0, height: 3 },
   },
-  backText: { fontSize: 20, fontWeight: '700', color: T.color.ink },
-  openBadge: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: T.space.md, paddingVertical: 7, borderRadius: T.radius.pill },
-  openDot: { width: 6, height: 6, borderRadius: 3 },
-  openText: { fontSize: 11, fontWeight: '800', letterSpacing: 0.8 },
-
-  monogramTile: {
-    width: 96, height: 96, borderRadius: 28, backgroundColor: T.color.ceruleanTint,
-    justifyContent: 'center', alignItems: 'center', overflow: 'hidden',
-    marginBottom: T.space.lg, borderWidth: 1, borderColor: 'rgba(14, 143, 181, 0.2)',
+  backText: { fontSize: 20, fontWeight: '700', color: T.color.sea },
+  openBadge: {
+    flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: T.space.md, paddingVertical: 7,
+    borderRadius: T.radius.pill, backgroundColor: 'rgba(7, 42, 64, 0.6)',
+    borderWidth: 1, borderColor: 'rgba(127, 214, 200, 0.35)',
   },
-  monogramCircle1: { position: 'absolute', width: 80, height: 80, borderRadius: 40, backgroundColor: T.color.cerulean, opacity: 0.14, top: -20, right: -20 },
-  monogramCircle2: { position: 'absolute', width: 50, height: 50, borderRadius: 25, backgroundColor: T.color.teal, opacity: 0.14, bottom: -10, left: -10 },
-  monogramText: { fontSize: 44, fontWeight: '900', color: T.color.cerulean, letterSpacing: -1 },
+  openDot: { width: 7, height: 7, borderRadius: 4 },
+  openText: { fontSize: 12, fontWeight: '800', letterSpacing: 0.3, color: T.color.card },
 
-  eyebrow: { ...T.type.label, color: T.color.teal, marginBottom: 6 },
-  storeName: { ...T.type.display, fontSize: 34, color: T.color.ink, marginBottom: 6 },
-  storeDesc: { ...T.type.body, color: T.color.inkSoft, marginBottom: T.space.md },
+  heroMain: { flexDirection: 'row', alignItems: 'center', gap: T.space.md },
+  heroMark: { borderWidth: 3, borderColor: T.color.card, ...T.plate.sea },
+  storeName: { ...T.type.display, fontSize: 32, lineHeight: 38, color: T.color.card },
+  storeDesc: { ...T.type.body, fontSize: 14, color: T.color.seaSoft, marginTop: 4 },
 
-  infoRow: { flexDirection: 'row', alignItems: 'center', gap: T.space.sm, marginTop: T.space.xs },
+  infoRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: T.space.sm, marginTop: T.space.lg },
   infoPill: {
-    flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: T.color.card,
-    borderRadius: T.radius.pill, paddingVertical: 6, paddingHorizontal: 12,
-    borderWidth: 1, borderColor: T.color.line,
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    backgroundColor: 'rgba(7, 42, 64, 0.55)',
+    borderRadius: T.radius.pill, paddingVertical: 7, paddingHorizontal: 12,
+    borderWidth: 1, borderColor: 'rgba(169, 211, 230, 0.3)',
   },
-  infoIcon: { fontSize: 12, color: T.color.cerulean, fontWeight: '800' },
-  infoText: { fontSize: 12, fontWeight: '700', color: T.color.ink },
-  infoDot: { width: 3, height: 3, borderRadius: 2, backgroundColor: T.color.lineStrong },
+  infoIcon: { fontSize: 12, color: T.color.seaFoam, fontWeight: '800' },
+  infoText: { fontSize: 12, fontWeight: '800', color: T.color.card },
 
   sticky: {
-    position: 'absolute', top: 0, left: 0, right: 0, backgroundColor: T.color.cream,
-    zIndex: 10, borderBottomWidth: 1, borderBottomColor: T.color.line, paddingBottom: T.space.sm,
+    position: 'absolute', top: 0, left: 0, right: 0, backgroundColor: T.color.sea,
+    zIndex: 10, paddingBottom: T.space.sm, ...T.plate.card,
   },
   stickyRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: T.space.lg, marginBottom: T.space.sm },
   stickyBack: {
-    width: 32, height: 32, borderRadius: 16, justifyContent: 'center', alignItems: 'center',
-    backgroundColor: T.color.card, borderWidth: 1, borderColor: T.color.line,
+    width: 34, height: 34, borderRadius: 17, justifyContent: 'center', alignItems: 'center',
+    backgroundColor: T.color.card,
   },
-  stickyBackText: { fontSize: 16, color: T.color.ink, fontWeight: '700' },
-  stickyTitle: { ...T.type.body, fontWeight: '800', color: T.color.ink, flex: 1, textAlign: 'center', marginHorizontal: T.space.sm },
+  stickyBackText: { fontSize: 16, color: T.color.sea, fontWeight: '700' },
+  stickyTitle: { ...T.type.title, fontSize: 18, color: T.color.card, flex: 1, textAlign: 'center', marginHorizontal: T.space.sm },
 
-  chipRow: { paddingHorizontal: T.space.lg, paddingVertical: T.space.sm, gap: T.space.sm },
-  chip: { paddingHorizontal: T.space.md, paddingVertical: 8, borderRadius: T.radius.pill, backgroundColor: T.color.card, borderWidth: 1.5, borderColor: T.color.line },
-  chipActive: { backgroundColor: T.color.ceruleanTint, borderColor: T.color.cerulean },
-  chipText: { ...T.type.body, fontSize: 13, fontWeight: '700', color: T.color.inkSoft },
-  chipTextActive: { color: T.color.cerulean },
+  chipRow: { paddingHorizontal: T.space.lg, paddingTop: T.space.sm, paddingBottom: T.space.sm + 4, gap: T.space.sm },
+  chip: {
+    paddingHorizontal: T.space.md, paddingVertical: 9, borderRadius: T.radius.pill, backgroundColor: T.color.card,
+    borderWidth: 1.5, borderColor: T.color.lineStrong, ...T.plate.card, shadowOffset: { width: 0, height: 3 },
+  },
+  chipActive: { backgroundColor: T.color.teal, borderColor: T.color.teal, ...T.plate.teal, shadowOffset: { width: 0, height: 3 } },
+  chipText: { ...T.type.body, fontSize: 13, fontWeight: '800', color: T.color.inkSoft },
+  chipTextActive: { color: T.color.card },
 
-  menuList: { paddingHorizontal: T.space.lg, paddingTop: T.space.sm },
-  catHeader: { ...T.type.label, color: T.color.inkSoft, marginTop: T.space.lg, marginBottom: T.space.sm },
+  menuList: { paddingHorizontal: T.space.lg, paddingTop: T.space.xs },
+  catHeader: { ...T.type.title, fontSize: 21, color: T.color.ink, marginTop: T.space.lg, marginBottom: T.space.md },
 
   itemCard: {
     flexDirection: 'row', alignItems: 'stretch', borderRadius: T.radius.lg,
-    padding: T.space.md, marginBottom: T.space.md, borderWidth: 1.5,
-    gap: T.space.md, ...T.shadow.card, shadowOpacity: 0.04,
+    padding: T.space.md, marginBottom: T.space.md + 2, borderWidth: 1.5,
+    gap: T.space.md, ...T.plate.card,
   },
   itemInfo: { flex: 1, gap: 4 },
-  itemName: { ...T.type.body, fontSize: 15, fontWeight: '800', color: T.color.ink },
-  itemDesc: { ...T.type.body, fontSize: 12, color: T.color.inkSoft, lineHeight: 17 },
-  allergens: { fontSize: 11, color: T.color.danger, fontWeight: '700', marginTop: 2 },
+  itemName: { ...T.type.body, fontSize: 16, fontWeight: '800', color: T.color.ink },
+  itemDesc: { ...T.type.body, fontSize: 13, color: T.color.inkSoft, lineHeight: 18 },
+  allergens: { fontSize: 12, color: T.color.danger, fontWeight: '700', marginTop: 2 },
 
-  pricePlate: { alignSelf: 'flex-start', marginTop: 8 },
+  pricePlate: {
+    alignSelf: 'flex-start', marginTop: 8,
+    backgroundColor: T.color.ceruleanTint, borderRadius: T.radius.sm, paddingHorizontal: 8, paddingVertical: 3,
+  },
   hollowText: { fontWeight: '900', color: T.color.cerulean, letterSpacing: -0.3 },
 
   qtyControl: { justifyContent: 'center' },
   addBtn: {
     backgroundColor: T.color.cerulean, borderRadius: T.radius.pill,
-    paddingHorizontal: T.space.md, paddingVertical: 10, ...T.shadow.button, shadowOpacity: 0.06,
+    paddingHorizontal: T.space.md, paddingVertical: 10, ...T.plate.cerulean, shadowOffset: { width: 0, height: 3 },
   },
-  addBtnText: { color: T.color.card, fontSize: 13, fontWeight: '800', letterSpacing: 0.2 },
+  addBtnText: { color: T.color.card, fontSize: 14, fontWeight: '800', letterSpacing: 0.2 },
   qtyRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   qtyBtn: {
-    width: 32, height: 32, borderRadius: 16, backgroundColor: T.color.creamDeep,
+    width: 34, height: 34, borderRadius: 17, backgroundColor: T.color.creamDeep,
     justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: T.color.line,
   },
-  qtyBtnAdd: { backgroundColor: T.color.cerulean, borderColor: T.color.cerulean },
+  qtyBtnAdd: { backgroundColor: T.color.cerulean, borderColor: T.color.cerulean, ...T.plate.cerulean, shadowOffset: { width: 0, height: 2 } },
   qtyBtnText: { fontSize: 18, fontWeight: '800', color: T.color.ink, lineHeight: 22 },
   qtyBtnTextAdd: { color: T.color.card },
-  qtyNum: { ...T.type.body, fontSize: 15, fontWeight: '900', color: T.color.ink, minWidth: 20, textAlign: 'center' },
+  qtyNum: { ...T.type.body, fontSize: 16, fontWeight: '900', color: T.color.ink, minWidth: 20, textAlign: 'center' },
 
   cartBar: {
     position: 'absolute', bottom: 24, left: 0, right: 0,
-    paddingHorizontal: T.space.lg, paddingTop: T.space.md, backgroundColor: T.color.cream,
-    borderTopWidth: 1, borderTopColor: T.color.line,
+    paddingHorizontal: T.space.lg, paddingTop: T.space.md,
   },
   cartBtn: {
-    flexDirection: 'row', alignItems: 'center', backgroundColor: T.color.cerulean,
-    borderRadius: T.radius.pill, height: 56, paddingHorizontal: T.space.md, ...T.shadow.button,
+    flexDirection: 'row', alignItems: 'center', backgroundColor: T.color.teal,
+    borderRadius: T.radius.pill, height: 58, paddingHorizontal: T.space.md, ...T.plate.teal, shadowOffset: { width: 0, height: 5 },
   },
   cartBadge: {
-    backgroundColor: 'rgba(255,255,255,0.22)', borderRadius: 12, minWidth: 26, height: 26,
+    backgroundColor: T.color.card, borderRadius: 13, minWidth: 26, height: 26,
     justifyContent: 'center', alignItems: 'center', paddingHorizontal: 6, marginRight: T.space.sm,
   },
-  cartBadgeText: { color: T.color.card, fontSize: 13, fontWeight: '900' },
-  cartBtnText: { flex: 1, color: T.color.card, fontSize: 15, fontWeight: '800', letterSpacing: 0.2 },
+  cartBadgeText: { color: T.color.teal, fontSize: 13, fontWeight: '900' },
+  cartBtnText: { flex: 1, color: T.color.card, fontSize: 16, fontWeight: '800', letterSpacing: 0.2 },
   cartTotalWrap: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  cartTotalText: { color: T.color.card, fontSize: 15, fontWeight: '900' },
+  cartTotalText: { color: T.color.card, fontSize: 16, fontWeight: '900' },
   cartArrow: { color: T.color.card, fontSize: 18, fontWeight: '800' },
 
   loading: { paddingTop: 60, alignItems: 'center', gap: T.space.md },

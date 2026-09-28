@@ -132,7 +132,8 @@ const COINS_FOR_PACK: Record<number, number> = { 5: 1, 10: 2, 20: 3, 50: 4 };
 const styles = StyleSheet.create({
   card: {
     backgroundColor: T.color.card, marginHorizontal: T.space.lg, borderRadius: T.radius.lg,
-    borderWidth: 1, borderColor: 'rgba(122, 87, 16, 0.22)', overflow: 'hidden',
+    borderWidth: 1.5, borderColor: 'rgba(122, 87, 16, 0.25)', overflow: 'hidden',
+    ...T.plate.card, shadowColor: '#E2C878', // a gold print plate
   },
   band: {
     flexDirection: 'row', alignItems: 'center', gap: 14,
@@ -155,8 +156,9 @@ const styles = StyleSheet.create({
     flexGrow: 1, flexBasis: '45%', minHeight: 116, borderRadius: T.radius.md,
     backgroundColor: T.color.card, borderWidth: 1.5, borderColor: 'rgba(212, 165, 55, 0.6)',
     alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 12,
+    ...T.plate.card, shadowColor: '#EAD69A', shadowOffset: { width: 0, height: 3 },
   },
-  packPressed: { backgroundColor: T.color.goldTint, transform: [{ scale: 0.98 }] },
+  packPressed: { backgroundColor: T.color.goldTint, transform: [{ translateY: 2 }], shadowOffset: { width: 0, height: 1 } },
   packTokens: { fontFamily: FONT.heading, fontSize: 18, color: T.color.ink },
   pricePill: {
     backgroundColor: T.color.cerulean, borderRadius: T.radius.pill, paddingHorizontal: 12, paddingVertical: 4,

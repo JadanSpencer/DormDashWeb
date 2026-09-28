@@ -19,7 +19,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import {
   View, Text, StyleSheet, ScrollView,
-  TouchableOpacity, Pressable, ActivityIndicator,
+  Pressable, ActivityIndicator,
   Animated, Easing, Alert
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -36,6 +36,7 @@ import { useWallet } from '../../../hooks/useWallet';
 import { useAuth } from '../../../hooks/useAuth';
 import { serverNow } from '../../../services/serverClock';
 import { Backdrop } from '../../../components/Backdrop';
+import { TideHeader, pressPlate } from '../../../components/Tide';
 
 const STATUS_CONFIG: Record<OrderStatus, { label: string; color: string; description: string }> = {
   pending:    { label: 'Finding a dasher', color: T.color.warning,  description: 'Waiting for a dasher to accept your order' },
@@ -161,7 +162,7 @@ const PaymentPanel: React.FC<{ order: Order }> = ({ order }) => {
           <Pressable
             onPress={payTokens}
             disabled={!!busy || !enoughTokens}
-            style={({ pressed }) => [pay_.btn, pay_.btnTokens, (!enoughTokens) && pay_.btnOff, (pressed || busy === 'tokens') && { opacity: 0.85 }]}
+            style={({ pressed }) => [pay_.btn, pay_.btnTokens, (!enoughTokens) && pay_.btnOff, pressPlate(pressed), busy === 'tokens' && { opacity: 0.85 }]}
             accessibilityRole="button"
             accessibilityState={{ disabled: !!busy || !enoughTokens }}
           >
@@ -173,7 +174,7 @@ const PaymentPanel: React.FC<{ order: Order }> = ({ order }) => {
           <Pressable
             onPress={payCard}
             disabled={!!busy}
-            style={({ pressed }) => [pay_.btn, (pressed || busy === 'card') && { opacity: 0.85 }]}
+            style={({ pressed }) => [pay_.btn, pressPlate(pressed), busy === 'card' && { opacity: 0.85 }]}
             accessibilityRole="button"
           >
             {busy === 'card' ? <ActivityIndicator color={T.color.card} /> : <Text style={pay_.btnText}>Pay {fmt(total)} by card</Text>}
@@ -188,20 +189,22 @@ const PaymentPanel: React.FC<{ order: Order }> = ({ order }) => {
 const pay_ = StyleSheet.create({
   box: {
     marginHorizontal: T.space.lg, marginTop: T.space.md, padding: T.space.md,
-    borderRadius: T.radius.lg, borderWidth: 1, borderColor: T.color.line, backgroundColor: T.color.card, gap: 6,
+    borderRadius: T.radius.lg, borderWidth: 1.5, borderColor: T.color.line, backgroundColor: T.color.card, gap: 6,
+    ...T.plate.card,
   },
-  boxUrgent: { borderColor: T.color.cerulean, borderWidth: 2 },
+  boxUrgent: { borderColor: T.color.cerulean, borderWidth: 2, ...T.plate.cerulean },
   title: { fontSize: 16, fontWeight: '900', color: T.color.ink },
   text: { fontSize: 13, lineHeight: 19, color: T.color.inkSoft },
   btn: {
-    marginTop: 6, backgroundColor: T.color.cerulean, borderRadius: 999, height: 50,
+    marginTop: 6, backgroundColor: T.color.cerulean, borderRadius: 999, height: 52,
     alignItems: 'center', justifyContent: 'center',
+    ...T.plate.cerulean, shadowColor: '#063E5B',
   },
   btnText: { color: T.color.card, fontSize: 15, fontWeight: '900' },
-  btnTokens: { backgroundColor: T.color.teal },
-  btnOff: { backgroundColor: T.color.line },
+  btnTokens: { backgroundColor: T.color.teal, ...T.plate.teal, shadowColor: '#03352D' },
+  btnOff: { backgroundColor: T.color.creamDeep, shadowOpacity: 0 },
   btnTextOff: { color: T.color.inkFaint },
-  fine: { fontSize: 11, color: T.color.inkFaint, textAlign: 'center' },
+  fine: { fontSize: 12, color: T.color.inkFaint, textAlign: 'center' },
 });
 
 export default function OrderTracking() {
@@ -271,17 +274,11 @@ export default function OrderTracking() {
         showsVerticalScrollIndicator={false}
       >
         {/* Header */}
-        <View style={[styles.header, { paddingTop: insets.top + T.space.md }]}>
-          <TouchableOpacity onPress={goHome} style={styles.backBtn} hitSlop={12}>
-            <Text style={styles.backText}>←</Text>
-          </TouchableOpacity>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.eyebrow}>Order #{order.id.slice(-6).toUpperCase()}</Text>
-            <Text style={styles.title}>
-              {isDelivered ? 'Delivered' : isCancelled ? 'Cancelled' : 'Tracking'}
-            </Text>
-          </View>
-        </View>
+        <TideHeader
+          kicker={`Order #${order.id.slice(-6).toUpperCase()} · ${order.storeName}`}
+          title={isDelivered ? 'Delivered' : isCancelled ? 'Cancelled' : 'Tracking'}
+          onBack={goHome}
+        />
 
         {/* ── STATUS HERO ─────────────────────────────────────────── */}
         {isDelivered ? (
@@ -490,29 +487,16 @@ const styles = StyleSheet.create({
     top: 320, left: -110,
   },
 
-  header: {
-    flexDirection: 'row', alignItems: 'center', gap: T.space.md,
-    paddingHorizontal: T.space.lg, paddingBottom: T.space.md,
-  },
-  backBtn: {
-    width: 40, height: 40, borderRadius: 20,
-    backgroundColor: T.color.card,
-    justifyContent: 'center', alignItems: 'center',
-    ...T.shadow.card,
-  },
-  backText: { fontSize: 20, fontWeight: '700', color: T.color.ink },
-  eyebrow: { ...T.type.label, color: T.color.teal, fontSize: 10 },
-  title: { ...T.type.title, fontSize: 24, color: T.color.ink },
-
   // Hero
   hero: {
     backgroundColor: T.color.card,
     marginHorizontal: T.space.lg,
     marginBottom: T.space.sm,
+    marginTop: T.space.md,
     borderRadius: T.radius.xl,
     padding: T.space.lg,
-    borderWidth: 1, borderColor: T.color.line,
-    ...T.shadow.card, shadowOpacity: 0.06,
+    borderWidth: 2, borderColor: T.color.teal,
+    ...T.plate.teal,
   },
   statusRow: { flexDirection: 'row', alignItems: 'center', gap: T.space.sm, marginBottom: T.space.sm },
   pulseWrap: { width: 18, height: 18, justifyContent: 'center', alignItems: 'center' },
@@ -534,19 +518,17 @@ const styles = StyleSheet.create({
     justifyContent: 'center', alignItems: 'center',
   },
   dasherInitial: { color: T.color.card, fontSize: 16, fontWeight: '900' },
-  dasherLabel: { ...T.type.label, color: T.color.inkFaint, fontSize: 9 },
+  dasherLabel: { ...T.type.label, color: T.color.inkSoft, fontSize: 12 },
   dasherName: { ...T.type.body, fontSize: 15, fontWeight: '800', color: T.color.ink },
 
   // Delivered celebration
-  heroDelivered: { alignItems: 'center', backgroundColor: T.color.tealTint, borderColor: 'rgba(15, 168, 147, 0.3)' },
+  heroDelivered: { alignItems: 'center', backgroundColor: T.color.tealTint },
   deliveredMark: {
     width: 72, height: 72, borderRadius: 36,
     backgroundColor: T.color.teal,
     justifyContent: 'center', alignItems: 'center',
     marginBottom: T.space.md,
-    shadowColor: T.color.teal,
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.06, shadowRadius: 2, elevation: 1,
+    ...T.plate.teal,
   },
   deliveredCheck: { color: T.color.card, fontSize: 36, fontWeight: '900' },
   deliveredTitle: { ...T.type.title, fontSize: 24, color: T.color.ink, marginBottom: 4 },
@@ -571,14 +553,14 @@ const styles = StyleSheet.create({
     marginTop: T.space.sm,
     borderRadius: T.radius.lg,
     overflow: 'hidden',
-    borderWidth: 1, borderColor: T.color.line,
-    ...T.shadow.card, shadowOpacity: 0.05,
+    borderWidth: 1.5, borderColor: T.color.line,
+    ...T.plate.card,
   },
   map: { height: 190, width: '100%' },
 
   // Sections
   sectionLabel: {
-    ...T.type.label, color: T.color.inkSoft,
+    ...T.type.title, fontSize: 20, color: T.color.ink,
     paddingHorizontal: T.space.lg,
     paddingTop: T.space.lg, paddingBottom: T.space.sm,
   },
@@ -587,8 +569,9 @@ const styles = StyleSheet.create({
     marginHorizontal: T.space.lg,
     borderRadius: T.radius.lg,
     padding: T.space.md,
-    borderWidth: 1, borderColor: T.color.line,
+    borderWidth: 1.5, borderColor: T.color.line,
     gap: T.space.xs,
+    ...T.plate.card,
   },
 
   // Timeline
@@ -611,7 +594,7 @@ const styles = StyleSheet.create({
   stepDesc: { ...T.type.body, fontSize: 12, color: T.color.inkSoft, marginTop: 2 },
 
   // Details
-  detailLabel: { ...T.type.label, color: T.color.inkFaint, fontSize: 10 },
+  detailLabel: { ...T.type.label, color: T.color.inkFaint, fontSize: 12 },
   detailValue: { ...T.type.body, fontSize: 14, fontWeight: '700', color: T.color.ink, marginBottom: 4 },
   divider: { height: 1, backgroundColor: T.color.line, marginVertical: T.space.sm },
 
