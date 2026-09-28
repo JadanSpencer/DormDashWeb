@@ -82,16 +82,19 @@ export const AccountActions: React.FC<{ dark?: boolean }> = ({ dark }) => {
       await reauthenticateWithCredential(auth.currentUser, credential);
 
       const uid = auth.currentUser.uid;
-      await clearPushToken(uid);
 
+      // Detach alerts only once the server has agreed: a refused delete
+      // (tokens left, order in progress) must leave this device's alerts on.
       if (action === 'delete') {
         await deleteMyAccount();
+        await clearPushToken(uid);
         Alert.alert(
           'Account deleted',
           'Your account and personal information have been removed. Thanks for using DormDash.'
         );
       } else {
         await deactivateMyAccount();
+        await clearPushToken(uid);
         Alert.alert(
           'Account deactivated',
           'You will not be able to sign in until it is restored. Message support to come back.'

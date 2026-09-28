@@ -58,6 +58,22 @@ export const OFFER_WAVE_SIZE = 3;
 export const OFFER_WAVE_MS = 45 * 1000;
 export const OFFER_OPEN_WAVE = 3;
 
+// ─── Group orders (dashers) ────────────────────────────────────────────────
+// A dasher can ask DormDash to look for a group: GROUP_SIZES orders at once,
+// from the stores they pick (or any store), whose stores are all within one
+// of GROUP_DISTANCES_M of each other (0 = one store only). When the open
+// orders make such a group, the server numbers it, holds it for that dasher
+// for GROUP_OFFER_MS and sends a "Group found" alert. The group isn't
+// reserved: if anyone takes one of its orders first, accepting the group
+// fails ("no longer available"). See functions/src/groups.ts.
+export const GROUP_SIZES = [2, 3];
+export const GROUP_DISTANCES_M = [0, 250, 500, 1000];
+export const GROUP_OFFER_MS = 2 * 60 * 1000;
+/** The same set of orders isn't offered to the same dasher again within this. */
+export const GROUP_REOFFER_MS = 10 * 60 * 1000;
+/** At most this many stores in a group search filter. */
+export const GROUP_MAX_STORES = 10;
+
 // ─── Order vocabulary ──────────────────────────────────────────────────────
 export type OrderStatus =
   | 'pending' | 'accepted' | 'picking_up' | 'on_the_way' | 'delivered' | 'cancelled';

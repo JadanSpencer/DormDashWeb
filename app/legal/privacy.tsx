@@ -26,7 +26,7 @@ const sections: Section[] = [
         ['Orders', 'The store, items, quantities, prices, delivery fee, total, order status and times, the delivery address you type (for example "Block C, Room 204"), and any note you add for your dasher.'],
         ['Location at checkout', 'If you allow it, the GPS position of your phone when you place an order, so your dasher gets a map pin. If you say no, we store only the address you typed.'],
         ['Dasher location', 'Only for dashers, and only while "online" is switched on: if you allow it, your phone uses GPS to show your own position on your map. That position stays on your phone. DormDash does not send it to our servers or show it to customers. When you switch online or offline, the app tells our server, with the time you switched. While you are online and DormDash is open, it also tells our server about every 30 minutes that you are still around; if you are online but have not opened DormDash for 2 hours, we remind you and then switch you offline.'],
-        ['Dasher activity', 'Online status, when you last switched online or offline or last had DormDash open while online, when you were last offered an order (so offers are shared fairly), vehicle type, number of deliveries, rating and earnings from deliveries.'],
+        ['Dasher activity', 'Online status, when you last switched online or offline or last had DormDash open while online, when you were last offered an order (so offers are shared fairly), vehicle type, number of deliveries, rating and earnings from deliveries. If you use group orders: your group search settings (how many orders, which stores, how far apart), and the groups we found for you and whether you took them.'],
         ['Notifications', 'A notification token for your device, so we can send order updates. It is removed when you sign out.'],
         ['Technical data', 'Our hosting and database provider (Google) keeps short-lived security and error logs, which can include your IP address and device type. We do not use these to track you.'],
       ] },
@@ -37,7 +37,7 @@ const sections: Section[] = [
   {
     title: 'Who can see what',
     blocks: [{ list: [
-      'Your dasher sees your name, your delivery address or pin, your note and the items in your order. They do not see your email or phone number.',
+      'While your order waits for a dasher, dashers who are online can see your name, your delivery address or pin, your note and the items in your order, so they can decide to take it. Once a dasher accepts it, only that dasher (and DormDash administrators) can see it. Dashers never see your email or phone number.',
       'As a student, you see your dasher\'s name while they are delivering your order.',
       'A dasher\'s earnings, rating, delivery count and online status are visible only to that dasher and DormDash administrators. Students only see how many dashers are online in total.',
       'Stores do not get an account in DormDash and do not receive your personal details from us.',
@@ -106,7 +106,7 @@ const sections: Section[] = [
   {
     title: 'Deleting your account',
     blocks: [
-      { p: 'Open Profile, scroll to Account controls and choose Delete account. You will confirm with your password. We then delete your profile, your dasher record if you have one, your sign-in account and any files you uploaded, and anonymise your past orders as described above. This happens straight away. You cannot delete your account while an order is in progress.' },
+      { p: 'Open Profile, scroll to Account controls and choose Delete account. You will confirm with your password. We then delete your profile, your dasher record if you have one, your sign-in account and any files you uploaded, and anonymise your past orders as described above. This happens straight away. You cannot delete your account while an order is in progress, while you still have DormDash tokens or a dasher float, or while a card payment is still being confirmed: use or ask us to refund your tokens first, so no money is lost.' },
       { p: `If you cannot sign in, email ${LEGAL.contactEmail} from the address on your account and we will delete it within ${LEGAL.deletionDays} days.` },
       { p: 'You can also choose Deactivate account instead. This blocks sign-in and removes you from order matching, but keeps your data so you can come back.' },
     ],

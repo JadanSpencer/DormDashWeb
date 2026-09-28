@@ -42,7 +42,10 @@ import {
 export { createPayment, wipayReturn, adminAdjustTokens, adminAdjustFloat, payOrderWithTokens, adminResolvePayment } from './payments';
 import { alertStore } from './storeAlerts';
 import { APP_CHECK } from './appCheck';
+import { Push, sendPushes, sendPushNotification, getUserToken, jmd } from './push';
+import { matchGroups, expireOldGroups } from './groups';
 export { storeAlertsAdmin } from './storeAlerts';
+export { setGroupSearch, acceptOrderGroup } from './groups';
  
 const CHUNK = 400; // Firestore batches cap at 500 writes
 
@@ -71,150 +74,6 @@ const MARK = {
 };
 
 
-
-// ─── Currency ──────────────────────────────────────────────────────────────
-function jmd(value: unknown): string {
-  const n = Math.round(Number(value) || 0);
-  return `J$${n.toLocaleString('en-US')}`;
-}
-
-// ─── Push helper ───────────────────────────────────────────────────────────
-// Two kinds of token live in users/{uid}.pushToken:
-//   • "ExponentPushToken[...]"  → native app → Expo push service
-//   • "web:<fcm token>"         → PWA        → Firebase Cloud Messaging
-// The PWA writes the "web:" prefix (services/notifications.web.ts). Callers
-// don't need to know which kind they have.
-const WEB_TOKEN_PREFIX = 'web:';
-
-// SPEED: pushes go out in batches. Before, every phone was its own request
-// (1,000 online dashers = 1,000 requests for one new order). Now web pushes
-// go 500 per request and native (Expo) pushes 100 per request, so a new
-// order reaches every dasher in one or two round trips.
-type Push = {
-  token: string;
-  title: string;
-  body: string;
-  data?: Record<string, string>;
-  ttlSeconds?: number; // how long FCM keeps trying if the phone is offline
-};
-
-// Browser unsubscribed or token expired: detach it so we stop trying.
-async function removeDeadWebToken(storedToken: string): Promise<void> {
-  const stale = await db.collection('users').where('pushToken', '==', storedToken).get();
-  // pushTokenDead tells the app "this exact token is dead, make a new
-  // one" — otherwise the browser keeps re-saving its cached dead copy.
-  await Promise.all(stale.docs.map(d => d.ref.update({
-    pushToken: null,
-    pushTokenDead: storedToken,
-    pushTokenUpdatedAt: Date.now(),
-  })));
-  // Say whose alerts just stopped, so the logs are readable. The app puts
-  // a fresh token back next time that person opens DormDash.
-  stale.docs.forEach(d => logger.warn('Dead web push token removed', {
-    uid: d.id,
-    role: d.data()?.role ?? 'unknown',
-    token: storedToken.slice(WEB_TOKEN_PREFIX.length, WEB_TOKEN_PREFIX.length + 16),
-  }));
-}
-
-async function sendWebPushes(pushes: Push[]): Promise<number> {
-  let failed = 0;
-  for (let i = 0; i < pushes.length; i += 500) {
-    const chunk = pushes.slice(i, i + 500);
-    try {
-      // Data-only message: public/sw.js builds the notification itself, so
-      // it can show the in-app banner instead when DormDash is open.
-      const res = await admin.messaging().sendEach(chunk.map(p => ({
-        token: p.token.slice(WEB_TOKEN_PREFIX.length),
-        data: { ...(p.data ?? {}), title: p.title, body: p.body },
-        webpush: { headers: { Urgency: 'high', TTL: String(p.ttlSeconds ?? 3600) } },
-      })));
-      const dead: string[] = [];
-      res.responses.forEach((r, k) => {
-        if (r.success) return;
-        failed++;
-        const code = r.error?.code ?? '';
-        logger.error('Web push failed', { code, message: r.error?.message });
-        if (code === 'messaging/registration-token-not-registered' ||
-            code === 'messaging/invalid-registration-token') dead.push(chunk[k].token);
-      });
-      await Promise.all(dead.map(removeDeadWebToken));
-    } catch (err: any) {
-      failed += chunk.length;
-      logger.error('Web push batch failed', { code: err?.code, message: err?.message });
-    }
-  }
-  return failed;
-}
-
-async function sendExpoPushes(pushes: Push[]): Promise<number> {
-  let failed = 0;
-  for (let i = 0; i < pushes.length; i += 100) {
-    const chunk = pushes.slice(i, i + 100);
-    try {
-      const response = await fetch('https://exp.host/--/api/v2/push/send', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-        body: JSON.stringify(chunk.map(p => ({
-          to: p.token, sound: 'default', title: p.title, body: p.body,
-          data: p.data ?? {}, channelId: 'default', priority: 'high',
-          ttl: p.ttlSeconds ?? 3600,
-        }))),
-      });
-      const result: any = await response.json();
-      if (result.errors) {
-        failed += chunk.length;
-        logger.error('Expo push API error', { errors: result.errors });
-        continue;
-      }
-      (Array.isArray(result.data) ? result.data : []).forEach((r: any, k: number) => {
-        if (r?.status !== 'error') return;
-        failed++;
-        logger.error('Push notification failed', {
-          token: chunk[k].token.slice(0, 24), error: r.message, errorType: r.details?.error,
-        });
-      });
-    } catch (err: any) {
-      failed += chunk.length;
-      logger.error('Expo push batch failed', { message: err?.message });
-    }
-  }
-  return failed;
-}
-
-/** Sends every push at once (web and native in parallel) and logs how long it took. */
-async function sendPushes(pushes: Push[], label: string): Promise<void> {
-  const list = pushes.filter(p => !!p.token);
-  if (!list.length) return;
-  const started = Date.now();
-  const web = list.filter(p => p.token.startsWith(WEB_TOKEN_PREFIX));
-  const expo = list.filter(p => !p.token.startsWith(WEB_TOKEN_PREFIX));
-  const [webFailed, expoFailed] = await Promise.all([sendWebPushes(web), sendExpoPushes(expo)]);
-  logger.info('Push sent', {
-    label, sent: list.length - webFailed - expoFailed,
-    failed: webFailed + expoFailed, sendMs: Date.now() - started,
-  });
-}
-
-async function sendPushNotification(
-  token: string,
-  title: string,
-  body: string,
-  data?: Record<string, string>,
-  label = 'push'
-): Promise<void> {
-  await sendPushes([{ token, title, body, data }], label);
-}
-
-// ─── Token lookup for one user ─────────────────────────────────────────────
-async function getUserToken(uid: string): Promise<string | null> {
-  if (!uid) return null;
-  const userDoc = await db.collection('users').doc(uid).get();
-  if (!userDoc.exists) return null;
-  const data = userDoc.data();
-  if (data?.isActive === false) return null;   // deactivated accounts get nothing
-  return data?.pushToken ?? null;
-}
 
 // ─── Which dashers can take a new order ────────────────────────────────────
 // SPEED: this used to read every active order on campus, then look up
@@ -261,25 +120,69 @@ async function getFreeDashers(excludeUid?: string): Promise<FreeDasher[]> {
   return out;
 }
 
-// Marks a dasher busy (orderId) or free (null). Free only clears the order
-// it was told about, so a late "cancelled" can't free a dasher who has
-// since taken another order. A missing dasher doc is ignored.
+// The dasher's busy flag. activeOrderId is set while they have any order in
+// delivery (getFreeDashers, the accept rule and the idle check test it);
+// activeOrderIds lists every one of them, since a group (groups.ts) is
+// several orders at once. Docs from before groups have only activeOrderId.
+const busyIds = (d: admin.firestore.DocumentData | undefined): string[] =>
+  Array.isArray(d?.activeOrderIds) ? d!.activeOrderIds.map(String)
+    : d?.activeOrderId ? [String(d.activeOrderId)] : [];
+
+// Frees one order from the dasher's busy list. Only that order is removed,
+// so a late "cancelled" can't free a dasher who has since taken another
+// order, and the rest of a group keeps them busy. A missing dasher doc is
+// ignored.
 async function setDasherBusy(dasherId: string, orderId: string, busy: boolean): Promise<void> {
   const ref = db.collection('dashers').doc(dasherId);
   try {
-    if (busy) {
-      await ref.update({ activeOrderId: orderId });
-      return;
-    }
     await db.runTransaction(async tx => {
       const snap = await tx.get(ref);
-      if (snap.exists && snap.get('activeOrderId') === orderId) {
-        tx.update(ref, { activeOrderId: null });
-      }
+      if (!snap.exists) return;
+      const ids = busyIds(snap.data());
+      const next = busy
+        ? (ids.includes(orderId) ? ids : [...ids, orderId])
+        : ids.filter(id => id !== orderId);
+      if (next.length === ids.length && next.every((id, i) => id === ids[i]) && snap.get('activeOrderId') === (next[0] ?? null)) return;
+      tx.update(ref, { activeOrderId: next[0] ?? null, activeOrderIds: next });
     });
   } catch (e: any) {
     if (e?.code !== 5) logger.warn('Could not update dasher busy flag', { dasherId, orderId, message: e?.message });
   }
+}
+
+/**
+ * A dasher accepted this order: mark them busy, unless they are already
+ * delivering a different order that isn't part of the same group. Then the
+ * accept is undone (the order goes back to pending for other dashers) and
+ * this returns false. The app and the Firestore rules already stop a second
+ * accept; this catches two accepts sent at the same moment by a script.
+ */
+async function claimDasherForOrder(
+  dasherId: string, orderRef: admin.firestore.DocumentReference,
+): Promise<boolean> {
+  const dRef = db.collection('dashers').doc(dasherId);
+  return db.runTransaction(async tx => {
+    const [dSnap, oSnap] = await Promise.all([tx.get(dRef), tx.get(orderRef)]);
+    const order = oSnap.data();
+    if (!order || order.status !== 'accepted' || order.dasherId !== dasherId) return true; // moved on
+    const ids = busyIds(dSnap.data()).filter(id => id !== orderRef.id);
+    const others = ids.length
+      ? (await tx.getAll(...ids.map(id => db.collection('orders').doc(id)))).filter(s =>
+        s.get('dasherId') === dasherId && IN_DELIVERY_STATUSES.includes(s.get('status')))
+      : [];
+    const clash = others.some(s => !order.groupId || s.get('groupId') !== order.groupId);
+    if (clash) {
+      tx.update(orderRef, {
+        status: 'pending', dasherId: FieldValue.delete(), dasherName: FieldValue.delete(),
+        acceptedAt: FieldValue.delete(),
+      });
+      return false;
+    }
+    if (!dSnap.exists) return true;
+    const next = [...others.map(s => s.id), orderRef.id];
+    tx.update(dRef, { activeOrderId: next[0], activeOrderIds: next });
+    return true;
+  });
 }
 
 // ─── NEW ORDER VERIFICATION ────────────────────────────────────────────────
@@ -330,10 +233,18 @@ async function getRecentOrdersForStudent(studentId: string): Promise<admin.fires
   }
 }
 
+// When Firestore created the document (server clock). createdAt comes from
+// the phone and can be set to anything: an order backdated to 1970 used to
+// count as "earliest" and skip the active-order, duplicate and rate limits.
+// Order docs from the trigger and from queries both carry createTime.
+const createdMsOf = (d: { createTime?: admin.firestore.Timestamp; get(k: string): any }) =>
+  d.createTime ? d.createTime.toMillis() : (Number(d.get('createdAt')) || 0);
+
 async function verifyNewOrder(
   ref: admin.firestore.DocumentReference,
   order: admin.firestore.DocumentData,
   dispatch: Record<string, unknown> = {},
+  createdMs: number = Number(order.createdAt) || 0,
 ): Promise<admin.firestore.DocumentData | null> {
   const cancel = async (reason: CancelReason) => {
     logger.warn(`Order ${ref.id} rejected: ${reason}`, { studentId: order.studentId });
@@ -355,10 +266,10 @@ async function verifyNewOrder(
   // Up to MAX_ACTIVE_ORDERS in progress per student, plus duplicate
   // protection (a burst of taps once created 9 identical orders in half a
   // second). Every copy of this function sees the same set of orders and
-  // uses the same ordering (createdAt, then id), so they all agree.
-  const myCreated = Number(order.createdAt) || 0;
+  // uses the same ordering (server create time, then id), so they all agree.
+  const myCreated = createdMs;
   const isEarlier = (d: admin.firestore.QueryDocumentSnapshot) => {
-    const c = Number(d.get('createdAt')) || 0;
+    const c = createdMsOf(d);
     return c < myCreated || (c === myCreated && d.id < ref.id);
   };
   const isActive = (d: admin.firestore.QueryDocumentSnapshot) =>
@@ -375,19 +286,19 @@ async function verifyNewOrder(
   // Identical to an earlier active order placed within DUPLICATE_WINDOW_MS:
   // that's a double tap, not a second order.
   if (earlierActive.some(d =>
-    myCreated - (Number(d.get('createdAt')) || 0) < DUPLICATE_WINDOW_MS &&
+    myCreated - createdMsOf(d) < DUPLICATE_WINDOW_MS &&
     signature(d.get('storeId'), d.get('items')) === mySig
   )) return cancel('duplicate_order');
 
   // Count earlier orders that are real, not accidental repeats that are
   // about to be cancelled themselves.
   const realEarlier = earlierActive.filter(d => {
-    const c = Number(d.get('createdAt')) || 0;
+    const c = createdMsOf(d);
     const sig = signature(d.get('storeId'), d.get('items'));
     return !earlierActive.some(e =>
       e.id !== d.id &&
-      ((Number(e.get('createdAt')) || 0) < c || ((Number(e.get('createdAt')) || 0) === c && e.id < d.id)) &&
-      c - (Number(e.get('createdAt')) || 0) < DUPLICATE_WINDOW_MS &&
+      (createdMsOf(e) < c || (createdMsOf(e) === c && e.id < d.id)) &&
+      c - createdMsOf(e) < DUPLICATE_WINDOW_MS &&
       signature(e.get('storeId'), e.get('items')) === sig
     );
   });
@@ -397,10 +308,10 @@ async function verifyNewOrder(
   // earlier rate-limit hits), or later duplicates of this order that are
   // about to be rejected, so one tap-burst can't lock a student out.
   const since = Date.now() - ORDER_WINDOW_MS;
-  // verifiedAt is the server's clock; createdAt comes from the phone and
-  // could be set in the past to dodge the limit.
+  // verifiedAt and createTime are the server's clock; createdAt comes from
+  // the phone and could be set in the past to dodge the limit.
   const recentCount = 1 + others.filter(d =>
-    Number(d.get('verifiedAt') ?? d.get('createdAt')) > since &&
+    Number(d.get('verifiedAt') ?? createdMsOf(d)) > since &&
     !d.get('cancelReason') &&
     !(isActive(d) && !isEarlier(d))
   ).length;
@@ -576,7 +487,7 @@ async function openToEveryone(ref: admin.firestore.DocumentReference, orderId: s
 
 async function publishNewOrder(
   ref: admin.firestore.DocumentReference, order: admin.firestore.DocumentData,
-  orderId: string, lagMs?: number,
+  orderId: string, lagMs?: number, createdMs?: number,
 ): Promise<void> {
   const started = Date.now();
   // Start finding dashers while the order is being checked: both only
@@ -592,7 +503,7 @@ async function publishNewOrder(
   }
   const checked = await verifyNewOrder(ref, order, plan
     ? { offerAt: plan.offerAt, openToAllAt: plan.openToAllAt }
-    : { openToAllAt: Date.now() });
+    : { openToAllAt: Date.now() }, createdMs);
   if (!checked || !plan) return; // cancelled; the cancel write re-triggers and notifies the student
 
   let notified = plan.first.length;
@@ -605,6 +516,8 @@ async function publishNewOrder(
   logger.info(`New order ${orderId}: offered to ${notified} dashers`, {
     orderId, dashers: notified, waves: plan.lastWave + 1, handleMs: Date.now() - started, lagMs,
   });
+  // A new open order may complete a group for a dasher's group search.
+  await matchGroups().catch(e => logger.error('Group matching failed', { orderId, message: e?.message }));
 }
 
 // ─── TASK: THE NEXT OFFER WAVE ─────────────────────────────────────────────
@@ -629,6 +542,8 @@ export const offerNextWave = onTaskDispatched<WaveTask>(
     if (at >= Number(o.openToAllAt)) {
       const n = await openToEveryone(ref, orderId);
       logger.info(`Order ${orderId}: open to everyone, alerted ${n} more`, { orderId, dashers: n });
+      // More dashers may take it now, so more groups may be possible.
+      await matchGroups().catch(e => logger.error('Group matching failed', { orderId, message: e?.message }));
       return;
     }
     const offerAt: Record<string, number> = o.offerAt ?? {};
@@ -642,6 +557,7 @@ export const offerNextWave = onTaskDispatched<WaveTask>(
     }
     await offerTo(wave, o, orderId);
     logger.info(`Order ${orderId}: next wave offered to ${wave.length}`, { orderId, dashers: wave.length });
+    if (wave.length) await matchGroups({ dasherIds: wave.map(d => d.uid) }).catch(() => 0);
   },
 );
 
@@ -708,7 +624,7 @@ export const onOrderStatusChanged = onDocumentWritten(
 
     // ── NEW ORDER: only eligible dashers ──────────────────────────────────
     if (isNewOrder) {
-      await publishNewOrder(ref, after, orderId, lagMs);
+      await publishNewOrder(ref, after, orderId, lagMs, event.data?.after?.createTime?.toMillis());
       return;
     }
 
@@ -734,8 +650,14 @@ export const onOrderStatusChanged = onDocumentWritten(
 
     // ── STATUS UPDATES: the customer only ─────────────────────────────────
     if (after.status === 'accepted') {
-      // The dasher is now busy: stop sending them new-order alerts.
-      const busy = dasherId ? setDasherBusy(dasherId, orderId, true) : Promise.resolve();
+      // The dasher is now busy: stop sending them new-order alerts. A dasher
+      // already delivering another order (not in the same group) can't take
+      // this one: the accept is undone and nobody is told anything.
+      if (dasherId && !(await claimDasherForOrder(dasherId, ref))) {
+        logger.warn(`Order ${orderId}: second accept by a busy dasher undone`, { orderId, dasherId });
+        return;
+      }
+      const busy = Promise.resolve();
       const tokenPromise = getUserToken(studentId);
 
       if (after.paymentMethod === 'tokens') {
@@ -809,6 +731,8 @@ export const onOrderStatusChanged = onDocumentWritten(
         { screen: `/(student)/order/${orderId}`, orderId },
         'delivered'
       );
+      // Free again: their group search can pick up where it left off.
+      if (dasherId) await matchGroups({ dasherIds: [dasherId] }).catch(() => 0);
       return;
     }
 
@@ -871,8 +795,13 @@ export const onOrderStatusChanged = onDocumentWritten(
 
 // Minutes from order to doorstep, stored on the order so the admin dashboard
 // can average it with an aggregation query instead of reading every order.
-function deliveryMinsOf(order: admin.firestore.DocumentData): { deliveryMins?: number } {
-  const ms = Number(order.deliveredAt) - Number(order.createdAt);
+// deliveredAt is sent by the dasher's phone, so it is only trusted between
+// the server's verifiedAt and now; anything outside that uses now.
+function deliveryMinsOf(order: admin.firestore.DocumentData, now?: number): { deliveryMins?: number } {
+  const start = Number(order.verifiedAt ?? order.createdAt);
+  let end = Number(order.deliveredAt);
+  if (now !== undefined && !(end >= start && end <= now + 60 * 1000)) end = now;
+  const ms = end - start;
   return Number.isFinite(ms) && ms >= 0 ? { deliveryMins: Math.round(ms / 60000) } : {};
 }
 
@@ -891,7 +820,7 @@ async function creditDasherForDelivery(orderRef: admin.firestore.DocumentReferen
       totalDeliveries: FieldValue.increment(1),
       totalEarnings: FieldValue.increment(Number(fresh.deliveryFee) || 0),
     }, { merge: true });
-    tx.update(orderRef, { dasherCreditedAt: Date.now(), ...deliveryMinsOf(fresh) });
+    tx.update(orderRef, { dasherCreditedAt: Date.now(), ...deliveryMinsOf(fresh, Date.now()) });
     return true;
   });
   if (credited) logger.info(`Credited dasher ${dasherId} for order ${orderRef.id}`);
@@ -1007,6 +936,38 @@ export const deleteMyAccount = onCall({ ...APP_CHECK }, async (request) => {
       'You have an order in progress. Wait for it to finish, then delete your account.'
     );
   }
+
+  // Refuse while money is still attached to the account: prepaid tokens (a
+  // student paid real money for them), a dasher's float (DormDash cash they
+  // hold), or a card payment that hasn't settled. Deleting would lose it.
+  const [walletSnap, dasherSnap, ...paySnaps] = await Promise.all([
+    db.collection('wallets').doc(uid).get(),
+    db.collection('dashers').doc(uid).get(),
+    ...['pending', 'verified', 'review'].map(status => db.collection('payments')
+      .where('uid', '==', uid).where('status', '==', status).get()),
+  ]);
+  const balanceJmd = Number(walletSnap.get('balanceJmd')) || 0;
+  if (balanceJmd > 0 || (Number(walletSnap.get('reservedJmd')) || 0) > 0) {
+    throw new HttpsError(
+      'failed-precondition',
+      `You still have ${jmd(balanceJmd)} in DormDash tokens. Use them, or email support to have them refunded, then delete your account.`
+    );
+  }
+  if ((Number(dasherSnap.get('floatJmd')) || 0) !== 0) {
+    throw new HttpsError(
+      'failed-precondition',
+      'Your DormDash float isn\'t settled yet. Contact support to settle it, then delete your account.'
+    );
+  }
+  const recent = Date.now() - 60 * 60 * 1000; // an abandoned WiPay page older than this can't still charge
+  const unsettled = paySnaps.some((snap, i) => snap.docs.some(d =>
+    i > 0 || Number(d.get('createdAt')) > recent));
+  if (unsettled) {
+    throw new HttpsError(
+      'failed-precondition',
+      'A card payment of yours is still being confirmed. Try again later, or contact support.'
+    );
+  }
  
   // ── 1. Strip personal data from past orders (keep the financial record) ──
   const anonymise = async (field: 'studentId' | 'dasherId') => {
@@ -1098,6 +1059,8 @@ export const onDasherOnlineChanged = onDocumentWritten(
     const isOnline = event.data?.after?.data()?.isOnline === true;
     if (wasOnline === isOnline) return; // stat updates, activity, offers
     await refreshOnlineDasherCount();
+    // Just came online: look for a group if they have a search saved.
+    if (isOnline) await matchGroups({ dasherIds: [event.params.uid] }).catch(() => 0);
   },
 );
 
@@ -1240,7 +1203,7 @@ async function repairHalfFinishedWork(): Promise<Record<string, number>> {
   ]);
 
   for (const d of pending.docs) {
-    if (!d.get('verifiedAt') && quiet(d)) await fix('unverified', d.id, () => publishNewOrder(d.ref, d.data(), d.id));
+    if (!d.get('verifiedAt') && quiet(d)) await fix('unverified', d.id, () => publishNewOrder(d.ref, d.data(), d.id, undefined, createdMsOf(d)));
   }
   for (const d of unsettled.docs) {
     if (quiet(d)) await fix('unsettled', d.id, () => settleCancelledOrder(d.ref));
@@ -1263,10 +1226,12 @@ async function repairHalfFinishedWork(): Promise<Record<string, number>> {
   }
   for (const d of busy.docs) {
     if (!quiet(d)) continue;
-    const orderId = String(d.get('activeOrderId'));
-    const o = (await orders.doc(orderId).get()).data();
-    const stillDelivering = o && o.dasherId === d.id && IN_DELIVERY_STATUSES.includes(o.status);
-    if (!stillDelivering) await fix('busy', d.id, () => setDasherBusy(d.id, orderId, false));
+    // Every order in the busy list (a group is several).
+    for (const orderId of busyIds(d.data())) {
+      const o = (await orders.doc(orderId).get()).data();
+      const stillDelivering = o && o.dasherId === d.id && IN_DELIVERY_STATUSES.includes(o.status);
+      if (!stillDelivering) await fix('busy', d.id, () => setDasherBusy(d.id, orderId, false));
+    }
   }
 
   const total = Object.values(done).reduce((a, b) => a + b, 0);
@@ -1360,6 +1325,9 @@ export const cancelStalePendingOrders = onSchedule('every 5 minutes', async () =
   await retryVerifiedPayments();
   // Online dashers who haven't opened DormDash for hours.
   await retireIdleDashers();
+  // Group offers that ran out of time, then a fresh look for groups.
+  await expireOldGroups().catch(e => logger.error('Group expiry failed', { message: e?.message }));
+  await matchGroups().catch(e => logger.error('Group matching failed', { message: e?.message }));
   // Card payments an admin should look at (monitoring emails on this log).
   await reportPaymentsToCheck().catch(e => logger.error('Payments-to-check count failed', { message: e?.message }));
   // Catch up the public online count (see refreshOnlineDasherCount).

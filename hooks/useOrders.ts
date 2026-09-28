@@ -216,9 +216,12 @@ export function usePendingOrders({ watchdog = false, uid }: { watchdog?: boolean
   return { orders, loading, refresh, dismiss };
 }
 
-/** The order this dasher is delivering right now, if any. */
-export function useActiveDelivery(uid: string | undefined) {
-  const [order, setOrder] = useState<Order | null>(null);
+/**
+ * The orders this dasher is delivering right now, oldest accept first.
+ * Usually one; a group (hooks/useGroups.ts) is several at once.
+ */
+export function useActiveDeliveries(uid: string | undefined) {
+  const [orders, setOrders] = useState<Order[]>([]);
   useEffect(() => {
     if (!uid) return;
     const q = query(
@@ -227,10 +230,11 @@ export function useActiveDelivery(uid: string | undefined) {
       where('status', 'in', IN_DELIVERY_STATUSES)
     );
     return onSnapshot(q, snap => {
-      setOrder(snap.empty ? null : toOrder(snap.docs[0]));
+      setOrders(snap.docs.map(toOrder)
+        .sort((a, b) => (a.acceptedAt ?? a.createdAt) - (b.acceptedAt ?? b.createdAt) || (a.id < b.id ? -1 : 1)));
     });
   }, [uid]);
-  return order;
+  return orders;
 }
 
 const acceptedTime = (o: Order) => o.acceptedAt ?? o.createdAt;

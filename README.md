@@ -13,8 +13,9 @@ DormDash connects students on the same campus. Students order food and items fro
 - View order history and spending stats
 
 **Dashers**
-- Go online/offline with live location tracking
+- Go online/offline (your GPS pin stays on your phone)
 - See available orders in real time
+- Group orders: search for 2-3 open orders at nearby stores and take them in one trip
 - Accept orders and update status through delivery steps
 - Built-in map showing pickup and drop-off locations
 

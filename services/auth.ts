@@ -168,8 +168,16 @@ export const resetPassword = async (
         termsVersion: LEGAL.termsUpdated,
       };
   
-      // doc(db, 'users', uid) → the document at /users/{uid} in Firestore
-      await setDoc(doc(db, 'users', uid), userData);
+      // doc(db, 'users', uid) → the document at /users/{uid} in Firestore.
+      // If this fails the sign-in exists without a profile: sign-in would
+      // say "register", and register would say "email already in use". So
+      // remove the half-made sign-in and let them try again cleanly.
+      try {
+        await setDoc(doc(db, 'users', uid), userData);
+      } catch (profileError) {
+        await userCredential.user.delete().catch(() => {});
+        throw profileError;
+      }
   
       // 6. If registering as a dasher, create their dasher profile too
       if (role === 'dasher') {

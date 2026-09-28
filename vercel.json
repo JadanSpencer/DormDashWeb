@@ -3,7 +3,15 @@
   "outputDirectory": "dist",
   "rewrites": [
     {
-      "source": "/((?!_expo/|assets/|icons/|sw\\.js|register-sw\\.js|manifest\\.webmanifest).*)",
+      "source": "/api/wipay-return",
+      "destination": "https://dormdash-71035.web.app/api/wipay-return"
+    },
+    {
+      "source": "/__/:path*",
+      "destination": "https://dormdash-71035.web.app/__/:path*"
+    },
+    {
+      "source": "/((?!_expo/|assets/|icons/|brand/|sw\\.js|register-sw\\.js|manifest\\.webmanifest).*)",
       "destination": "/index.html"
     }
   ],

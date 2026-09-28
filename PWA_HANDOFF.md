@@ -255,12 +255,8 @@ active in real builds. Use it to screenshot every screen on any device size.
 3. **Rotate/restrict keys:** delete service-account key `c00317df…`;
    restrict both native Maps keys (see §3b). Consider turning off
    "Gemini in Firebase" if you don't use it (the privacy policy mentions it).
-4. **Firestore security rules** are still not in this repo. Run
-   `firebase init firestore` to pull them into `firestore.rules`, then review:
-   users must not be able to change their own `role` or `isActive`, students
-   may only create orders with `status: 'pending'` and their own
-   `studentId`, only the assigned dasher may advance an order's status.
-   This is the most important remaining security item.
+4. ~~Firestore security rules~~ Done: `firestore.rules` is in the repo with
+   tests (`npm run test:rules`); see "Launch hardening" below.
 5. **App Check** (blocks requests that don't come from the real app):
    enable in Firebase console with reCAPTCHA Enterprise for web; requires
    adding `firebase/app-check` init in `services/firebase.ts` and the
@@ -287,7 +283,7 @@ active in real builds. Use it to screenshot every screen on any device size.
 - `Alert.alert` is fine to use; the web shim covers it. Keep "cancel" buttons
   marked `style: 'cancel'` so the shim can tell them apart.
 - Do not make `public/sw.js` cache cross-origin requests or Firestore data.
-  If you change `sw.js`, bump `VERSION` (currently `dd-v2`).
+  If you change `sw.js`, bump `VERSION` (see the top of `public/sw.js`).
 - Every push handled in `sw.js` on iOS must call `showNotification`, or
   Safari revokes the permission. Keep the `IS_IOS` branch.
 - Push tokens: `web:` prefix = FCM (PWA), `ExponentPushToken[` = Expo
@@ -348,7 +344,7 @@ Symptom: orders the server rejected stayed in the dasher's list with a strange "
 - "mins ago" uses the server's `verifiedAt` instead of `createdAt`, which comes from the student's phone clock. It also shows hours past 60 min.
 
 ## Launch hardening (2026-09-23, for 24 Sep launch)
-See **LAUNCH_CHECKLIST.md** for deploy order, smoke test, console settings, legal items and the day-1 runbook.
+(LAUNCH_CHECKLIST.md was never committed; the deploy steps live in §5 and in PAYMENTS_SETUP.md.)
 - **Firestore rules are now in the repo** (`firestore.rules`, wired in `firebase.json`). They cover: users can't set their own role or isActive, and nobody can sign up as admin; students can only read their own orders and profile; dashers can read open orders plus their own, accept only server-verified orders, and advance status one step at a time; stores and menus are admin-only writes; everything else is closed. Tests are in `firestore-tests/rules.test.mjs` (`npm run test:rules`, needs Java). They could not run in the build sandbox, so smoke-test after deploying and use console Rules → History to roll back if needed.
 - **Dasher GPS no longer leaves the phone.** Nothing used it, and every online dasher's live position was readable by any student. The server gets only a heartbeat (`isOnline`, `lastSeenAt`) every 60 s, and GPS failures no longer stop it. The map pin refreshes locally every 15 s. The Privacy Policy and Terms are updated to match.
 - **Sign-up clickwrap:** an "I am 18 or older and agree…" tick box is required. `termsAcceptedAt` and `termsVersion` are saved on the user doc, and the rules require them.
@@ -570,4 +566,24 @@ The student screens, sign-in and sign-up now match the UWI Mona launch flyer (Do
 - **Stamps** (components/Seal.tsx): gold circles with a dashed ring, like the flyer's "Launching Oct 1": "Order in!", "On di way", "Enjoy!" (a single mark under 46px). Replaces the vermilion hanko.
 - **Sign-in:** the flyer headline ("Hungry? Don't move." with the swoosh, components/Swoosh.tsx, and "sign in & yuh food a come!"), then the form card with "Welcome back" centred.
 - **Store marks:** a brand colour per store (blue, teal, mustard, cerulean, deep teal) with the italic initial; closed stores muted.
+
+### Group orders and hardening (2026-09-28)
+**Group orders (dashers).** A dasher can take several open orders in one trip.
+- `/dash` → "Group orders" card (`components/GroupFinder.tsx`): choose 2 or 3 orders, which stores (or any), and how far apart the stores may be (same store, 250 m, 500 m, 1 km). Numbers in `functions/src/shared.ts` (`GROUP_*`).
+- Server (`functions/src/groups.ts`, pure picker in `functions/src/grouping.ts`): `setGroupSearch` saves `groupSearches/{uid}`; `matchGroups` runs after every new order, each offer wave, a dasher coming online or finishing a delivery, saving a search, and every 5 minutes. It uses only orders that dasher may take right now (same wave rules as a single accept), oldest first, with every pair of stores within the distance (straight line between the stores' `location` set in the admin store form; a store without a position only groups with itself). A group gets a number (`meta/orderGroups.nextNo`), is written to `orderGroups/{id}` for that dasher, lasts `GROUP_OFFER_MS` (2 min), and sends a "Group #N found" push. One live group per dasher; the same orders aren't re-offered within 10 min.
+- Groups are **not reserved**. `acceptOrderGroup` takes all orders in one transaction or none; if anyone took one first it answers "no longer available" and searches again.
+- Each order then runs exactly like a single one (each student pays, each is advanced and credited separately). `/dash` now shows every order in delivery (`useActiveDeliveries`). The busy flag is `dashers/{uid}.activeOrderIds` (list) plus `activeOrderId` (first one, what everything else checks); `setDasherBusy` removes one order at a time.
+- Rules: `groupSearches` and `orderGroups` are read-only to their dasher (admins read groups). Tests: rules 42/42, emulator 19/19 (group found and accepted, group gone when an order is taken), picker unit tests (`cd functions && npm run test:grouping`).
+- **After deploying functions**, check the logs for `Group #… offered` once a dasher saves a search.
+
+**Hardening in the same change:**
+- `verifyNewOrder` orders a student's orders by the document's server create time, not the phone's `createdAt`, so a backdated order can't skip the 3-order limit, the duplicate check or the rate limit.
+- One delivery at a time: the accept rule refuses a dasher whose `activeOrderId` is set, and `claimDasherForOrder` (accepted trigger) undoes a second accept that slipped through at the same moment. Groups go through `acceptOrderGroup` instead.
+- Marking delivered needs a numeric `deliveredAt`; `deliveryMins` uses the server's `verifiedAt` and only trusts `deliveredAt` between that and now.
+- `deleteMyAccount` refuses while the student has tokens, the dasher has a float, or a card payment is unsettled (message tells them to use tokens or contact support). The app now detaches push only after the server agrees.
+- `adminAdjustTokens` / `adminAdjustFloat` require a note on the server too.
+- Email sign-up: the app reloads the profile after writing it (new accounts could stay on the form), and a failed profile write deletes the half-made sign-in so the email can be reused.
+- `vercel.json` proxies `/api/wipay-return` and `/__/*` to Firebase Hosting (card payments and Google sign-in broke on Vercel).
+- WiPay: checked the API document (p. 35): the return `hash` is sent for successful transactions only, so a declined return can't be edited into a success. No change needed.
+- Privacy policy: says open orders are visible to online dashers (not just "your dasher"), lists group search data, and the new deletion conditions.
 

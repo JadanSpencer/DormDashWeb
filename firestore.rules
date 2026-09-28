@@ -32,6 +32,12 @@ service cloud.firestore {
       return k in request.resource.data.diff(resource.data).affectedKeys();
     }
     function str(v, max) { return v is string && v.size() <= max; }
+    // Not already delivering an order (dashers/{uid}.activeOrderId is kept
+    // by the server; a missing doc counts as free).
+    function dasherFree() {
+      let path = /databases/$(database)/documents/dashers/$(request.auth.uid);
+      return !exists(path) || get(path).data.get('activeOrderId', null) == null;
+    }
 
     // ── Users ───────────────────────────────────────────────────────────
     // Everyone signs up as student or dasher. Admin is only ever set by hand
@@ -144,7 +150,11 @@ service cloud.firestore {
       // it has been offered to them: wave dispatch (functions/src/index.ts)
       // names a few dashers at a time in offerAt, then opens it to everyone
       // at openToAllAt. Orders from before waves have neither: open to all.
+      // One delivery at a time: a dasher already delivering can't accept
+      // another (groups of orders are taken by the acceptOrderGroup
+      // function instead, all at once).
       allow update: if isDasher()
+        && dasherFree()
         && resource.data.status == 'pending'
         && resource.data.get('verifiedAt', null) != null
         && resource.data.get('dasherId', null) == null
@@ -171,7 +181,8 @@ service cloud.firestore {
           || (resource.data.status == 'on_the_way' && request.resource.data.status == 'delivered')
         )
         && (request.resource.data.status == 'delivered'
-            || !('deliveredAt' in request.resource.data.diff(resource.data).affectedKeys()));
+              ? request.resource.data.get('deliveredAt', null) is number
+              : !('deliveredAt' in request.resource.data.diff(resource.data).affectedKeys()));
 
       // Admin can cancel any unfinished order (e.g. a dasher disappeared).
       allow update: if isAdmin()
@@ -240,6 +251,17 @@ service cloud.firestore {
     }
     match /storeFloats/{storeId} {
       allow read: if isAdmin();
+      allow write: if false;
+    }
+
+    // ── Group orders (functions/src/groups.ts; written by the server) ──
+    // A dasher's own group search, and the groups offered to them.
+    match /groupSearches/{uid} {
+      allow read: if signedIn() && request.auth.uid == uid;
+      allow write: if false;
+    }
+    match /orderGroups/{groupId} {
+      allow read: if signedIn() && (resource.data.dasherId == request.auth.uid || isAdmin());
       allow write: if false;
     }
 

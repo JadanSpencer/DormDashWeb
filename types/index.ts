@@ -113,4 +113,34 @@ export interface Order {
     payDeadline?: number;    // card: pay by this time after a dasher accepts
     paidAt?: number;
     studentNote?: string;
+    groupId?: string;        // taken as part of a group (orderGroups/{groupId})
+    groupNo?: number;        // that group's number, "Group #12"
+}
+
+// ---- Group orders (dashers) ---------------------------------------------
+// A dasher's saved search: groupSearches/{uid}. Written by the server
+// (setGroupSearch in functions/src/groups.ts), read by that dasher only.
+export interface GroupSearch {
+    dasherId: string;
+    active: boolean;
+    size: number;               // orders per group (GROUP_SIZES)
+    maxStoreDistanceM: number;  // stores all within this (0 = one store)
+    storeIds: string[];         // empty = any store
+    offeredGroupId?: string | null;
+}
+
+// A group found for one dasher: orderGroups/{groupId}. Server-written.
+export interface OrderGroup {
+    id: string;
+    groupNo: number;
+    dasherId: string;
+    orderIds: string[];
+    size: number;
+    stops: { orderId: string; storeId: string; storeName: string; dropOff: string; payoutJmd: number }[];
+    storeNames: string[];
+    payoutJmd: number;
+    spanM: number;              // largest distance between its stores
+    status: 'offered' | 'accepted' | 'expired';
+    createdAt: number;
+    expiresAt: number;
 }

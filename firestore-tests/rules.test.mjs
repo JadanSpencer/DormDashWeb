@@ -344,3 +344,41 @@ test('dasher records activity and clears the idle note, but cannot set server fi
   await assertFails(updateDoc(me, { lastSeenAt: 'yesterday' }));
   await assertFails(updateDoc(doc(db('dash2'), 'dashers', 'dash'), { lastSeenAt: Date.now() }));
 });
+
+// ── One delivery at a time; delivered needs a time ─────────────────────────
+test('a dasher already delivering cannot accept a second order', async () => {
+  await env.withSecurityRulesDisabled(async (ctx) => {
+    await updateDoc(doc(ctx.firestore(), 'dashers', 'dash'), { activeOrderId: 'mine', activeOrderIds: ['mine'] });
+  });
+  const take = (uid) => updateDoc(doc(db(uid), 'orders', 'pend'), { status: 'accepted', dasherId: uid, dasherName: 'D', acceptedAt: 1 });
+  await assertFails(take('dash'));
+  // A dasher with no dashers doc yet (older sign-up) counts as free.
+  await env.withSecurityRulesDisabled(async (ctx) => { await deleteDoc(doc(ctx.firestore(), 'dashers', 'dash2')); });
+  await assertSucceeds(take('dash2'));
+});
+test('marking delivered needs a numeric deliveredAt', async () => {
+  await env.withSecurityRulesDisabled(async (ctx) => {
+    await updateDoc(doc(ctx.firestore(), 'orders', 'mine'), { status: 'on_the_way' });
+  });
+  await assertFails(updateDoc(doc(db('dash'), 'orders', 'mine'), { status: 'delivered' }));
+  await assertFails(updateDoc(doc(db('dash'), 'orders', 'mine'), { status: 'delivered', deliveredAt: 'now' }));
+  await assertSucceeds(updateDoc(doc(db('dash'), 'orders', 'mine'), { status: 'delivered', deliveredAt: Date.now() }));
+});
+
+// ── Group orders ───────────────────────────────────────────────────────────
+test('group searches and groups: the dasher reads their own, nobody writes', async () => {
+  await env.withSecurityRulesDisabled(async (ctx) => {
+    const a = ctx.firestore();
+    await setDoc(doc(a, 'groupSearches', 'dash'), { dasherId: 'dash', active: true, size: 3, maxStoreDistanceM: 500, storeIds: [] });
+    await setDoc(doc(a, 'orderGroups', 'g1'), { dasherId: 'dash', groupNo: 1, orderIds: ['pend'], status: 'offered', expiresAt: Date.now() + 60000 });
+  });
+  await assertSucceeds(getDoc(doc(db('dash'), 'groupSearches', 'dash')));
+  await assertSucceeds(getDoc(doc(db('dash'), 'orderGroups', 'g1')));
+  await assertSucceeds(getDoc(doc(db('boss'), 'orderGroups', 'g1')));
+  await assertFails(getDoc(doc(db('dash2'), 'groupSearches', 'dash')));
+  await assertFails(getDoc(doc(db('dash2'), 'orderGroups', 'g1')));
+  await assertFails(getDoc(doc(db('stu'), 'orderGroups', 'g1')));
+  await assertFails(setDoc(doc(db('dash'), 'groupSearches', 'dash'), { active: true, size: 3 }));
+  await assertFails(updateDoc(doc(db('dash'), 'orderGroups', 'g1'), { status: 'accepted' }));
+  await assertFails(getDoc(doc(db('dash'), 'meta', 'orderGroups')));
+});

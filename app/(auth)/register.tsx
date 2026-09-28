@@ -169,6 +169,10 @@ export default function RegisterScreen() {
       setError(result.error || 'Registration failed.');
       return;
     }
+    // The app loaded the profile the moment the account was created, before
+    // it was written, so it still thinks nobody is signed in. Load it again;
+    // the route guard then takes them to their home screen.
+    await refreshUser();
   };
 
   const fields: {

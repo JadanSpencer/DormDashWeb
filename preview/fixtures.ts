@@ -94,5 +94,17 @@ export function seed(): Record<string, any> {
   db['payments/pv4uFs9Djm3XwK1fTCSaP'] = { uid: 'stu1', purpose: 'tokens', tokens: 10, amountJmd: 1000, status: 'pending', createdAt: now - 40 * min, orderId: null };
   db['payments/pFKSk0IYcr9atWTOVi4Tt'] = { uid: 'stu1', purpose: 'order', amountJmd: 2100, status: 'review', createdAt: now - 25 * min, orderId: 'o1', returnTransactionId: 'SB-44-1-pFKSk0IYcr9atWTOVi4Tt-20260927220901', reviewReason: 'transaction_id_changed' };
   db['payments/pRecentCheckout123'] = { uid: 'stu1', purpose: 'tokens', tokens: 5, amountJmd: 500, status: 'pending', createdAt: now - 3 * min, orderId: null };
+  // Group orders (dasher): a saved search and a group on offer. It shows on
+  // /dash once the preview dasher has no delivery in progress.
+  db['groupSearches/das1'] = { dasherId: 'das1', active: true, size: 2, maxStoreDistanceM: 500, storeIds: [], offeredGroupId: 'g1' };
+  db['orderGroups/g1'] = {
+    groupNo: 12, dasherId: 'das1', orderIds: ['o4', 'o5'], size: 2, status: 'offered',
+    createdAt: now, expiresAt: now + 2 * min, payoutJmd: 500, spanM: 180, maxStoreDistanceM: 500,
+    storeIds: ['s2', 's3'], storeNames: ['Chancellor Tuck Shop', 'Irie Bowls'],
+    stops: [
+      { orderId: 'o4', storeId: 's2', storeName: 'Chancellor Tuck Shop', dropOff: 'Chancellor Hall, Block C, Room 204', payoutJmd: 250 },
+      { orderId: 'o5', storeId: 's3', storeName: 'Irie Bowls', dropOff: 'Science Library, 2nd floor', payoutJmd: 250 },
+    ],
+  };
   return db;
 }

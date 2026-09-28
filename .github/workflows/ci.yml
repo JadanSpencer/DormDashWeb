@@ -46,6 +46,8 @@ jobs:
       - run: npx tsc --noEmit
       # In-memory tests of every money path (functions/test/payments.test.js).
       - run: npm run test:payments
+      # Group-order picker: store distances and which orders make a group.
+      - run: npm run test:grouping
       - name: Dependency audit
         run: npm audit --omit=dev --audit-level=high
         continue-on-error: true

@@ -9,7 +9,8 @@
     "start": "npm run shell",
     "deploy": "firebase deploy --only functions",
     "logs": "firebase functions:log",
-    "test:payments": "tsc && node test/payments.test.js"
+    "test:payments": "tsc && node test/payments.test.js",
+    "test:grouping": "tsc && node --test test/grouping.test.js"
   },
   "engines": {
     "node": "22"

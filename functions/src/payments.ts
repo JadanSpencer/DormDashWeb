@@ -604,7 +604,8 @@ export const adminAdjustTokens = onCall({ ...APP_CHECK }, async (request) => {
   await requireAdmin(request.auth?.uid);
   const uid = String(request.data?.uid ?? '');
   const tokens = Number(request.data?.tokens);
-  const note = String(request.data?.note ?? '').slice(0, 200);
+  const note = String(request.data?.note ?? '').trim().slice(0, 200);
+  if (!note) throw new HttpsError('invalid-argument', 'Add a short note (e.g. "Cash paid to Spencer").');
   if (!uid || !Number.isFinite(tokens) || tokens === 0 || Math.abs(tokens) > 10000) {
     throw new HttpsError('invalid-argument', 'Enter a token amount, e.g. 5 or -2.5.');
   }
@@ -637,7 +638,8 @@ export const adminAdjustFloat = onCall({ ...APP_CHECK }, async (request) => {
   const kind = request.data?.kind;
   const id = String(request.data?.id ?? '');
   const amountJmd = Math.round(Number(request.data?.amountJmd));
-  const note = String(request.data?.note ?? '').slice(0, 200);
+  const note = String(request.data?.note ?? '').trim().slice(0, 200);
+  if (!note) throw new HttpsError('invalid-argument', 'Add a short note (e.g. "Cash paid to Spencer").');
   if ((kind !== 'store' && kind !== 'dasher') || !id || !Number.isFinite(amountJmd) || amountJmd === 0 || Math.abs(amountJmd) > 1_000_000) {
     throw new HttpsError('invalid-argument', 'Enter a J$ amount, e.g. 5000 or -1000.');
   }

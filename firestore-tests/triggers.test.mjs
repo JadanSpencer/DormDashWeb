@@ -410,3 +410,128 @@ test('idle online dashers are nudged, then switched off; busy or active ones are
   const fresh = await d('fresh');
   assert.equal(fresh.isOnline, true); assert.equal(fresh.idleNudgedAt, undefined);
 });
+
+// ── Backdated createdAt ────────────────────────────────────────────────────
+test('a backdated createdAt cannot skip the active-order limit (server create time decides)', async () => {
+  const uid = await student();
+  for (const qty of [1, 2, 3]) {
+    const o = await settled(await place(order(uid, { items: [{ quantity: qty, menuItem: { id: 'patty' } }] })));
+    assert.equal(o.status, 'pending');
+  }
+  const fourth = await settled(await place(order(uid, { createdAt: 0, items: [{ quantity: 4, menuItem: { id: 'patty' } }] })));
+  assert.equal(fourth.cancelReason, 'too_many_active');
+});
+
+// ── Group orders (functions/src/groups.ts) ─────────────────────────────────
+// Each test uses its own stores (with map positions) and a store filter, so
+// open orders left by other tests can't join its groups.
+async function groupStore(id, latitude) {
+  await db.doc(`stores/${id}`).set({ name: `Store ${id}`, isOpen: true, deliveryFee: 250, location: { latitude, longitude: -76.7466, address: 'x' } });
+  await db.doc(`stores/${id}/menuItems/patty`).set({ name: 'Beef patty', price: 300, isAvailable: true, category: 'Hot' });
+}
+async function onlineDasher(uid) {
+  await db.doc(`users/${uid}`).set({ uid, role: 'dasher', name: `Dasher ${uid}`, isActive: true, createdAt: 1 });
+  await db.doc(`dashers/${uid}`).set({ uid, isOnline: true, totalDeliveries: 0, totalEarnings: 0, lastSeenAt: Date.now() });
+}
+const call = (fn, uid, data) => fns[fn].run({ auth: { uid, token: {} }, data, rawRequest: {} });
+
+test('group orders: a search finds nearby stores\' orders, numbers the group, and accepting takes them all', async () => {
+  const t = `grp_${Date.now()}`;
+  await groupStore(`${t}_a`, 18.0061);
+  await groupStore(`${t}_b`, 18.0080);   // ~210 m from a
+  await groupStore(`${t}_far`, 18.0300); // ~2.6 km
+  const dasher = `${t}_d`;
+  await onlineDasher(dasher);
+  try {
+    const saved = await call('setGroupSearch', dasher, {
+      active: true, size: 3, maxStoreDistanceM: 250, storeIds: [`${t}_a`, `${t}_b`, `${t}_far`],
+    });
+    assert.equal(saved.found, false, 'no orders yet');
+    const place3 = async (storeId) => settled(await place(order(await student(), { storeId })));
+    await place3(`${t}_a`);
+    await place3(`${t}_far`);
+    await place3(`${t}_a`);
+    await wait(1500);
+    assert.ok(!(await get(`groupSearches/${dasher}`)).offeredGroupId, 'two nearby orders are not a group of three');
+    await place3(`${t}_b`);
+    // publishNewOrder runs the matcher: a group of the three nearby orders.
+    const groupId = await until(async () => (await get(`groupSearches/${dasher}`))?.offeredGroupId);
+    assert.ok(groupId, 'group offered');
+    const g = await get(`orderGroups/${groupId}`);
+    assert.equal(g.status, 'offered');
+    assert.equal(g.size, 3);
+    assert.ok(g.groupNo >= 1);
+    assert.ok(g.spanM > 150 && g.spanM <= 250, `span ${g.spanM}`);
+    assert.deepEqual([...g.storeIds].sort(), [`${t}_a`, `${t}_b`].sort());
+    assert.equal(g.payoutJmd, 3 * 250);
+
+    const res = await call('acceptOrderGroup', dasher, { groupId });
+    assert.equal(res.outcome, 'ok');
+    for (const id of g.orderIds) {
+      const o = await get(`orders/${id}`);
+      assert.equal(o.status, 'accepted');
+      assert.equal(o.dasherId, dasher);
+      assert.equal(o.groupId, groupId);
+    }
+    // Each order's accepted trigger keeps the whole group (no undo).
+    await wait(3000);
+    for (const id of g.orderIds) assert.equal((await get(`orders/${id}`)).status, 'accepted');
+    const d = await get(`dashers/${dasher}`);
+    assert.deepEqual([...d.activeOrderIds].sort(), [...g.orderIds].sort());
+    assert.equal((await get(`orderGroups/${groupId}`)).status, 'accepted');
+    // Delivering one keeps the dasher busy with the rest.
+    await db.doc(`orders/${g.orderIds[0]}`).update({ status: 'cancelled', cancelReason: 'admin', cancelledAt: Date.now() });
+    assert.ok(await until(async () => (await get(`dashers/${dasher}`)).activeOrderIds.length === 2), 'one freed');
+    assert.ok((await get(`dashers/${dasher}`)).activeOrderId, 'still busy');
+  } finally {
+    await db.doc(`dashers/${dasher}`).update({ isOnline: false });
+    await call('setGroupSearch', dasher, { active: false });
+  }
+});
+
+test('group orders: if someone takes one order first, the group is no longer available', async () => {
+  const t = `grp2_${Date.now()}`;
+  await groupStore(`${t}_a`, 18.0061);
+  const dasher = `${t}_d`;
+  await onlineDasher(dasher);
+  try {
+    await call('setGroupSearch', dasher, { active: true, size: 2, maxStoreDistanceM: 0, storeIds: [`${t}_a`] });
+    for (let i = 0; i < 2; i++) await settled(await place(order(await student(), { storeId: `${t}_a` })));
+    const groupId = await until(async () => (await get(`groupSearches/${dasher}`))?.offeredGroupId);
+    assert.ok(groupId, 'group offered');
+    const g = await get(`orderGroups/${groupId}`);
+    // Another dasher grabs one of the orders on its own.
+    await db.doc(`orders/${g.orderIds[1]}`).update({ status: 'accepted', dasherId: `${t}_other`, dasherName: 'O', acceptedAt: Date.now() });
+    const res = await call('acceptOrderGroup', dasher, { groupId });
+    assert.equal(res.ok, false);
+    assert.equal(res.outcome, 'gone');
+    assert.equal((await get(`orderGroups/${groupId}`)).status, 'expired');
+    assert.equal((await get(`orders/${g.orderIds[0]}`)).status, 'pending', 'the other order was not taken');
+  } finally {
+    await db.doc(`dashers/${dasher}`).update({ isOnline: false });
+    await call('setGroupSearch', dasher, { active: false });
+  }
+});
+
+test('a dasher already delivering who accepts a second order has it undone', async () => {
+  const t = `busy_${Date.now()}`;
+  const dasher = `${t}_d`;
+  await onlineDasher(dasher);
+  await db.doc(`dashers/${dasher}`).update({ isOnline: false });
+  const first = await place({ ...order(await student()), status: 'accepted', dasherId: dasher, dasherName: 'D', verifiedAt: Date.now() });
+  assert.ok(await until(async () => (await get(`dashers/${dasher}`)).activeOrderId === first), 'busy with the first');
+  const second = (await settled(await place(order(await student()))));
+  const secondId = (await db.collection('orders').where('studentId', '==', second.studentId).get()).docs[0].id;
+  // Two accepts at once (the rule can't see the first yet): the server undoes the second.
+  await db.doc(`orders/${secondId}`).update({ status: 'accepted', dasherId: dasher, dasherName: 'D', acceptedAt: Date.now() });
+  assert.ok(await until(async () => (await get(`orders/${secondId}`)).status === 'pending'), 'second accept undone');
+  assert.equal((await get(`orders/${secondId}`)).dasherId, undefined);
+  assert.deepEqual((await get(`dashers/${dasher}`)).activeOrderIds, [first]);
+});
+
+test('an account with tokens left cannot be deleted', async () => {
+  const uid = await student();
+  await db.doc(`wallets/${uid}`).set({ balanceJmd: 500, reservedJmd: 0 });
+  await assert.rejects(call('deleteMyAccount', uid, {}), /tokens/);
+  assert.ok(await get(`users/${uid}`), 'account kept');
+});

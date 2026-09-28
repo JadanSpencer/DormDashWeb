@@ -27,13 +27,14 @@ import { goOnline, goOffline, getDasherStatus, recordDasherActivity } from '../.
 import { serverNow, syncServerClock } from '../../services/serverClock';
 import { useAuth } from '../../hooks/useAuth';
 import { useWakeLock } from '../../hooks/useWakeLock';
-import { usePendingOrders, useActiveDelivery, useDasherOrders, startOfDay } from '../../hooks/useOrders';
+import { usePendingOrders, useActiveDeliveries, useDasherOrders, startOfDay } from '../../hooks/useOrders';
 import { acceptOrder, advanceOrder, NEXT_STATUS } from '../../services/orders';
 import { Order, OrderStatus } from '../../types';
 import { formatJMD, LOCATION_UPDATE_INTERVAL_MS, PAY_WINDOW_MIN, DASHER_ACTIVITY_MS, DASHER_IDLE_NUDGE_MS } from '../../constants';
 import { D } from '../../constants/themeDark';
 import MapView, { Marker, PROVIDER_GOOGLE } from '../../components/MapView';
 import { Backdrop } from '../../components/Backdrop';
+import { GroupFinder } from '../../components/GroupFinder';
 
 const NEXT_STATUS_LABEL: Partial<Record<OrderStatus, string>> = {
   accepted:   'Mark as picked up',
@@ -71,13 +72,15 @@ export default function DasherHome() {
   // ── Listeners (hooks/useOrders.ts) ────────────────────────────────
   // Verified open orders offered to this dasher so far (wave dispatch);
   // re-subscribes after errors and when the web app comes back on screen.
-  const activeOrder = useActiveDelivery(user?.uid);
+  // Usually one order; a group (components/GroupFinder) is several at once.
+  const activeOrders = useActiveDeliveries(user?.uid);
+  const busy = activeOrders.length > 0;
   const { orders: pendingOrders, loading, refresh: refreshPending, dismiss: dismissPending } =
-    usePendingOrders({ watchdog: isOnline && !activeOrder, uid: user?.uid });
+    usePendingOrders({ watchdog: isOnline && !busy, uid: user?.uid });
 
   // PWA: keep the screen on only during an active delivery (map and status
   // buttons in use). Being online no longer needs the app open.
-  useWakeLock(isOnline && !!activeOrder);
+  useWakeLock(isOnline && busy);
 
   // Online glow
   const glow = useRef(new Animated.Value(0)).current;
@@ -201,7 +204,7 @@ export default function DasherHome() {
   // ── Accept / status (writes in services/orders.ts) ────────────────
   const handleAccept = async (order: Order) => {
     if (!user) return;
-    if (activeOrder) {
+    if (busy) {
       Alert.alert('Active Order', 'Finish your current delivery before accepting a new one.');
       return;
     }
@@ -218,8 +221,7 @@ export default function DasherHome() {
     }
   };
 
-  const handleStatusUpdate = async () => {
-    if (!activeOrder) return;
+  const handleStatusUpdate = async (activeOrder: Order) => {
     try {
       await advanceOrder(activeOrder);
     } catch (e) {
@@ -240,7 +242,7 @@ export default function DasherHome() {
     <View style={styles.root}>
       <Backdrop tone="dark" />
       <FlatList
-        data={isOnline && !activeOrder ? pendingOrders : []}
+        data={isOnline && !busy ? pendingOrders : []}
         keyExtractor={item => item.id}
         contentContainerStyle={{ paddingBottom: 120 + insets.bottom }}
         showsVerticalScrollIndicator={false}
@@ -293,8 +295,8 @@ export default function DasherHome() {
             </View>
 
             {/* ── ACTIVE ORDER ─────────────────────────────────────── */}
-            {activeOrder && (
-              <View style={styles.activeCard}>
+            {activeOrders.map((activeOrder, i) => (
+              <View key={activeOrder.id} style={styles.activeCard}>
                 <View style={styles.activeHead}>
                   <View style={styles.activeBadge}>
                     <View style={styles.activeDot} />
@@ -302,6 +304,11 @@ export default function DasherHome() {
                   </View>
                   <Text style={styles.activeStatus}>{STATUS_LABEL[activeOrder.status]}</Text>
                 </View>
+                {activeOrder.groupNo ? (
+                  <Text style={styles.groupLine}>
+                    Group #{activeOrder.groupNo} · order {i + 1} of {activeOrders.length}
+                  </Text>
+                ) : null}
 
                 <Text style={styles.activeStore}>{activeOrder.storeName}</Text>
 
@@ -384,17 +391,20 @@ export default function DasherHome() {
 
                 {NEXT_STATUS[activeOrder.status] && (!activeOrder.paymentMethod || activeOrder.paymentStatus === 'paid') && (
                   <Pressable
-                    onPress={handleStatusUpdate}
+                    onPress={() => handleStatusUpdate(activeOrder)}
                     style={({ pressed }) => [styles.statusBtn, pressed && { transform: [{ scale: 0.97 }] }]}
                   >
                     <Text style={styles.statusBtnText}>{NEXT_STATUS_LABEL[activeOrder.status]}</Text>
                   </Pressable>
                 )}
               </View>
-            )}
+            ))}
+
+            {/* ── GROUP ORDERS (take several at once) ───────────────── */}
+            {isOnline && user && <GroupFinder uid={user.uid} busy={busy} />}
 
             {/* ── QUEUE HEADER ─────────────────────────────────────── */}
-            {isOnline && !activeOrder && (
+            {isOnline && !busy && (
               <View style={styles.queueHead}>
                 <Text style={styles.queueTitle}>
                   {loading ? 'Loading…' : 'Available orders'}
@@ -407,7 +417,7 @@ export default function DasherHome() {
               </View>
             )}
 
-            {!isOnline && !activeOrder && (
+            {!isOnline && !busy && (
               <View style={styles.offline}>
                 <View style={styles.offlineTile}><View style={styles.offlineInner} /></View>
                 <Text style={styles.offlineTitle}>Ready when you are</Text>
@@ -417,7 +427,7 @@ export default function DasherHome() {
           </>
         }
         ListEmptyComponent={
-          isOnline && !activeOrder && !loading ? (
+          isOnline && !busy && !loading ? (
             <View style={styles.empty}>
               <Text style={styles.emptyTitle}>No orders right now</Text>
               <Text style={styles.emptySub}>New orders show up here instantly, and you'll get a notification.</Text>
@@ -543,6 +553,7 @@ const styles = StyleSheet.create({
   activeBadgeText: { fontSize: 10, fontWeight: '900', color: D.color.cerulean, letterSpacing: 0.2 },
   activeStatus: { ...D.type.label, color: D.color.creamSoft },
   activeStore: { ...D.type.title, fontSize: 24, color: D.color.cream },
+  groupLine: { ...D.type.label, color: D.color.teal, marginTop: -D.space.xs },
 
   routeRow: { gap: 4 },
   routeStop: { flexDirection: 'row', alignItems: 'center', gap: 10 },
