@@ -30,7 +30,7 @@ import { useWakeLock } from '../../hooks/useWakeLock';
 import { usePendingOrders, useActiveDeliveries, useDasherOrders, startOfDay } from '../../hooks/useOrders';
 import { acceptOrder, advanceOrder, NEXT_STATUS } from '../../services/orders';
 import { Order, OrderStatus } from '../../types';
-import { formatJMD, LOCATION_UPDATE_INTERVAL_MS, PAY_WINDOW_MIN, DASHER_ACTIVITY_MS, DASHER_IDLE_NUDGE_MS } from '../../constants';
+import { formatJMD, orderPayoutJmd, LOCATION_UPDATE_INTERVAL_MS, PAY_WINDOW_MIN, DASHER_ACTIVITY_MS, DASHER_IDLE_NUDGE_MS } from '../../constants';
 import { D } from '../../constants/themeDark';
 import MapView, { Marker, PROVIDER_GOOGLE } from '../../components/MapView';
 import { Backdrop } from '../../components/Backdrop';
@@ -234,7 +234,7 @@ export default function DasherHome() {
   const todayDelivered = myOrders.filter(
     o => o.status === 'delivered' && (o.deliveredAt ?? 0) >= dayStart
   );
-  const todayEarnings = todayDelivered.reduce((s, o) => s + (Number(o.deliveryFee) || 0), 0);
+  const todayEarnings = todayDelivered.reduce((s, o) => s + orderPayoutJmd(o), 0);
 
   const glowOpacity = glow.interpolate({ inputRange: [0, 1], outputRange: [0.45, 1] });
 
@@ -338,7 +338,7 @@ export default function DasherHome() {
                   <View>
                     <Text style={styles.metaLabel}>Your payout</Text>
                     <View style={styles.payoutPlate}>
-                      <Text style={styles.payoutText}>{formatJMD(activeOrder.deliveryFee)}</Text>
+                      <Text style={styles.payoutText}>{formatJMD(orderPayoutJmd(activeOrder))}</Text>
                     </View>
                   </View>
                 </View>
@@ -439,7 +439,7 @@ export default function DasherHome() {
             {/* PAYOUT leads — it's what a dasher scans for */}
             <View style={styles.orderTop}>
               <View style={styles.orderPayout}>
-                <Text style={styles.orderPayoutText}>{formatJMD(item.deliveryFee)}</Text>
+                <Text style={styles.orderPayoutText}>{formatJMD(orderPayoutJmd(item))}</Text>
                 <Text style={styles.orderPayoutLabel}>Payout</Text>
               </View>
               <View style={{ flex: 1 }}>

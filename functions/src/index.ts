@@ -37,6 +37,7 @@ import {
   MAX_ACTIVE_ORDERS, MAX_ITEMS_PER_ORDER, PAY_WINDOW_MS, PENDING_TIMEOUT_MS, minutes,
   DASHER_IDLE_NUDGE_MS, DASHER_IDLE_GRACE_MS,
   OFFER_WAVE_SIZE, OFFER_WAVE_MS, OFFER_OPEN_WAVE, DELIVERY_FEE_JMD,
+  DASHER_PAYOUT_JMD, PLATFORM_FEE_JMD, orderPayoutJmd,
   ACTIVE_STATUSES, IN_DELIVERY_STATUSES, CancelReason,
 } from './shared';
 export { createPayment, wipayReturn, adminAdjustTokens, adminAdjustFloat, payOrderWithTokens, adminResolvePayment } from './payments';
@@ -366,6 +367,9 @@ async function verifyNewOrder(
   const verified = {
     items: cleanItems,
     deliveryFee,
+    // The 70/30 split of the fee, fixed on the order (shared.ts).
+    dasherPayoutJmd: DASHER_PAYOUT_JMD,
+    platformFeeJmd: PLATFORM_FEE_JMD,
     totalAmount,
     storeName: String(store.name ?? ''),
     studentName: String(userSnap.data()?.name ?? 'Student'),
@@ -444,7 +448,7 @@ async function offerTo(dashers: FreeDasher[], order: admin.firestore.DocumentDat
     sendPushes(dashers.filter(d => d.token).map(d => ({
       token: d.token!,
       title: `${MARK.newOrder} New order available`,
-      body: `${order.storeName} — ${jmd(order.deliveryFee)} to deliver`,
+      body: `${order.storeName} — ${jmd(orderPayoutJmd(order))} to deliver`,
       data: { screen: '/(dasher)/dash', orderId },
       ttlSeconds: 600, // an order alert older than 10 minutes is useless
     })), 'new_order'),
@@ -818,7 +822,7 @@ async function creditDasherForDelivery(orderRef: admin.firestore.DocumentReferen
     if (!fresh || fresh.status !== 'delivered' || fresh.dasherCreditedAt) return false;
     tx.set(db.collection('dashers').doc(dasherId), {
       totalDeliveries: FieldValue.increment(1),
-      totalEarnings: FieldValue.increment(Number(fresh.deliveryFee) || 0),
+      totalEarnings: FieldValue.increment(orderPayoutJmd(fresh)), // the dasher's share, not the whole fee
     }, { merge: true });
     tx.update(orderRef, { dasherCreditedAt: Date.now(), ...deliveryMinsOf(fresh, Date.now()) });
     return true;

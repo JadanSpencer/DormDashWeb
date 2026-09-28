@@ -35,7 +35,7 @@ import { APP_CHECK } from './appCheck';
 import { sendPushes, jmd } from './push';
 import { Candidate, StorePoint, pickGroup, groupKey, groupSpanM } from './grouping';
 import {
-  GROUP_SIZES, GROUP_DISTANCES_M, GROUP_OFFER_MS, GROUP_REOFFER_MS, GROUP_MAX_STORES,
+  GROUP_SIZES, GROUP_DISTANCES_M, GROUP_OFFER_MS, GROUP_REOFFER_MS, GROUP_MAX_STORES, orderPayoutJmd,
 } from './shared';
 
 if (!admin.apps.length) admin.initializeApp();
@@ -82,7 +82,7 @@ export async function matchGroups(opts: { dasherIds?: string[] } = {}): Promise<
   const [pendingSnap, dasherDocs, userDocs] = await Promise.all([
     db.collection('orders').where('status', '==', 'pending')
       .select('studentId', 'storeId', 'storeName', 'status', 'verifiedAt', 'openToAllAt', 'offerAt',
-        'dasherId', 'deliveryFee', 'deliveryAddress')
+        'dasherId', 'deliveryFee', 'dasherPayoutJmd', 'deliveryAddress')
       .get(),
     db.getAll(...uids.map(u => db.collection('dashers').doc(u)), { fieldMask: ['isOnline', 'activeOrderId'] }),
     db.getAll(...uids.map(u => db.collection('users').doc(u)), { fieldMask: ['isActive', 'role', 'pushToken'] }),
@@ -157,7 +157,7 @@ export async function matchGroups(opts: { dasherIds?: string[] } = {}): Promise<
             storeId: c.storeId,
             storeName: String(o.get('storeName') ?? ''),
             dropOff: String(o.get('deliveryAddress.label') ?? ''),
-            payoutJmd: Number(o.get('deliveryFee')) || 0,
+            payoutJmd: orderPayoutJmd({ dasherPayoutJmd: o.get('dasherPayoutJmd'), deliveryFee: o.get('deliveryFee') }),
           };
         });
         const group = {

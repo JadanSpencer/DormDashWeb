@@ -91,6 +91,8 @@ export interface Order {
     status: OrderStatus;
     totalAmount: number;
     deliveryFee: number;
+    dasherPayoutJmd?: number; // the dasher's share of the fee (server-set; see orderPayoutJmd)
+    platformFeeJmd?: number;  // DormDash's share of the fee (server-set)
     deliveryAddress: {
         latitude: number;
         longitude: number;

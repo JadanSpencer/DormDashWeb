@@ -1,6 +1,6 @@
 // app/(admin)/(tabs)/dashboard.tsx
 // DormDash — Admin dashboard (mid-tone "slate" Route identity).
-// Stats (revenue = delivered fees, GMV, avg delivery mins, completion rate)
+// Stats (revenue = DormDash's share of delivered fees, GMV, avg delivery mins, completion rate)
 // come from Firestore aggregation queries (services/adminStats.ts): the
 // server counts and sums, and each one costs one read per 1,000 matching docs. Before, this screen
 // downloaded every user and order and re-downloaded on every change, which
@@ -127,7 +127,7 @@ export default function AdminDashboard() {
             <View style={styles.moneyPlate}>
               <Text style={styles.moneyText}>{formatJMD(stats.revenue)}</Text>
             </View>
-            <Text style={styles.cardLabel}>Delivery revenue</Text>
+            <Text style={styles.cardLabel}>DormDash share of fees</Text>
             <View style={styles.heroTrend}>
               <Text style={styles.heroTrendText}>{formatJMD(stats.gmv)} GMV</Text>
             </View>

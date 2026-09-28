@@ -5,7 +5,7 @@
 
 import { LegalDocument, Section } from '../../components/LegalDocument';
 import { LEGAL } from '../../constants/legal';
-import { DELIVERY_FEE_JMD, formatJMD } from '../../constants';
+import { DELIVERY_FEE_JMD, DASHER_SHARE, DASHER_PAYOUT_JMD, PLATFORM_FEE_JMD, formatJMD } from '../../constants';
 
 const sections: Section[] = [
   {
@@ -49,6 +49,7 @@ const sections: Section[] = [
     title: 'Dashers',
     blocks: [{ list: [
       'Dashers are independent students using the platform. They are not employees or agents of DormDash.',
+      `For each order delivered, the dasher earns ${Math.round(DASHER_SHARE * 100)}% of the delivery fee (currently ${formatJMD(DASHER_PAYOUT_JMD)}). DormDash keeps the other ${100 - Math.round(DASHER_SHARE * 100)}% (currently ${formatJMD(PLATFORM_FEE_JMD)}) to run the service.`,
       'When you accept an order, deliver it promptly, handle food with care, and do not open, swap or tamper with it.',
       'Go offline when you stop taking orders, so students are not left waiting.',
       'Follow campus rules and the law while delivering, including road safety rules.',

@@ -25,7 +25,7 @@ import { useDasherStats } from '../../hooks/useUsers';
 import { useAuth } from '../../hooks/useAuth';
 import { useDasherOrders, startOfDay } from '../../hooks/useOrders';
 import { logoutUser } from '../../services/auth';
-import { formatJMD } from '../../constants';
+import { formatJMD, orderPayoutJmd } from '../../constants';
 import { D } from '../../constants/themeDark';
 import { AccountActions } from '../../components/AccountActions';
 import { Backdrop } from '../../components/Backdrop';
@@ -75,7 +75,7 @@ export default function DasherProfile() {
 
   const monthEarnings = recentOrders
     .filter(o => o.status === 'delivered')
-    .reduce((s, o) => s + (Number(o.deliveryFee) || 0), 0);
+    .reduce((s, o) => s + orderPayoutJmd(o), 0);
 
   return (
     <View style={styles.root}>
@@ -191,7 +191,7 @@ export default function DasherProfile() {
               </View>
               {delivered ? (
                 <View style={styles.orderPayPlate}>
-                  <Text style={styles.orderPayText}>+{formatJMD(item.deliveryFee)}</Text>
+                  <Text style={styles.orderPayText}>+{formatJMD(orderPayoutJmd(item))}</Text>
                 </View>
               ) : (
                 <Text style={styles.orderCancelled}>Cancelled</Text>

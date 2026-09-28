@@ -63,7 +63,8 @@ const settled = (id) => until(async () => {
 
 before(async () => {
   fns = require('../functions/lib/index.js');
-  // The store's own fee is ignored: every order pays DELIVERY_FEE_JMD (250).
+  // The store's own fee is ignored: every order pays DELIVERY_FEE_JMD (400),
+  // split 70/30: the dasher earns 280, DormDash keeps 120.
   await db.doc('stores/store1').set({ name: 'Ring Road Grill', isOpen: true, deliveryFee: 150 });
   await db.doc('stores/store1/menuItems/patty').set({ name: 'Beef patty', price: 300, isAvailable: true, category: 'Hot' });
   await db.doc('stores/store1/menuItems/soldout').set({ name: 'Oxtail', price: 900, isAvailable: false, category: 'Hot' });
@@ -76,8 +77,10 @@ test('new order is re-priced from the menu with the flat delivery fee; tampered 
   const uid = await student();
   const o = await settled(await place(order(uid)));
   assert.equal(o.status, 'pending');
-  assert.equal(o.totalAmount, 2 * 300 + 250);
-  assert.equal(o.deliveryFee, 250, 'the flat fee, not the store doc\'s');
+  assert.equal(o.totalAmount, 2 * 300 + 400);
+  assert.equal(o.deliveryFee, 400, 'the flat fee, not the store doc\'s');
+  assert.equal(o.dasherPayoutJmd, 280, 'dasher gets 70% of the fee');
+  assert.equal(o.platformFeeJmd, 120, 'DormDash keeps 30%');
   assert.equal(o.items[0].menuItem.price, 300);
   assert.equal(o.items[0].menuItem.name, 'Beef patty');
   assert.equal(o.storeName, 'Ring Road Grill');
@@ -133,7 +136,7 @@ test('delivery credits the dasher exactly once and records minutes', async () =>
   await db.doc(`dashers/${did}`).set({ uid: did, isOnline: false, totalDeliveries: 0, totalEarnings: 0 });
   const id = await place({
     studentId: 'nobody', dasherId: did, dasherName: 'D', storeName: 'X', status: 'on_the_way',
-    deliveryFee: 250, totalAmount: 1000, createdAt: Date.now() - 25 * 60000,
+    deliveryFee: 400, dasherPayoutJmd: 280, platformFeeJmd: 120, totalAmount: 1000, createdAt: Date.now() - 25 * 60000,
   });
   await wait(1500);
   await db.doc(`orders/${id}`).update({ status: 'delivered', deliveredAt: Date.now() });
@@ -142,7 +145,7 @@ test('delivery credits the dasher exactly once and records minutes', async () =>
   await wait(3000);
   const d = await get(`dashers/${did}`);
   assert.equal(d.totalDeliveries, 1);
-  assert.equal(d.totalEarnings, 250);
+  assert.equal(d.totalEarnings, 280, 'the dasher\'s 70%, not the whole fee');
   assert.equal((await get(`orders/${id}`)).deliveryMins, 25);
 });
 
@@ -258,7 +261,7 @@ test('repair sweep finishes half-done work and leaves healthy work alone', async
     const unverified = (await O('unverified').get()).data();
     assert.equal(unverified.status, 'pending', 'published, not cancelled');
     assert.ok(unverified.verifiedAt, 'checked by the server');
-    assert.equal(unverified.totalAmount, 2 * 300 + 250, 're-priced from the menu');
+    assert.equal(unverified.totalAmount, 2 * 300 + 400, 're-priced from the menu');
 
     assert.equal((await O('unsettled').get()).get('paymentStatus'), 'released');
     assert.equal((await get(`wallets/${stu}`)).reservedJmd, 0, 'held tokens released');
@@ -269,7 +272,8 @@ test('repair sweep finishes half-done work and leaves healthy work alone', async
 
     await wait(1500); // the credit's own write re-triggers; let it settle
     const credited = await get(`dashers/${dR}`);
-    assert.equal(credited.totalDeliveries, 1); assert.equal(credited.totalEarnings, 300);
+    // An order from before the 70/30 split (no dasherPayoutJmd): 70% of its fee.
+    assert.equal(credited.totalDeliveries, 1); assert.equal(credited.totalEarnings, 210);
     assert.ok((await O('uncredited').get()).get('dasherCreditedAt'));
 
     assert.equal((await get(`dashers/${dB}`)).activeOrderId, null, 'freed');
@@ -279,7 +283,7 @@ test('repair sweep finishes half-done work and leaves healthy work alone', async
     await fns.cancelStalePendingOrders.run({});
     await wait(1500);
     const again = await get(`dashers/${dR}`);
-    assert.equal(again.totalDeliveries, 1); assert.equal(again.totalEarnings, 300);
+    assert.equal(again.totalDeliveries, 1); assert.equal(again.totalEarnings, 210);
     assert.equal((await get(`wallets/${stu}`)).reservedJmd, 0);
   } finally {
     delete process.env.REPAIR_MIN_AGE_MS;
@@ -463,7 +467,7 @@ test('group orders: a search finds nearby stores\' orders, numbers the group, an
     assert.ok(g.groupNo >= 1);
     assert.ok(g.spanM > 150 && g.spanM <= 250, `span ${g.spanM}`);
     assert.deepEqual([...g.storeIds].sort(), [`${t}_a`, `${t}_b`].sort());
-    assert.equal(g.payoutJmd, 3 * 250);
+    assert.equal(g.payoutJmd, 3 * 280, 'the dasher\'s share of each fee');
 
     const res = await call('acceptOrderGroup', dasher, { groupId });
     assert.equal(res.outcome, 'ok');

@@ -28,7 +28,17 @@ export const PENDING_TIMEOUT_MS = 30 * 60 * 1000;
 // ─── Delivery fee ──────────────────────────────────────────────────────────
 // One delivery fee for every store, charged on every order (J$). The server
 // (verifyNewOrder) always uses this, whatever the store doc or the app says.
-export const DELIVERY_FEE_JMD = 250;
+export const DELIVERY_FEE_JMD = 400;
+// The fee is split: the dasher earns DASHER_SHARE of it, DormDash keeps the
+// rest. verifyNewOrder writes both amounts on each order (dasherPayoutJmd,
+// platformFeeJmd), so changing the split later never changes past orders.
+export const DASHER_SHARE = 0.7;
+export const dasherPayoutOf = (feeJmd: number) => Math.round((Number(feeJmd) || 0) * DASHER_SHARE);
+export const DASHER_PAYOUT_JMD = dasherPayoutOf(DELIVERY_FEE_JMD);     // J$280
+export const PLATFORM_FEE_JMD = DELIVERY_FEE_JMD - DASHER_PAYOUT_JMD;  // J$120
+/** What the dasher earns for this order (orders from before the split: the share of its fee). */
+export const orderPayoutJmd = (o: { dasherPayoutJmd?: number; deliveryFee?: number }) =>
+  typeof o.dasherPayoutJmd === 'number' ? o.dasherPayoutJmd : dasherPayoutOf(Number(o.deliveryFee) || 0);
 
 // At most this many card payments can be started per student per window
 // (createPayment). Stops a script from flooding WiPay and payments/*.

@@ -33,7 +33,8 @@ export async function loadAdminStats() {
     countOf(query(orders, where('createdAt', '>=', weekAgo))),
     getAggregateFromServer(query(orders, where('status', '==', 'delivered')), {
       n: count(),
-      revenue: sum('deliveryFee'),
+      // DormDash's 30% of each fee (platformFeeJmd, set by verifyNewOrder).
+      revenue: sum('platformFeeJmd'),
       gmv: sum('totalAmount'),
       // deliveryMins is written by the server on delivery (onOrderStatusChanged).
       avgMins: average('deliveryMins'),
