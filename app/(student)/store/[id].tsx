@@ -419,9 +419,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: T.space.md, paddingVertical: 9, borderRadius: T.radius.pill, backgroundColor: T.color.card,
     borderWidth: 1.5, borderColor: T.color.lineStrong, ...T.plate.card, shadowOffset: { width: 0, height: 3 },
   },
-  chipActive: { backgroundColor: T.color.teal, borderColor: T.color.teal, ...T.plate.teal, shadowOffset: { width: 0, height: 3 } },
+  chipActive: { backgroundColor: T.color.mustard, borderColor: T.color.mustard, ...T.plate.mustard, shadowOffset: { width: 0, height: 3 } },
   chipText: { ...T.type.body, fontSize: 13, fontWeight: '800', color: T.color.inkSoft },
-  chipTextActive: { color: T.color.card },
+  chipTextActive: { color: T.color.ink },
 
   menuList: { paddingHorizontal: T.space.lg, paddingTop: T.space.xs },
   catHeader: { ...T.type.title, fontSize: 21, color: T.color.ink, marginTop: T.space.lg, marginBottom: T.space.md },

@@ -1,78 +1,35 @@
 // components/Tide.tsx
-// "Tide Print" building blocks for student screens (constants/theme.ts):
+// Building blocks for student screens in the launch-flyer style
+// (constants/theme.ts):
 //
-//   <TideBand>   the deep cerulean sea at the top of a screen, with seigaiha
-//                waves etched into it, fading into the page (whose own wave
-//                pattern, components/Backdrop, carries on down the screen).
+//   <TideBand>   the header: deep blue sweeping to teal, the flyer's contour
+//                loops and big faint D, fading into the page at the bottom
+//                (the page's own loops, components/Backdrop, carry on down).
 //                Put the screen's heading inside.
-//   <StoreMark>  a store's own tile: a sea colour picked from its id, the
-//                wave pattern, and its initial in the heading face. `muted`
-//                is "low tide" for a closed store.
+//   <TideHeader> a standard header on the band: back button, small line,
+//                big italic title.
+//   <StoreMark>  a store's own tile: a brand colour picked from its id and
+//                its initial in the italic headline face. `muted` is "low
+//                tide" for a closed store. <StoreArt> fills a whole area.
 //   pressPlate() makes a Pressable sink onto its print plate when pressed.
 //
-// Pattern ids are per instance (useId), so several bands or marks on one
-// page never share a pattern.
+// Gradient ids are per instance (useId), so several bands on one page never
+// share one.
 
 import React, { useId, useState } from 'react';
 import { Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Svg, { Circle, Defs, G, LinearGradient, Mask, Pattern, Rect, Stop } from 'react-native-svg';
+import Svg, { Defs, LinearGradient, Mask, Rect, Stop } from 'react-native-svg';
 import { T, FONT } from '../constants/theme';
+import { FlowLines, BigD } from './Flow';
 
-// ─── Seigaiha pattern (same geometry as components/Backdrop) ──────────────
-function Waves({ r, canvas, ink, opacity }: { r: number; canvas: string; ink: string; opacity: number }) {
-  const fans: [number, number][] = [
-    [r, -r / 2], [-r, -r / 2], [3 * r, -r / 2],
-    [0, 0], [2 * r, 0],
-    [r, r / 2], [-r, r / 2], [3 * r, r / 2],
-    [0, r], [2 * r, r],
-    [r, 1.5 * r],
-  ];
-  const rings = [r, r * 0.75, r * 0.5, r * 0.25];
-  return (
-    <>
-      {fans.map(([cx, cy], i) => (
-        <G key={i}>
-          <Circle cx={cx} cy={cy} r={r} fill={canvas} />
-          {rings.map(k => (
-            <Circle key={k} cx={cx} cy={cy} r={k} fill="none" stroke={ink} strokeOpacity={opacity} strokeWidth={1} />
-          ))}
-        </G>
-      ))}
-    </>
-  );
-}
-
-function WaveFill({ r, canvas, ink, opacity }: { r: number; canvas: string; ink: string; opacity: number }) {
-  const id = `tide-waves-${useId().replace(/:/g, '')}`;
-  return (
-    <Svg pointerEvents="none" style={StyleSheet.absoluteFill} width="100%" height="100%">
-      <Defs>
-        <Pattern id={id} patternUnits="userSpaceOnUse" width={2 * r} height={r}>
-          <Waves r={r} canvas={canvas} ink={ink} opacity={opacity} />
-        </Pattern>
-      </Defs>
-      <Rect x="0" y="0" width="100%" height="100%" fill={`url(#${id})`} />
-    </Svg>
-  );
-}
-
-// ─── The sea band ─────────────────────────────────────────────────────────
-// The last FADE px of the band dissolve into the page, so the sea and the
-// page's pattern run into each other with no edge. The band's waves are
-// the same size and start from the same point as the page's (Backdrop), so
-// in the fade the two line up and it reads as one set of waves changing
-// colour, not two patterns crossing. The fade follows an ease curve (no
-// visible start or end line). Content stays in the top of the fade, where
-// the sea is still ~90% solid, so cream text keeps its contrast.
+// ─── The header band ───────────────────────────────────────────────────────
+// The last FADE px dissolve into the page on an ease curve, so there's no
+// edge line. Content stays in the top of the fade, where the band is still
+// ~90% solid, so cream text keeps its contrast.
 const FADE = 110;
-// Smoothstep samples: opacity at points through the fade.
 const FADE_STOPS: [number, number][] = [[0, 1], [0.2, 0.9], [0.4, 0.66], [0.6, 0.34], [0.8, 0.1], [1, 0]];
 
-/**
- * The sea band that opens a student screen. Content goes inside (cream
- * text: T.color.card; secondary: T.color.seaSoft).
- */
 export function TideBand({ children, style }: { children?: React.ReactNode; style?: StyleProp<ViewStyle> }) {
   const [h, setH] = useState(0);
   const uid = useId().replace(/:/g, '');
@@ -88,40 +45,46 @@ export function TideBand({ children, style }: { children?: React.ReactNode; styl
       }}
     >
       {h > 0 && (
-        <Svg pointerEvents="none" style={StyleSheet.absoluteFill} width="100%" height={h}>
-          <Defs>
-            <Pattern id={`sea-${uid}`} patternUnits="userSpaceOnUse" width={2 * BAND_R} height={BAND_R}>
-              <Waves r={BAND_R} canvas={T.color.sea} ink={T.color.ceruleanBright} opacity={0.28} />
-            </Pattern>
-            <LinearGradient id={`fade-${uid}`} x1="0" y1="0" x2="0" y2={h} gradientUnits="userSpaceOnUse">
-              <Stop offset="0" stopColor="#fff" stopOpacity="1" />
-              <Stop offset={at(0)} stopColor="#fff" stopOpacity={op(0)} />
-              <Stop offset={at(1)} stopColor="#fff" stopOpacity={op(1)} />
-              <Stop offset={at(2)} stopColor="#fff" stopOpacity={op(2)} />
-              <Stop offset={at(3)} stopColor="#fff" stopOpacity={op(3)} />
-              <Stop offset={at(4)} stopColor="#fff" stopOpacity={op(4)} />
-              <Stop offset={at(5)} stopColor="#fff" stopOpacity={op(5)} />
-            </LinearGradient>
-            <Mask id={`mask-${uid}`} maskUnits="userSpaceOnUse" x="0" y="0" width="100%" height={h}>
-              <Rect x="0" y="0" width="100%" height={h} fill={`url(#fade-${uid})`} />
-            </Mask>
-          </Defs>
-          <Rect x="0" y="0" width="100%" height={h} fill={`url(#sea-${uid})`} mask={`url(#mask-${uid})`} />
-        </Svg>
+        <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+          <Svg style={StyleSheet.absoluteFill} width="100%" height={h}>
+            <Defs>
+              {/* Blue at the top left sweeping to teal, like the flyer. */}
+              <LinearGradient id={`sea-${uid}`} x1="0" y1="0" x2="1" y2="1">
+                <Stop offset="0" stopColor={T.color.sea} />
+                <Stop offset="0.55" stopColor={T.color.sea} />
+                <Stop offset="1" stopColor={T.color.seaTeal} />
+              </LinearGradient>
+              <LinearGradient id={`fade-${uid}`} x1="0" y1="0" x2="0" y2={h} gradientUnits="userSpaceOnUse">
+                <Stop offset="0" stopColor="#fff" stopOpacity="1" />
+                <Stop offset={at(0)} stopColor="#fff" stopOpacity={op(0)} />
+                <Stop offset={at(1)} stopColor="#fff" stopOpacity={op(1)} />
+                <Stop offset={at(2)} stopColor="#fff" stopOpacity={op(2)} />
+                <Stop offset={at(3)} stopColor="#fff" stopOpacity={op(3)} />
+                <Stop offset={at(4)} stopColor="#fff" stopOpacity={op(4)} />
+                <Stop offset={at(5)} stopColor="#fff" stopOpacity={op(5)} />
+              </LinearGradient>
+              <Mask id={`mask-${uid}`} maskUnits="userSpaceOnUse" x="0" y="0" width="100%" height={h}>
+                <Rect x="0" y="0" width="100%" height={h} fill={`url(#fade-${uid})`} />
+              </Mask>
+            </Defs>
+            <Rect x="0" y="0" width="100%" height={h} fill={`url(#sea-${uid})`} mask={`url(#mask-${uid})`} />
+          </Svg>
+          {/* Line work stays in the solid part, above the fade. */}
+          <View style={[styles.art, { height: Math.max(0, h - FADE * 0.6) }]}>
+            <FlowLines color={T.color.card} opacity={0.09} />
+            <BigD color={T.color.card} opacity={0.06} />
+          </View>
+        </View>
       )}
       {children}
     </View>
   );
 }
 
-// Same wave size as the page pattern (components/Backdrop), so the two
-// read as one sea where they meet.
-const BAND_R = 18;
-
 /**
- * A standard student screen header on the sea band: optional back button,
- * a small line above the title, the title in the heading face, and any
- * extra content (e.g. a status or a toggle) below it.
+ * A standard student screen header on the band: optional back button,
+ * a small line above the title, the title in the italic headline face, and
+ * any extra content (e.g. a status or a toggle) below it.
  */
 export function TideHeader({
   title, kicker, onBack, right, children,
@@ -158,55 +121,52 @@ export function TideHeader({
 }
 
 // ─── Store mark ────────────────────────────────────────────────────────────
-// Each store keeps the same sea colour everywhere (picked from its id).
-const MARK_SEAS: { bg: string; ink: string }[] = [
-  { bg: T.color.sea,          ink: T.color.ceruleanBright },
-  { bg: T.color.teal,         ink: T.color.seaFoam },
-  { bg: T.color.cerulean,     ink: T.color.seaSoft },
-  { bg: T.color.tealDeep,     ink: T.color.tealBright },
-  { bg: T.color.ceruleanDeep, ink: T.color.ceruleanBright },
+// Each store keeps the same colour everywhere (picked from its id).
+const MARK_COLOURS: { bg: string; fg: string }[] = [
+  { bg: T.color.sea,          fg: T.color.card },
+  { bg: T.color.teal,         fg: T.color.card },
+  { bg: T.color.mustard,      fg: T.color.ink },
+  { bg: T.color.cerulean,     fg: T.color.card },
+  { bg: T.color.tealDeep,     fg: T.color.card },
 ];
 
 // "Low tide": a closed store's mark, drained of colour.
-const LOW_TIDE = { bg: '#7D9298', ink: '#C3D0D3' };
+const LOW_TIDE = { bg: '#7D9298', fg: T.color.card };
 
 export function markSea(id: string) {
   let h = 0;
   for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
-  return MARK_SEAS[h % MARK_SEAS.length];
+  return MARK_COLOURS[h % MARK_COLOURS.length];
 }
 
 export function StoreMark({
   id, name, size = 52, radius = T.radius.md, muted = false, style,
 }: { id: string; name: string; size?: number; radius?: number; muted?: boolean; style?: StyleProp<ViewStyle> }) {
-  const sea = muted ? LOW_TIDE : markSea(id);
+  const c = muted ? LOW_TIDE : markSea(id);
   return (
     <View
-      style={[{ width: size, height: size, borderRadius: radius, backgroundColor: sea.bg }, styles.mark, style]}
+      style={[{ width: size, height: size, borderRadius: radius, backgroundColor: c.bg }, styles.mark, style]}
       accessibilityElementsHidden importantForAccessibility="no-hide-descendants"
     >
-      <WaveFill r={Math.max(8, size / 5)} canvas={sea.bg} ink={sea.ink} opacity={0.35} />
-      <Text style={[styles.markInitial, { fontSize: size * 0.5, lineHeight: size * 0.62 }]}>
+      <FlowLines color={c.fg} opacity={0.14} width={1.5} />
+      <Text style={[styles.markInitial, { color: c.fg, fontSize: size * 0.56, lineHeight: size * 0.72 }]}>
         {name.trim().charAt(0).toUpperCase()}
       </Text>
     </View>
   );
 }
 
-/**
- * The same store art filling its parent (e.g. a featured card's head):
- * waves across the whole area and a large initial cropped at the corner.
- */
-export function StoreArt({ id, name, initialSize = 120, muted = false }: { id: string; name: string; initialSize?: number; muted?: boolean }) {
-  const sea = muted ? LOW_TIDE : markSea(id);
+/** The same art filling its parent (e.g. a featured card's head). */
+export function StoreArt({ id, name, initialSize = 130, muted = false }: { id: string; name: string; initialSize?: number; muted?: boolean }) {
+  const c = muted ? LOW_TIDE : markSea(id);
   return (
     <View
       pointerEvents="none"
-      style={[StyleSheet.absoluteFill, { backgroundColor: sea.bg, overflow: 'hidden' }]}
+      style={[StyleSheet.absoluteFill, { backgroundColor: c.bg, overflow: 'hidden' }]}
       accessibilityElementsHidden importantForAccessibility="no-hide-descendants"
     >
-      <WaveFill r={22} canvas={sea.bg} ink={sea.ink} opacity={0.32} />
-      <Text style={[styles.artInitial, { fontSize: initialSize, lineHeight: initialSize * 1.15, bottom: -initialSize * 0.3 }]}>
+      <FlowLines color={c.fg} opacity={0.12} />
+      <Text style={[styles.artInitial, { color: c.fg, fontSize: initialSize, lineHeight: initialSize * 1.15, bottom: -initialSize * 0.32 }]}>
         {name.trim().charAt(0).toUpperCase()}
       </Text>
     </View>
@@ -223,8 +183,9 @@ export function pressPlate(pressed: boolean, depth = 4): ViewStyle | null {
 const styles = StyleSheet.create({
   band: { overflow: 'hidden', paddingBottom: FADE - 36 },
   bandUnmeasured: { backgroundColor: T.color.sea },
+  art: { position: 'absolute', top: 0, left: 0, right: 0, overflow: 'hidden' },
   mark: { overflow: 'hidden', alignItems: 'center', justifyContent: 'center' },
-  markInitial: { fontFamily: FONT.heading, color: T.color.card, textAlign: 'center' },
+  markInitial: { fontFamily: FONT.heading, textAlign: 'center' },
   head: { paddingHorizontal: T.space.lg },
   headTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: T.space.md },
   headBack: {
@@ -232,7 +193,7 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center', ...T.plate.sea, shadowOffset: { width: 0, height: 3 },
   },
   headBackText: { fontSize: 20, fontWeight: '700', color: T.color.sea },
-  headKicker: { ...T.type.body, fontSize: 14, fontWeight: '700', color: T.color.seaFoam, marginBottom: 2 },
-  headTitle: { ...T.type.display, fontSize: 34, lineHeight: 42, color: T.color.card },
-  artInitial: { position: 'absolute', left: 14, fontFamily: FONT.heading, color: T.color.card },
+  headKicker: { ...T.type.body, fontSize: 14, fontWeight: '700', color: T.color.seaSoft, marginBottom: 2 },
+  headTitle: { ...T.type.display, fontSize: 38, lineHeight: 46, color: T.color.card },
+  artInitial: { position: 'absolute', left: 16, fontFamily: FONT.heading },
 });

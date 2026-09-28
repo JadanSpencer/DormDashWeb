@@ -2,13 +2,22 @@
 
 Both fonts are under the SIL Open Font License 1.1 (see the OFL-*.txt files),
 which allows commercial use, embedding and modification. They come from
-Google Fonts (github.com/google/fonts, `ofl/`) and are subset to keep the app
-small:
+Google Fonts (github.com/google/fonts, `ofl/`), are cut to one static style
+from the variable font, and subset to Latin + common punctuation to keep the
+app small. They match the UWI Mona launch flyer.
 
-| File | Font | Subset | Used for |
+| File | Font | Settings | Used for |
 |---|---|---|---|
-| `ShipporiMinchoB1-ExtraBold.latin.ttf` | Shippori Mincho B1 ExtraBold | Latin + punctuation + 寮配走 | Headings (`T.type.display` / `title`, and the dark/mid themes) |
-| `YujiSyuku-Seal.ttf` | Yuji Syuku | only 寮 配 走 | The vermilion seal (`components/Seal.tsx`) |
+| `Fraunces-BlackItalic.latin.ttf` | Fraunces Italic | wght 900, opsz 72, SOFT 100, WONK 0 | Headings (`FONT.heading`: `T.type.display` / `title`, and the dark/mid themes) |
+| `Caveat-Bold.latin.ttf` | Caveat | wght 700 | The one hand-written line (`FONT.script`), e.g. "sign in & yuh food a come!" |
 
-To add characters, re-run fontTools on the original file, e.g.
-`python3 -m fontTools.subset ShipporiMinchoB1-ExtraBold.ttf --unicodes="U+0020-007E,U+00A0-00FF,..." --output-file=...`
+WONK is 0 on purpose: with the "wonky" alternates on, a double l ("Grill")
+reads like "lf".
+
+To regenerate (fontTools):
+```
+from fontTools.ttLib import TTFont; from fontTools.varLib import instancer
+f = instancer.instantiateVariableFont(TTFont('Fraunces-Italic[SOFT,WONK,opsz,wght].ttf'),
+      {'wght': 900, 'opsz': 72, 'SOFT': 100, 'WONK': 0})
+```
+then `pyftsubset` to U+0020-007E plus ’‘“”–—…•·é→$.

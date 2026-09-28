@@ -291,7 +291,7 @@ export default function OrderTracking() {
         {/* ── STATUS HERO ─────────────────────────────────────────── */}
         {isDelivered ? (
           <View style={[styles.hero, styles.heroDelivered]}>
-            <Seal char="配" size={72} stamp style={styles.deliveredSeal} />
+            <Seal char="配" size={80} stamp style={styles.deliveredSeal} />
             <Text style={styles.deliveredTitle}>Order delivered</Text>
             <Text style={styles.deliveredSub}>
               Enjoy your food from {order.storeName}!
@@ -326,8 +326,8 @@ export default function OrderTracking() {
             </View>
             <Text style={[styles.statusDesc, styles.withSeal]}>{config.description}</Text>
             {/* 寮 when the order has just gone in, 走 once the dasher is on the way. */}
-            {order.status === 'pending' && <Seal char="寮" size={44} stamp label="Order placed" style={styles.heroSeal} />}
-            {order.status === 'on_the_way' && <Seal char="走" size={44} stamp style={styles.heroSeal} />}
+            {order.status === 'pending' && <Seal char="寮" size={58} stamp label="Order placed" style={styles.heroSeal} />}
+            {order.status === 'on_the_way' && <Seal char="走" size={58} stamp style={styles.heroSeal} />}
 
             {order.dasherName && (
               <View style={styles.dasherChip}>
@@ -543,7 +543,7 @@ const styles = StyleSheet.create({
   deliveredCheck: { color: T.color.card, fontSize: 36, fontWeight: '900' },
   deliveredSeal: { marginBottom: T.space.md },
   heroSeal: { position: 'absolute', top: T.space.lg, right: T.space.lg },
-  withSeal: { paddingRight: 52 },
+  withSeal: { paddingRight: 64 },
   deliveredTitle: { ...T.type.title, fontSize: 24, color: T.color.ink, marginBottom: 4 },
   deliveredSub: { ...T.type.body, fontSize: 14, color: T.color.inkSoft, textAlign: 'center' },
 

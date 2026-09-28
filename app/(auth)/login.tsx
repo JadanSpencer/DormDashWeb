@@ -27,10 +27,11 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { loginUser, resetPassword, signInWithGoogle, takeGoogleRedirectError, googleSignInAvailable } from '../../services/auth';
 import { GoogleButton, OrRule } from '../../components/GoogleButton';
 import { requestPushPermissionFromGesture } from '../../services/notifications';
-import { T } from '../../constants/theme';
+import { T, FONT } from '../../constants/theme';
 import { Logo } from '../../components/Logo';
 import { Backdrop } from '../../components/Backdrop';
-import { Seal } from '../../components/Seal';
+import { TideBand } from '../../components/Tide';
+import { Swoosh } from '../../components/Swoosh';
 
 // Small-screen handling: compact the hero + spacing under 700px tall
 const SMALL = Dimensions.get('window').height < 700;
@@ -148,20 +149,21 @@ export default function LoginScreen() {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          {/* ── HERO ─────────────────────────────────────────────────── */}
-          <Animated.View style={[styles.hero, { opacity: heroFade, transform: [{ translateY: heroRise }] }]}>
-            <View style={styles.logoTile}>
-              <Logo size={SMALL ? 44 : 54} variant="brand" />
-            </View>
-            {/* Wordmark with its seal, like the stamp beside an artist's signature. */}
-            <View style={styles.wordmarkRow}>
-              <Text style={styles.wordmark} numberOfLines={1} adjustsFontSizeToFit maxFontSizeMultiplier={1.1}>
-                DormDash
-              </Text>
-              <Seal size={SMALL ? 26 : 30} />
-            </View>
-            <Text style={styles.tagline}>From the gate to your door.</Text>
-          </Animated.View>
+          {/* ── HERO: the launch flyer ──────────────────────────────── */}
+          <TideBand style={styles.band}>
+            <Animated.View style={[styles.hero, { opacity: heroFade, transform: [{ translateY: heroRise }] }]}>
+              <View style={styles.brandRow}>
+                <View style={styles.logoTile}>
+                  <Logo size={SMALL ? 30 : 34} variant="inverse" />
+                </View>
+                <Text style={styles.wordmark} numberOfLines={1} maxFontSizeMultiplier={1.1}>DormDash</Text>
+              </View>
+              <Text style={styles.hungry} accessibilityRole="header">Hungry?</Text>
+              <Text style={styles.dontMove}>Don't move.</Text>
+              <Swoosh width={SMALL ? 170 : 210} />
+              <Text style={styles.script}>sign in & yuh food a come!</Text>
+            </Animated.View>
+          </TideBand>
 
           {/* ── FORM — the route rails it ────────────────────────────── */}
           <Animated.View style={[styles.formRow, { opacity: cardFade, transform: [{ translateY: cardRise }] }]}>
@@ -285,9 +287,10 @@ const styles = StyleSheet.create({
   scroll: {
     flexGrow: 1,
     paddingHorizontal: T.space.lg,
-    paddingTop: SMALL ? T.space.md : T.space.xl,
     paddingBottom: T.space.lg,
   },
+  // The flyer header runs edge to edge above the card.
+  band: { marginHorizontal: -T.space.lg, marginBottom: -T.space.xl },
 
   // Ambient canvas — two soft shapes, nothing louder
   canvas: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, overflow: 'hidden', zIndex: -1 },
@@ -306,18 +309,21 @@ const styles = StyleSheet.create({
     bottom: 40, left: -120,
   },
 
-  // Hero
-  hero: { alignItems: 'center', marginBottom: SMALL ? T.space.lg : T.space.xl, marginTop: SMALL ? 0 : T.space.md },
+  // Hero (on the flyer header)
+  hero: { paddingHorizontal: T.space.lg, paddingTop: SMALL ? T.space.lg : T.space.xl },
+  brandRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: SMALL ? T.space.md : T.space.lg },
   logoTile: {
-    width: SMALL ? 68 : 84, height: SMALL ? 68 : 84, borderRadius: SMALL ? 20 : 24,
+    width: SMALL ? 48 : 54, height: SMALL ? 48 : 54, borderRadius: 16,
     justifyContent: 'center', alignItems: 'center',
-    backgroundColor: T.color.card,
-    marginBottom: T.space.md,
-    ...T.shadow.card,
+    backgroundColor: T.color.seaTeal,
+    borderWidth: 1.5, borderColor: 'rgba(207, 230, 238, 0.35)',
   },
+  hungry: { ...T.type.display, fontSize: SMALL ? 50 : 60, lineHeight: SMALL ? 56 : 66, color: T.color.card },
+  dontMove: { ...T.type.display, fontSize: SMALL ? 50 : 60, lineHeight: SMALL ? 56 : 66, color: T.color.mustard },
+  script: { fontFamily: FONT.script, fontSize: SMALL ? 24 : 28, color: T.color.card, marginTop: T.space.sm, transform: [{ rotate: '-3deg' }] },
   eyebrow: { ...T.type.label, color: T.color.teal, marginBottom: 4 },
   wordmarkRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  wordmark: { ...T.type.display, fontSize: SMALL ? 34 : 40, color: T.color.ink, flexShrink: 1 },
+  wordmark: { ...T.type.display, fontSize: SMALL ? 30 : 34, color: T.color.card, flexShrink: 1 },
   tagline: { ...T.type.body, color: T.color.inkSoft, marginTop: 6 },
 
   // Form + route rail
@@ -334,7 +340,7 @@ const styles = StyleSheet.create({
     width: 8, height: 8, borderRadius: 4,
     backgroundColor: 'rgba(255,255,255,0.35)',
   },
-  ctaPinReady: { backgroundColor: '#FFFFFF' },
+  ctaPinReady: { backgroundColor: T.color.card },
   rail: { display: 'none' },
   railStop: {
     width: 10, height: 10, borderRadius: 5,
@@ -357,8 +363,8 @@ const styles = StyleSheet.create({
     padding: SMALL ? T.space.md : T.space.lg,
     ...T.shadow.card,
   },
-  cardTitle: { ...T.type.title, color: T.color.ink },
-  cardSubtitle: { ...T.type.body, color: T.color.inkSoft, marginTop: 4, marginBottom: T.space.lg },
+  cardTitle: { ...T.type.title, fontSize: 30, color: T.color.ink, textAlign: 'center' },
+  cardSubtitle: { ...T.type.body, color: T.color.inkSoft, marginTop: 4, marginBottom: T.space.lg, textAlign: 'center' },
 
   inputLabel: { ...T.type.label, color: T.color.inkSoft },
   input: {

@@ -560,3 +560,14 @@ On iOS, notifications only work in the Home Screen app, and websites can't show 
   1. Firebase console → Authentication → Sign-in method → Add new provider → Google → Enable, choose the support email, Save.
   2. Google Cloud console (project dormdash-71035) → APIs & Services → Credentials → OAuth 2.0 Client IDs → "Web client (auto created by Google Service)" → Authorized redirect URIs → add `https://dormdash-71035.web.app/__/auth/handler` → Save. (Authorized JavaScript origins: add `https://dormdash-71035.web.app` if it isn't there.)
   3. Firebase console → Authentication → Settings → Authorized domains: `dormdash-71035.web.app` should already be listed.
+
+### Launch-flyer style for students (2026-09-28) — replaces "Tide Print"
+The student screens, sign-in and sign-up now match the UWI Mona launch flyer (DormDash-UWI-Launch-Flyer). Dasher/admin palettes are unchanged but share the headline font.
+- **Header** (`TideBand`/`TideHeader`, components/Tide.tsx): deep blue (`T.color.sea`) sweeping to teal (`seaTeal`), the flyer's contour loops and big faint italic D (components/Flow.tsx), fading into the cream page on an ease curve.
+- **Type:** headings in Fraunces Black Italic (`FONT.heading`), one hand-written line in Caveat (`FONT.script`). Fonts in assets/fonts (OFL, subset; README there).
+- **Colour:** cream page and cards, ink text, cerulean actions, teal support, **mustard gold** (`T.color.mustard`) for big headline words on the header ("Don't move.", the student's name), the active chip and tab, and stamps. Ink on mustard is 6.7:1; mustard on the blue header is only for large text (4.0:1).
+- **Page background:** the contour loops, faint teal on cream (`Backdrop tone="cream"`). The seigaiha pattern remains only on dasher/admin backdrops.
+- **Stamps** (components/Seal.tsx): gold circles with a dashed ring, like the flyer's "Launching Oct 1": "Order in!", "On di way", "Enjoy!" (a single mark under 46px). Replaces the vermilion hanko.
+- **Sign-in:** the flyer headline ("Hungry? Don't move." with the swoosh, components/Swoosh.tsx, and "sign in & yuh food a come!"), then the form card with "Welcome back" centred.
+- **Store marks:** a brand colour per store (blue, teal, mustard, cerulean, deep teal) with the italic initial; closed stores muted.
+

@@ -11,10 +11,8 @@
 //
 // Rules (PWA_HANDOFF.md "Japanese print style"): pattern only, low opacity.
 // Dasher and admin: bands at the top and bottom, the middle clear.
-// Students ("cream", Tide Print): the pattern runs the whole height and
-// changes on the way down: cerulean waves at the top (where the sea header
-// fades into it), quieter through the middle where content sits, turning
-// teal towards the bottom.
+// Students ("cream"): the launch flyer's contour loops instead
+// (components/Flow), faint teal on cream across the whole page.
 
 import React from 'react';
 import { StyleSheet, View } from 'react-native';
@@ -22,6 +20,7 @@ import Svg, { Circle, Defs, G, LinearGradient, Mask, Pattern, Rect, Stop } from 
 import { T } from '../constants/theme';
 import { D } from '../constants/themeDark';
 import { S } from '../constants/themeMid';
+import { FlowLines } from './Flow';
 
 export type BackdropTone = 'cream' | 'dark' | 'mid';
 
@@ -106,46 +105,7 @@ export const Backdrop = React.memo(function Backdrop({
   );
 });
 
-// ─── Students: the whole page, cerulean fading to teal ─────────────────────
-// Drawn in real pixels (no viewBox scaling) from the top-left of the screen,
-// with the same wave size as the sea header (components/Tide), so where the
-// header fades out the two patterns line up exactly.
+// ─── Students: the flyer's contour loops across the whole page ─────────────
 const TideBackdrop = React.memo(function TideBackdrop() {
-  const canvas = T.color.cream;
-  return (
-    <View pointerEvents="none" style={StyleSheet.absoluteFill}>
-      <Svg width="100%" height="100%">
-        <Defs>
-          <Pattern id="tide-cer" patternUnits="userSpaceOnUse" width={2 * R} height={R}>
-            <SeigaihaTile canvas={canvas} ink={T.color.cerulean} opacity={0.16} />
-          </Pattern>
-          <Pattern id="tide-teal" patternUnits="userSpaceOnUse" width={2 * R} height={R}>
-            <SeigaihaTile canvas={canvas} ink={T.color.teal} opacity={0.15} />
-          </Pattern>
-          {/* Cerulean: strong at the top, a whisper by the bottom. */}
-          <LinearGradient id="tide-cer-g" x1="0" y1="0" x2="0" y2="1">
-            <Stop offset="0" stopColor="#fff" stopOpacity="1" />
-            <Stop offset="0.3" stopColor="#fff" stopOpacity="0.6" />
-            <Stop offset="0.65" stopColor="#fff" stopOpacity="0.35" />
-            <Stop offset="1" stopColor="#fff" stopOpacity="0.05" />
-          </LinearGradient>
-          {/* Teal: rises through the lower half. */}
-          <LinearGradient id="tide-teal-g" x1="0" y1="0" x2="0" y2="1">
-            <Stop offset="0" stopColor="#fff" stopOpacity="0" />
-            <Stop offset="0.45" stopColor="#fff" stopOpacity="0.12" />
-            <Stop offset="0.8" stopColor="#fff" stopOpacity="0.65" />
-            <Stop offset="1" stopColor="#fff" stopOpacity="1" />
-          </LinearGradient>
-          <Mask id="tide-cer-m">
-            <Rect x="0" y="0" width="100%" height="100%" fill="url(#tide-cer-g)" />
-          </Mask>
-          <Mask id="tide-teal-m">
-            <Rect x="0" y="0" width="100%" height="100%" fill="url(#tide-teal-g)" />
-          </Mask>
-        </Defs>
-        <Rect x="0" y="0" width="100%" height="100%" fill="url(#tide-cer)" mask="url(#tide-cer-m)" />
-        <Rect x="0" y="0" width="100%" height="100%" fill="url(#tide-teal)" mask="url(#tide-teal-m)" />
-      </Svg>
-    </View>
-  );
+  return <FlowLines color={T.color.teal} opacity={0.1} />;
 });

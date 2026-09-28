@@ -28,7 +28,6 @@ import { requestPushPermissionFromGesture } from '../../services/notifications';
 import { T } from '../../constants/theme';
 import { UserRole } from '../../types';
 import { Backdrop } from '../../components/Backdrop';
-import { Seal } from '../../components/Seal';
 import { Icon } from '../../components/TabIcon'; // SVG icons: no icon font to fail loading
 
 const ROLES: { role: UserRole; label: string; description: string; icon: string; iconSet: string; color: string }[] = [
@@ -226,7 +225,6 @@ export default function RegisterScreen() {
               <Text style={styles.title}>
                 {step === 1 ? 'Join DormDash' : 'Almost there'}
               </Text>
-              <Seal size={26} />
             </View>
             <Text style={styles.subtitle}>
               {viaGoogle

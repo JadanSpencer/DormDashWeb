@@ -21,6 +21,7 @@ import { formatJMD, DELIVERY_FEE_JMD } from '../../../constants';
 import { T } from '../../../constants/theme';
 import { Backdrop } from '../../../components/Backdrop';
 import { TideBand, StoreMark, StoreArt, pressPlate } from '../../../components/Tide';
+import { Swoosh } from '../../../components/Swoosh';
 import { SkeletonGroup, StoreRowSkeleton, Bone } from '../../../components/Skeleton';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -159,6 +160,7 @@ export default function StudentHome() {
           >
             <Text style={styles.greeting}>{greeting()},</Text>
             <Text style={styles.name}>{firstName}.</Text>
+            <Swoosh width={Math.min(260, 40 + firstName.length * 26)} />
             <Text style={styles.headerNote}>Anything on campus, to your door for {formatJMD(DELIVERY_FEE_JMD)}.</Text>
           </Animated.View>
 
@@ -279,9 +281,9 @@ const styles = StyleSheet.create({
 
   // Sea band
   header: { paddingHorizontal: T.space.lg, paddingBottom: T.space.md },
-  greeting: { ...T.type.body, color: T.color.seaSoft, fontSize: 15, marginBottom: 2 },
-  name: { ...T.type.display, color: T.color.card },
-  headerNote: { ...T.type.body, color: T.color.seaFoam, fontSize: 13, fontWeight: '700', marginTop: 6 },
+  greeting: { ...T.type.display, fontSize: 30, lineHeight: 36, color: T.color.card },
+  name: { ...T.type.display, fontSize: 48, lineHeight: 56, color: T.color.mustard },
+  headerNote: { ...T.type.body, color: T.color.card, fontSize: 15, fontWeight: '600', marginTop: 10 },
 
   searchWrap: { paddingHorizontal: T.space.lg },
   search: {
@@ -305,9 +307,9 @@ const styles = StyleSheet.create({
     borderWidth: 1.5, borderColor: T.color.lineStrong,
     ...T.plate.card, shadowOffset: { width: 0, height: 3 },
   },
-  chipActive: { backgroundColor: T.color.teal, borderColor: T.color.teal, ...T.plate.teal, shadowOffset: { width: 0, height: 3 } },
+  chipActive: { backgroundColor: T.color.mustard, borderColor: T.color.mustard, ...T.plate.mustard, shadowOffset: { width: 0, height: 3 } },
   chipText: { ...T.type.body, fontSize: 13, fontWeight: '800', color: T.color.inkSoft },
-  chipTextActive: { color: T.color.card },
+  chipTextActive: { color: T.color.ink },
 
   // Section heads
   sectionHead: {

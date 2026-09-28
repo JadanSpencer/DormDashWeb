@@ -149,8 +149,8 @@ export default function RootLayout() {
   // splash so headings never flash in the system font; if loading fails,
   // carry on with system fonts rather than blocking the app.
   const [fontsLoaded, fontError] = useFonts({
-    [FONT.heading]: require('../assets/fonts/ShipporiMinchoB1-ExtraBold.latin.ttf'),
-    [FONT.seal]: require('../assets/fonts/YujiSyuku-Seal.ttf'),
+    [FONT.heading]: require('../assets/fonts/Fraunces-BlackItalic.latin.ttf'),
+    [FONT.script]: require('../assets/fonts/Caveat-Bold.latin.ttf'),
   });
   if (!fontsLoaded && !fontError) {
     return <View style={{ flex: 1, backgroundColor: T.color.cream }}><Backdrop tone="cream" /></View>;

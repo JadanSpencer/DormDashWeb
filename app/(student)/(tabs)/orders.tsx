@@ -202,7 +202,7 @@ const ActiveOrderCard: React.FC<{ order: Order; onCancel: () => void; reduced: b
 
       <View style={active.storeRow}>
         <Text style={[active.store, { flex: 1 }]}>{order.storeName}</Text>
-        {order.status === 'on_the_way' && <Seal char="走" size={38} stamp />}
+        {order.status === 'on_the_way' && <Seal char="走" size={54} stamp />}
       </View>
 
       {order.paymentMethod === 'card' && order.paymentStatus === 'awaiting_payment' && (

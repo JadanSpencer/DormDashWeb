@@ -11,14 +11,14 @@ const TABS = {
   profile: { icon: 'person-outline', iconActive: 'person', label: 'Profile' },
 };
 
-// Tide Print: a sea-glass bar, the active tab a teal plate.
+// Flyer style: a deep blue glass bar, the active tab in mustard gold.
 const PALETTE = {
-  glass: 'rgba(11, 60, 90, 0.9)',
+  glass: 'rgba(14, 90, 128, 0.92)',
   solid: T.color.sea,
-  edge: 'rgba(127, 214, 200, 0.28)',
-  highlight: 'rgba(169, 211, 230, 0.25)',
-  active: T.color.teal,
-  activeText: T.color.card,
+  edge: 'rgba(207, 230, 238, 0.25)',
+  highlight: 'rgba(207, 230, 238, 0.25)',
+  active: T.color.mustard,
+  activeText: T.color.ink,
   idle: T.color.seaSoft,
 };
 

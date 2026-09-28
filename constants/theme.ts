@@ -1,17 +1,13 @@
 // constants/theme.ts
-// DormDash design system for STUDENTS (and sign-in): "Tide Print".
-// Seigaiha waves printed in two inks, teal and cerulean, on sea-foam paper:
-//   • Tide band: every student screen opens under a deep cerulean "sea"
-//     band with the wave pattern etched in and a scalloped wave edge where
-//     it meets the page (components/Tide.tsx).
-//   • Print plates: cards and buttons sit on a solid offset layer (a second
-//     ink plate), never a blurred glow. Pressing a button sinks it onto its
-//     plate. Use T.plate.* rather than shadows.
-//   • Store marks: each store has its own sea-coloured tile with the wave
-//     pattern and its initial (components/Tide.tsx StoreMark).
-// Headings are set in Shippori Mincho B1 (assets/fonts, OFL); body text stays
-// in the system font. Vermilion (shu) is the rare accent: the seal, alerts.
-// Dasher (themeDark) and admin (themeMid) have their own palettes.
+// DormDash design system for STUDENTS (and sign-in), matching the UWI Mona
+// launch flyer: a deep blue-to-teal header with flowing contour lines and a
+// big faint D, chunky italic serif headlines (Fraunces Black Italic) with
+// mustard-gold highlights, cream cards, gold stamp badges, and one
+// hand-written line (Caveat). Pieces: components/Tide.tsx (header, store
+// marks), components/Flow.tsx (contour lines), components/Seal.tsx (gold
+// stamp). Cards and buttons sit on solid offset "plates" (T.plate), never
+// a blurred glow.
+// Dasher (themeDark) and admin (themeMid) keep their own palettes.
 // Import as: `import { T } from '../constants/theme'`. No hex in screens.
 
 import { useEffect, useState } from 'react';
@@ -19,41 +15,47 @@ import { AccessibilityInfo } from 'react-native';
 
 // Font family names registered in app/_layout.tsx (useFonts).
 export const FONT = {
-  heading: 'ShipporiMinchoB1',   // headings only: single ExtraBold weight
-  seal: 'YujiSyukuSeal',         // only 寮 配 走, for components/Seal
-};
+  heading: 'FrauncesBlackItalic', // headings: Fraunces Black Italic (OFL), as on the flyer
+  script: 'CaveatBold',            // the one hand-written line ("… yuh food a come!")
+}
 
 export const T = {
   color: {
-    // Paper (token names are historical: "cream" is now sea-foam)
-    cream: '#EEF5F3',       // page
-    creamDeep: '#DEEBE8',   // sunken areas, dividers between sections
-    card: '#FAFCFB',        // cards: near-white foam, never pure #FFF
+    // Paper
+    cream: '#F3EEE4',       // page
+    creamDeep: '#E7E0D2',   // sunken areas, dividers between sections
+    card: '#FBF8F2',        // cards: warm near-white, never pure #FFF
 
-    // Ink (never pure black: deep sea ink)
-    ink: '#0E2F3A',
-    inkSoft: '#43616A',      // 6.0:1 on page
-    inkFaint: '#557079',     // 4.8:1 on page, 5.1:1 on cards
+    // Ink
+    ink: '#163845',          // 10.8:1 on page
+    inkSoft: '#46606A',      // 5.8:1
+    inkFaint: '#526A73',     // 5.0:1 on page
 
-    // Sea: the tide band and deep surfaces (cream text on it: 11:1)
-    sea: '#0B3C5A',
-    seaSoft: '#A9D3E6',      // secondary text on sea (7.3:1)
-    seaFoam: '#7FD6C8',      // teal highlights on sea (6.8:1)
+    // The header: deep blue fading to teal (cream text 7.1:1 on blue, 5.3:1 on teal)
+    sea: '#0E5A80',
+    seaTeal: '#0E7466',
+    seaSoft: '#CFE6EE',      // secondary text on the header (5.8:1 / 4.4:1)
+    seaFoam: '#9FE0D2',      // small highlights on the header
 
     // Cerulean: the action colour
-    cerulean: '#0A6694',     // 5.7:1 on page; card-coloured text on it 6.1:1
-    ceruleanDeep: '#08557B', // pressed / plate under cerulean buttons
-    ceruleanBright: '#2E9FD3', // graphic only (pattern, marks), never text
-    ceruleanTint: '#E4F1F7',
+    cerulean: '#0E6690',     // 5.5:1 on page; card-coloured text on it 6.0:1
+    ceruleanDeep: '#0A5073', // pressed / plate under cerulean buttons
+    ceruleanBright: '#3AA6D6', // graphic only
+    ceruleanTint: '#E1EEF3',
 
-    // Teal: the second ink
-    teal: '#08705F',         // text-safe: 5.4:1 on page, 5.0:1 on tealTint
-    tealDeep: '#065547',     // plate under teal fills
+    // Teal
+    teal: '#0B7766',         // text-safe: 4.7:1 on page, 4.6:1 on tealTint
+    tealDeep: '#075A4D',     // plate under teal fills
     tealBright: '#22B3A0',   // graphic only
-    tealTint: '#D6EFE9',
+    tealTint: '#DDEFEA',
 
-    // Seal accent
-    shu: '#B7412E',          // vermilion: 5.0:1 on page
+    // Mustard: the flyer's gold. Large headline words on the header, stamps,
+    // the active chip and tab (ink text on it: 6.7:1).
+    mustard: '#EDB443',
+    mustardDeep: '#C48F22',  // plate under mustard fills
+
+    // Rare alarm red (the install warning)
+    shu: '#B7412E',
     shuTint: '#F6E4DF',
 
     // Money (DormDash tokens): coin graphics and the wallet's banknote band
@@ -64,8 +66,8 @@ export const T = {
     goldTint: '#FBF3DC',     // wallet header band
 
     // Lines & feedback
-    line: 'rgba(14, 47, 58, 0.12)',
-    lineStrong: 'rgba(14, 47, 58, 0.22)',
+    line: 'rgba(22, 56, 69, 0.12)',
+    lineStrong: 'rgba(22, 56, 69, 0.22)',
     danger: '#B23E3A',
     dangerTint: '#F8E6E4',
     warning: '#D9963A',
@@ -76,8 +78,8 @@ export const T = {
   radius: { sm: 8, md: 12, lg: 16, xl: 20, pill: 999 },
 
   type: {
-    display: { fontFamily: FONT.heading, fontSize: 40, letterSpacing: -0.6 },
-    title:   { fontFamily: FONT.heading, fontSize: 26, letterSpacing: -0.2 },
+    display: { fontFamily: FONT.heading, fontSize: 40, letterSpacing: -0.2 },
+    title:   { fontFamily: FONT.heading, fontSize: 26, letterSpacing: 0 },
     body:    { fontSize: 15, fontWeight: '500' as const, letterSpacing: 0 },
     label:   { fontSize: 12, fontWeight: '700' as const, letterSpacing: 0.1, textTransform: 'none' as const },
     button:  { fontSize: 16, fontWeight: '700' as const, letterSpacing: 0.2 },
@@ -86,17 +88,18 @@ export const T = {
   // Print plates: a solid layer offset below, like a second ink plate.
   // No blur, so it reads as depth, not glow.
   plate: {
-    card: plate('#C9DFDA', 4),          // foam-deep plate under cards
+    card: plate('#DCD3C1', 4),          // cream-deep plate under cards
     teal: plate('#065547', 4),          // under teal fills
-    cerulean: plate('#08557B', 4),      // under cerulean buttons
-    sea: plate('#072A40', 5),           // under sea surfaces
-    pressed: plate('#C9DFDA', 1),       // a pressed card or button
+    cerulean: plate('#0A5073', 4),      // under cerulean buttons
+    sea: plate('#083A55', 5),           // under header surfaces
+    mustard: plate('#C48F22', 4),       // under mustard fills
+    pressed: plate('#DCD3C1', 1),       // a pressed card or button
   },
 
   // Kept for screens that haven't moved to plates; same values as plates.
   shadow: {
-    card: plate('#C9DFDA', 4),
-    button: plate('#08557B', 4),
+    card: plate('#DCD3C1', 4),
+    button: plate('#0A5073', 4),
   },
 };
 
