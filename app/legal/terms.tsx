@@ -5,6 +5,7 @@
 
 import { LegalDocument, Section } from '../../components/LegalDocument';
 import { LEGAL } from '../../constants/legal';
+import { DELIVERY_FEE_JMD, formatJMD } from '../../constants';
 
 const sections: Section[] = [
   {
@@ -25,7 +26,7 @@ const sections: Section[] = [
   {
     title: 'Ordering',
     blocks: [{ list: [
-      'Prices, availability and delivery fees shown in the app come from the stores and can change. Our servers check every order against the current menu. If something is wrong or unavailable, your order may be corrected or cancelled, and the app will tell you.',
+      `Prices and availability shown in the app come from the stores and can change. DormDash charges one delivery fee on every order (currently ${formatJMD(DELIVERY_FEE_JMD)}), shown before you place it. Our servers check every order against the current menu. If something is wrong or unavailable, your order may be corrected or cancelled, and the app will tell you.`,
       'You can cancel an order until a dasher accepts it. After that, contact your dasher or us.',
       'Give a delivery address your dasher can actually find, and be reachable when your order arrives.',
       'Allergen information comes from the stores. If you have a serious allergy, check with the store before ordering.',

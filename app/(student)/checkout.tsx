@@ -28,7 +28,7 @@ import { placeOrder } from '../../services/orders';
 import { useOnlineDasherCount } from '../../hooks/useOrders';
 import { useAuth } from '../../hooks/useAuth';
 import { CartItem, Order } from '../../types';
-import { CAMPUS_CENTER, MAX_ACTIVE_ORDERS, PAY_WINDOW_MIN } from '../../constants';
+import { CAMPUS_CENTER, MAX_ACTIVE_ORDERS, PAY_WINDOW_MIN, DELIVERY_FEE_JMD } from '../../constants';
 import { serverNow } from '../../services/serverClock';
 import { usePriceUnit } from '../../hooks/usePriceUnit';
 import { PriceUnitToggle } from '../../components/PriceUnitToggle';
@@ -47,11 +47,11 @@ export default function CheckoutScreen() {
   const { user } = useAuth();
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{
-    storeId: string; storeName: string; deliveryFee: string; cart: string;
+    storeId: string; storeName: string; cart: string;
   }>();
 
   const cart: CartItem[] = JSON.parse(params.cart ?? '[]');
-  const deliveryFee = parseFloat(params.deliveryFee ?? '0');
+  const deliveryFee = DELIVERY_FEE_JMD; // one fee for every store
   const subtotal = cart.reduce((sum, c) => sum + c.menuItem.price * c.quantity, 0);
   const total = subtotal + deliveryFee;
 
@@ -248,9 +248,7 @@ export default function CheckoutScreen() {
           </View>
           <View style={styles.summaryRow}>
             <Text style={styles.summaryLabel}>Delivery</Text>
-            <Text style={[styles.summaryValue, deliveryFee === 0 && { color: T.color.teal, fontWeight: '900' }]}>
-              {deliveryFee === 0 ? 'Free' : fmt(deliveryFee)}
-            </Text>
+            <Text style={styles.summaryValue}>{fmt(deliveryFee)}</Text>
           </View>
           <View style={styles.divider} />
           <View style={styles.summaryRow}>

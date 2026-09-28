@@ -13,7 +13,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, router } from 'expo-router';
 import { useStore, useMenu } from '../../../hooks/useStores';
 import { MenuItem, CartItem } from '../../../types';
-import { MAX_ITEMS_PER_ORDER } from '../../../constants';
+import { MAX_ITEMS_PER_ORDER, DELIVERY_FEE_JMD } from '../../../constants';
 import { usePriceUnit } from '../../../hooks/usePriceUnit';
 import { PriceUnitToggle } from '../../../components/PriceUnitToggle';
 import { T, useReducedMotion } from '../../../constants/theme';
@@ -123,7 +123,6 @@ export default function StoreMenuScreen() {
       params: {
         storeId: id!,
         storeName: store?.name ?? '',
-        deliveryFee: String(store?.deliveryFee ?? 0),
         cart: JSON.stringify(cart),
       }
     });
@@ -210,9 +209,7 @@ export default function StoreMenuScreen() {
               <View style={styles.infoDot} />
               <View style={styles.infoPill}>
                 <Text style={styles.infoIcon}>◇</Text>
-                <Text style={[styles.infoText, store.deliveryFee === 0 && { color: T.color.teal, fontWeight: '800' }]}>
-                  {store.deliveryFee === 0 ? 'Free' : fmt(store.deliveryFee)}
-                </Text>
+                <Text style={styles.infoText}>{fmt(DELIVERY_FEE_JMD)}</Text>
               </View>
             </View>
           )}

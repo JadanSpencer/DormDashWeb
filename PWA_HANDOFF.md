@@ -517,3 +517,9 @@ Every new order used to go to every free online dasher at once: at 50+ dashers t
 - **Split bundle (§4):** Expo Router async routes on web (`asyncRoutes: { web: true }` in app.json). First load is now a shared file + the start file + the one screen (about 669 KB gzipped, down from 732 KB), and students never download dasher/admin screens. Each screen is a separate file cached by the service worker when first opened. `public/register-sw.js` reloads a tab once if a screen file from an older release can't load (tab left open across a deploy). Service worker VERSION → `dd-v8`.
 - **Later (owner's call), 3.6 warm payment functions:** set `minInstances: 1` on `wipayReturn` (and `createPayment` if wanted) in functions/src/payments.ts to remove the 2–5 s cold start on the first card payment after a quiet spell. About US$10–20 a month each. Not done yet.
 
+
+### One delivery fee: J$250 (2026-09-28)
+- `DELIVERY_FEE_JMD` (250) in functions/src/shared.ts is the delivery fee on every order. `verifyNewOrder` always charges it, whatever the store doc or the app sends; the dasher earns it on delivery as before.
+- Checkout, the store page, home and the admin stores list all show the constant. The admin store form no longer has a fee field; saving a store writes `deliveryFee: DELIVERY_FEE_JMD` so the stored value stays in step (the rules still require a valid number there).
+- Terms updated (28 Sep 2026): "DormDash charges one delivery fee on every order".
+- To change the fee: edit `DELIVERY_FEE_JMD`, deploy functions and web, and update the live store docs' `deliveryFee` to match.

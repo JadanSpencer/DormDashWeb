@@ -63,6 +63,7 @@ const settled = (id) => until(async () => {
 
 before(async () => {
   fns = require('../functions/lib/index.js');
+  // The store's own fee is ignored: every order pays DELIVERY_FEE_JMD (250).
   await db.doc('stores/store1').set({ name: 'Ring Road Grill', isOpen: true, deliveryFee: 150 });
   await db.doc('stores/store1/menuItems/patty').set({ name: 'Beef patty', price: 300, isAvailable: true, category: 'Hot' });
   await db.doc('stores/store1/menuItems/soldout').set({ name: 'Oxtail', price: 900, isAvailable: false, category: 'Hot' });
@@ -71,12 +72,12 @@ before(async () => {
 after(async () => { await admin.app().delete(); });
 
 // ── verifyNewOrder ─────────────────────────────────────────────────────────
-test('new order is re-priced from the menu; tampered fields are replaced', async () => {
+test('new order is re-priced from the menu with the flat delivery fee; tampered fields are replaced', async () => {
   const uid = await student();
   const o = await settled(await place(order(uid)));
   assert.equal(o.status, 'pending');
-  assert.equal(o.totalAmount, 2 * 300 + 150);
-  assert.equal(o.deliveryFee, 150);
+  assert.equal(o.totalAmount, 2 * 300 + 250);
+  assert.equal(o.deliveryFee, 250, 'the flat fee, not the store doc\'s');
   assert.equal(o.items[0].menuItem.price, 300);
   assert.equal(o.items[0].menuItem.name, 'Beef patty');
   assert.equal(o.storeName, 'Ring Road Grill');
@@ -257,7 +258,7 @@ test('repair sweep finishes half-done work and leaves healthy work alone', async
     const unverified = (await O('unverified').get()).data();
     assert.equal(unverified.status, 'pending', 'published, not cancelled');
     assert.ok(unverified.verifiedAt, 'checked by the server');
-    assert.equal(unverified.totalAmount, 2 * 300 + 150, 're-priced from the menu');
+    assert.equal(unverified.totalAmount, 2 * 300 + 250, 're-priced from the menu');
 
     assert.equal((await O('unsettled').get()).get('paymentStatus'), 'released');
     assert.equal((await get(`wallets/${stu}`)).reservedJmd, 0, 'held tokens released');

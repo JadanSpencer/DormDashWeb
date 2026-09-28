@@ -8,7 +8,7 @@ import { PAY_WINDOW_MS, PENDING_TIMEOUT_MS, minutes } from '../functions/src/sha
 // re-exported here for the app, so limits, prices and time windows can't
 // drift between the two. Change them there.
 export {
-  MAX_ACTIVE_ORDERS, MAX_ITEMS_PER_ORDER, TOKEN_JMD, TOKEN_PACKS,
+  MAX_ACTIVE_ORDERS, MAX_ITEMS_PER_ORDER, TOKEN_JMD, TOKEN_PACKS, DELIVERY_FEE_JMD,
   PAY_WINDOW_MS, PENDING_TIMEOUT_MS, minutes,
   DASHER_IDLE_NUDGE_MS, DASHER_IDLE_GRACE_MS, DASHER_ACTIVITY_MS,
   OFFER_WAVE_SIZE, OFFER_WAVE_MS, OFFER_OPEN_WAVE,

@@ -13,9 +13,9 @@ export const PREVIEW_USERS: Record<string, any> = {
 
 const stores = [
   { id: 's1', name: 'Ring Road Grill', description: 'Jerk chicken, festival and fries off the grill.', category: 'Jamaican', deliveryFee: 250, estimatedTime: '20-30 min', rating: 4.7, isOpen: true },
-  { id: 's2', name: 'Chancellor Tuck Shop', description: 'Snacks, drinks and late-night essentials.', category: 'Snacks', deliveryFee: 150, estimatedTime: '10-15 min', rating: 4.4, isOpen: true },
-  { id: 's3', name: 'Irie Bowls', description: 'Rice bowls, ital stew and fresh juices.', category: 'Healthy', deliveryFee: 300, estimatedTime: '25-35 min', rating: 4.8, isOpen: true },
-  { id: 's4', name: 'Mona Patty Hut', description: 'Beef, chicken and veggie patties, coco bread.', category: 'Bakery', deliveryFee: 200, estimatedTime: '15-20 min', rating: 4.5, isOpen: false },
+  { id: 's2', name: 'Chancellor Tuck Shop', description: 'Snacks, drinks and late-night essentials.', category: 'Snacks', deliveryFee: 250, estimatedTime: '10-15 min', rating: 4.4, isOpen: true },
+  { id: 's3', name: 'Irie Bowls', description: 'Rice bowls, ital stew and fresh juices.', category: 'Healthy', deliveryFee: 250, estimatedTime: '25-35 min', rating: 4.8, isOpen: true },
+  { id: 's4', name: 'Mona Patty Hut', description: 'Beef, chicken and veggie patties, coco bread.', category: 'Bakery', deliveryFee: 250, estimatedTime: '15-20 min', rating: 4.5, isOpen: false },
 ];
 
 const menu: Record<string, any[]> = {

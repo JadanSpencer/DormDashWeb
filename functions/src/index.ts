@@ -36,7 +36,7 @@ import {
 import {
   MAX_ACTIVE_ORDERS, MAX_ITEMS_PER_ORDER, PAY_WINDOW_MS, PENDING_TIMEOUT_MS, minutes,
   DASHER_IDLE_NUDGE_MS, DASHER_IDLE_GRACE_MS,
-  OFFER_WAVE_SIZE, OFFER_WAVE_MS, OFFER_OPEN_WAVE,
+  OFFER_WAVE_SIZE, OFFER_WAVE_MS, OFFER_OPEN_WAVE, DELIVERY_FEE_JMD,
   ACTIVE_STATUSES, IN_DELIVERY_STATUSES, CancelReason,
 } from './shared';
 export { createPayment, wipayReturn, adminAdjustTokens, adminAdjustFloat, payOrderWithTokens, adminResolvePayment } from './payments';
@@ -445,7 +445,7 @@ async function verifyNewOrder(
   }
   if (count > MAX_ITEMS_PER_ORDER) return cancel('too_many_items');
 
-  const deliveryFee = Number(store.deliveryFee) || 0;
+  const deliveryFee = DELIVERY_FEE_JMD; // flat, whatever the store doc says
   const totalAmount = subtotal + deliveryFee;
 
   // Payment. Orders from app versions before payments have no method: they

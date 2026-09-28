@@ -27,7 +27,7 @@ import { router } from 'expo-router';
 import { useStores } from '../../../hooks/useStores';
 import { useAuth } from '../../../hooks/useAuth';
 import { Store } from '../../../types';
-import { formatJMD } from '../../../constants';
+import { formatJMD, DELIVERY_FEE_JMD } from '../../../constants';
 import { T } from '../../../constants/theme';
 import { Backdrop } from '../../../components/Backdrop';
 
@@ -84,9 +84,7 @@ const FeaturedCard: React.FC<{ store: Store; onPress: () => void }> = ({ store, 
           <Text style={styles.metaText}>{store.estimatedTime}</Text>
           <View style={styles.metaDot} />
           <View style={styles.feePlate}>
-            <Text style={styles.feeText}>
-              {store.deliveryFee === 0 ? 'Free' : formatJMD(store.deliveryFee)}
-            </Text>
+            <Text style={styles.feeText}>{formatJMD(DELIVERY_FEE_JMD)}</Text>
           </View>
         </View>
       </View>
@@ -131,12 +129,7 @@ const StoreRow: React.FC<{ store: Store; onPress: () => void }> = ({ store, onPr
         <View style={styles.metaDot} />
         <Text style={styles.metaText}>{store.estimatedTime}</Text>
         <View style={styles.metaDot} />
-        <Text style={[
-          styles.metaText,
-          store.deliveryFee === 0 && { color: T.color.teal, fontWeight: '800' },
-        ]}>
-          {store.deliveryFee === 0 ? 'Free' : formatJMD(store.deliveryFee)}
-        </Text>
+        <Text style={styles.metaText}>{formatJMD(DELIVERY_FEE_JMD)}</Text>
       </View>
     </View>
 

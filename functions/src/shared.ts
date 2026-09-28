@@ -25,6 +25,11 @@ export const TOKEN_PACKS = [5, 10, 20, 50];
 export const PAY_WINDOW_MS = 10 * 60 * 1000;
 /** A pending order nobody accepts is cancelled after this long. */
 export const PENDING_TIMEOUT_MS = 30 * 60 * 1000;
+// ─── Delivery fee ──────────────────────────────────────────────────────────
+// One delivery fee for every store, charged on every order (J$). The server
+// (verifyNewOrder) always uses this, whatever the store doc or the app says.
+export const DELIVERY_FEE_JMD = 250;
+
 // At most this many card payments can be started per student per window
 // (createPayment). Stops a script from flooding WiPay and payments/*.
 export const MAX_PAYMENT_STARTS = 5;

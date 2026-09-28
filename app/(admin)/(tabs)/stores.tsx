@@ -14,7 +14,7 @@ import { router } from 'expo-router';
 import { saveStore, deleteStore, setStoreOpen } from '../../../services/stores';
 import { useStores, useStoreFloats } from '../../../hooks/useStores';
 import { Store } from '../../../types';
-import { formatJMD } from '../../../constants';
+import { formatJMD, DELIVERY_FEE_JMD } from '../../../constants';
 import { S } from '../../../constants/themeMid';
 import { AmountPrompt } from '../../../components/AmountPrompt';
 import { adminAdjustFloat } from '../../../services/payments';
@@ -24,7 +24,7 @@ const CATEGORIES = ['Fast Food', 'Grocery', 'Pharmacy', 'Drinks', 'Snacks', 'Oth
 
 const blankForm = () => ({
   name: '', description: '', category: 'Fast Food',
-  deliveryFee: '0', estimatedTime: '20-30 mins', rating: '5.0',
+  estimatedTime: '20-30 mins', rating: '5.0',
   isOpen: true, address: '', latitude: '', longitude: '',
 });
 
@@ -45,7 +45,6 @@ const StoreFormModal: React.FC<{
         name: initialData.name,
         description: initialData.description,
         category: initialData.category,
-        deliveryFee: String(initialData.deliveryFee),
         estimatedTime: initialData.estimatedTime,
         rating: String(initialData.rating),
         isOpen: initialData.isOpen,
@@ -66,8 +65,6 @@ const StoreFormModal: React.FC<{
     if (!form.name.trim()) return 'Store name is required';
     if (!form.description.trim()) return 'Description is required';
     if (!form.address.trim()) return 'Address is required';
-    const fee = parseFloat(form.deliveryFee);
-    if (isNaN(fee) || fee < 0) return 'Delivery fee must be a valid number';
     return null;
   };
 
@@ -82,7 +79,8 @@ const StoreFormModal: React.FC<{
       name: form.name.trim(),
       description: form.description.trim(),
       category: form.category,
-      deliveryFee: parseFloat(form.deliveryFee) || 0,
+      // Kept in step with the one fee the server charges (DELIVERY_FEE_JMD).
+      deliveryFee: DELIVERY_FEE_JMD,
       estimatedTime: form.estimatedTime.trim() || '20-30 mins',
       rating: parseFloat(form.rating) || 5.0,
       isOpen: form.isOpen,
@@ -144,12 +142,6 @@ const StoreFormModal: React.FC<{
           </ScrollView>
 
           <View style={m.row}>
-            <View style={m.half}>
-              <Text style={m.label}>Delivery fee (J$)</Text>
-              <TextInput style={m.input} value={form.deliveryFee}
-                onChangeText={v => setField('deliveryFee', v)}
-                placeholder="150" placeholderTextColor={S.color.inkFaint} keyboardType="decimal-pad" />
-            </View>
             <View style={m.half}>
               <Text style={m.label}>Est. time</Text>
               <TextInput style={m.input} value={form.estimatedTime}
@@ -295,7 +287,7 @@ export default function AdminStores() {
 
               <View style={styles.metaRow}>
                 <View style={styles.feePlate}>
-                  <Text style={styles.feeText}>{formatJMD(item.deliveryFee)}</Text>
+                  <Text style={styles.feeText}>{formatJMD(DELIVERY_FEE_JMD)}</Text>
                 </View>
                 <Text style={styles.metaText}>{item.estimatedTime}</Text>
                 <View style={styles.metaDot} />
