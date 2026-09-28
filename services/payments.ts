@@ -3,7 +3,7 @@
 // Functions (functions/src/payments.ts) to start a WiPay card payment or to
 // adjust balances, and reads balances from Firestore.
 
-import { Platform, Linking } from 'react-native';
+import { AppState, Platform, Linking } from 'react-native';
 import { httpsCallable } from 'firebase/functions';
 import { functions } from './firebase';
 
@@ -25,9 +25,44 @@ function errorText(e: any, fallback: string) {
   return typeof e?.message === 'string' && e.message && !/internal/i.test(e.message) ? e.message : fallback;
 }
 
-async function openCheckout(url: string) {
-  if (Platform.OS === 'web') window.location.href = url; // WiPay's secure card page
+// Leaves for WiPay's secure card page. Refuses anything that isn't an
+// https link: navigating to a missing URL would just reload the app, which
+// looks exactly like a button that did nothing.
+async function openCheckout(url: unknown) {
+  if (typeof url !== 'string' || !/^https:\/\//.test(url)) {
+    throw new Error('The card payment page did not open. Try again.');
+  }
+  if (Platform.OS === 'web') window.location.href = url;
   else await Linking.openURL(url);
+}
+
+const CHECKOUT_FALLBACK_MS = 15 * 1000;
+
+/**
+ * Call after payOrderByCard / buyTokens succeed, with the function that
+ * re-enables the screen's payment buttons.
+ *
+ * Phones keep the page in memory while the student is on WiPay and restore
+ * it exactly as it was (spinner showing, buttons disabled) when they come
+ * back, so every payment button stayed dead until a full reload. This
+ * re-enables them when the page is restored or the app comes back to the
+ * foreground, and after CHECKOUT_FALLBACK_MS in case the page never opened.
+ * Returns a cleanup function.
+ */
+export function whenBackFromCheckout(reset: () => void): () => void {
+  let done = false;
+  const fire = () => { if (!done) { done = true; cleanup(); reset(); } };
+  const timer = setTimeout(fire, CHECKOUT_FALLBACK_MS);
+  const appState = AppState.addEventListener('change', s => { if (s === 'active') fire(); });
+  const onPageShow = (e: PageTransitionEvent) => { if (e.persisted) fire(); };
+  const web = Platform.OS === 'web' && typeof window !== 'undefined';
+  if (web) window.addEventListener('pageshow', onPageShow);
+  function cleanup() {
+    clearTimeout(timer);
+    appState.remove();
+    if (web) window.removeEventListener('pageshow', onPageShow);
+  }
+  return () => { done = true; cleanup(); };
 }
 
 /** Pay for an accepted card order. Leaves the app for WiPay's page. */

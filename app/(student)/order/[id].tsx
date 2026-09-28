@@ -31,7 +31,7 @@ import { T, useReducedMotion } from '../../../constants/theme';
 import { Watermark } from '../../../components/Watermark';
 import MapView, { Marker, PROVIDER_GOOGLE } from '../../../components/MapView';
 import { usePriceUnit } from '../../../hooks/usePriceUnit';
-import { payOrderByCard, payOrderWithTokens, formatTokens } from '../../../services/payments';
+import { payOrderByCard, payOrderWithTokens, formatTokens, whenBackFromCheckout } from '../../../services/payments';
 import { useWallet } from '../../../hooks/useWallet';
 import { useAuth } from '../../../hooks/useAuth';
 import { serverNow } from '../../../services/serverClock';
@@ -91,6 +91,8 @@ const PaymentPanel: React.FC<{ order: Order }> = ({ order }) => {
     setBusy('card');
     try {
       await payOrderByCard(order.id); // leaves the app for WiPay's secure page
+      // Re-enable the pay buttons when the student comes back (see whenBackFromCheckout).
+      whenBackFromCheckout(() => setBusy(null));
     } catch (e: any) {
       Alert.alert('Couldn\'t open card payment', e.message);
       setBusy(null);

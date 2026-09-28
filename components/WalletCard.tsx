@@ -10,7 +10,7 @@ import { View, Text, StyleSheet, Pressable, ActivityIndicator, Alert } from 'rea
 import { FONT, T } from '../constants/theme';
 import { formatJMD } from '../constants';
 import { useWallet, useWalletHistory } from '../hooks/useWallet';
-import { buyTokens, formatTokens, jmdToTokens, TOKEN_JMD, TOKEN_PACKS } from '../services/payments';
+import { buyTokens, formatTokens, jmdToTokens, TOKEN_JMD, TOKEN_PACKS, whenBackFromCheckout } from '../services/payments';
 import { Coin, CoinStack } from './Coin';
 import { PriceUnitToggle } from './PriceUnitToggle';
 
@@ -35,6 +35,8 @@ export function WalletCard({ uid }: { uid: string }) {
     setBusyPack(tokens);
     try {
       await buyTokens(tokens); // leaves the app for WiPay's secure page
+      // Re-enable the packs when the student comes back (see whenBackFromCheckout).
+      whenBackFromCheckout(() => setBusyPack(null));
     } catch (e: any) {
       Alert.alert('Buy tokens', e.message);
       setBusyPack(null);

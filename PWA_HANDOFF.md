@@ -462,3 +462,10 @@ The app is styled like an ukiyo-e woodblock print, using **original** vector art
 - **Money section** (`components/WalletCard.tsx`, `components/Coin.tsx`): gold DormDash coins (original SVG, the D struck in the centre), a banknote-style balance band (`goldTint`), coin-stack token packs (1–4 coins by size) with indigo price pills, and a ledger for recent activity. Gold tokens in `T.color`: `gold` / `goldLight` are for graphics only; `goldDeep` passes AA as text.
 - **Rules:** the pattern stays at the edges and faint; the middle of the screen stays clear for content. No large filled shapes, glows, gradients on text, or a filled red sun (that is an "orb"). New screens and full-screen states add `<Backdrop tone="…" />`. Check changes with `npm run preview:web` screenshots before shipping.
 
+
+### Payment buttons can't get stuck (2026-09-27)
+Logs showed card payments started (`createPayment`) with no WiPay return, and taps that did nothing. Cause: the buy-token packs and "Pay by card" disable themselves while leaving for WiPay and only re-enabled on error. Phones restore the page from memory when the student comes back from WiPay (spinner showing, buttons disabled), so every payment button stayed dead until a full reload.
+- `whenBackFromCheckout(reset)` (`services/payments.ts`) re-enables them when the page is restored (`pageshow` from the back/forward cache) or the app returns to the foreground, and after 15 s as a fallback if WiPay never opened. Used by `WalletCard` and the order page.
+- `openCheckout` refuses anything but an `https` link: navigating to a missing URL reloaded the app, which looked like a dead button.
+- Audit of every other busy/disabled button: all reset on every path (`finally`, calls that never throw, or navigation away on success). `AmountPrompt` resets itself each time it opens.
+- Rule: a button that disables itself must re-enable on **every** path, including success paths that leave the app.
