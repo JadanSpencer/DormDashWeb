@@ -170,7 +170,11 @@ export function usePendingOrders({ watchdog = false, uid }: { watchdog?: boolean
       orderBy('createdAt', 'asc')
     );
     let retry: ReturnType<typeof setTimeout> | undefined;
-    const unsub = onSnapshot(q, snap => {
+    // The offline cache (services/firebase.ts) answers first from the
+    // phone; for open orders that could show ones already taken, so wait
+    // for the server's answer (metadata changes deliver it).
+    const unsub = onSnapshot(q, { includeMetadataChanges: true }, snap => {
+      if (snap.metadata.fromCache) return;
       seenPending.current = snap.size;
       setAll(snap.docs.map(toOrder).filter(o => !!o.verifiedAt));
       setNow(serverNow());

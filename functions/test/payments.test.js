@@ -74,7 +74,8 @@ const P = require(path.join(FN, 'lib/payments.js'));
 const get = p => store.get(p);
 const seed = (p, d) => store.set(p, { ...d });
 const md5 = s => crypto.createHash('md5').update(s).digest('hex');
-let passed = 0; const t = async (name, fn) => { await fn(); passed++; console.log('✓', name); };
+// Each test starts with no recent payment starts (createPayment's rate limit).
+let passed = 0; const t = async (name, fn) => { store.delete('paymentStarts/stu'); await fn(); passed++; console.log('✓', name); };
 function fakeRes() { const r = { location: null, redirect(code, url) { r.code = code; r.location = url; } }; return r; }
 const qs = u => Object.fromEntries(new URL(u).searchParams);
 
@@ -293,6 +294,19 @@ const qs = u => Object.fromEntries(new URL(u).searchParams);
     assert.equal(get('storeFloats/m1').floatJmd, 700); assert.equal(get('storeFloats/m2').floatJmd, 50);
     assert.equal('floatJmd' in get('stores/m1'), false); assert.equal('floatJmd' in get('stores/m2'), false);
     assert.equal(await P.migrateLegacyStoreFloats(), 0);
+  });
+
+  await t('createPayment: at most 5 starts per student per 10 minutes', async () => {
+    global.fetch = async () => ({ json: async () => ({ url: 'https://wipay/pay/rl', transaction_id: 'SB-RL' }) });
+    const start = uid => P.createPayment.run({ auth: { uid }, data: { purpose: 'tokens', tokens: 5 } });
+    const before = [...store.keys()].filter(k => k.startsWith('payments/')).length;
+    for (let i = 0; i < 5; i++) await start('stu');
+    await assert.rejects(start('stu'), /Too many payment attempts\. Try again in 10 minutes/);
+    assert.equal([...store.keys()].filter(k => k.startsWith('payments/')).length, before + 5, 'no payment record for the refused one');
+    // Starts older than the window no longer count.
+    seed('paymentStarts/stu', { times: get('paymentStarts/stu').times.map(x => x - 11 * 60000) });
+    await start('stu');
+    store.delete('paymentStarts/stu');
   });
 
   // ── Returns that must never be lost (WiPay has no webhook or status API) ──

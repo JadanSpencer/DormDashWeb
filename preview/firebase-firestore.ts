@@ -15,6 +15,12 @@ type Q = { kind: 'query'; path: string; filters: [string, string, any][]; order:
 const join = (segs: string[]) => segs.join('/');
 
 export const getFirestore = (_app?: any) => ({});
+export const initializeFirestore = (_app?: any, _settings?: any) => ({});
+export const persistentLocalCache = (_s?: any) => ({});
+export const persistentMultipleTabManager = () => ({});
+export async function terminate(_db?: any) {}
+export async function clearIndexedDbPersistence(_db?: any) {}
+export type Firestore = Record<string, never>;
 export const serverTimestamp = () => Date.now();
 
 export function doc(base: any, ...segs: string[]): Ref {
@@ -92,8 +98,11 @@ export async function getDoc(ref: Ref) { return docSnap(ref.path); }
 export async function getDocs(q: Q | Ref) { return run(q); }
 
 let frozen = false; // see disableNetwork / enableNetwork below
-export function onSnapshot(target: any, cb: (s: any) => void, _err?: any) {
-  const fire = () => cb(target.kind === 'doc' ? docSnap(target.path) : run(target));
+export function onSnapshot(target: any, a: any, b?: any) {
+  // Also accepts (target, options, cb), like the real SDK.
+  const cb: (s: any) => void = typeof a === 'function' ? a : b;
+  const meta = { metadata: { fromCache: false, hasPendingWrites: false } };
+  const fire = () => cb({ ...(target.kind === 'doc' ? docSnap(target.path) : run(target)), ...meta });
   listeners.add(fire);
   setTimeout(() => { if (!frozen) fire(); }, 0); // a dead connection delivers nothing
   return () => { listeners.delete(fire); };

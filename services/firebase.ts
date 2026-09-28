@@ -4,7 +4,10 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
 // @ts-ignore — getReactNativePersistence has a typing gap in the SDK; works at runtime
 import { initializeAuth, getReactNativePersistence, getAuth, type Auth } from 'firebase/auth';
-import { getFirestore } from 'firebase/firestore';
+import {
+  getFirestore, initializeFirestore, persistentLocalCache, persistentMultipleTabManager,
+  terminate, clearIndexedDbPersistence, type Firestore,
+} from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 import { getFunctions } from 'firebase/functions';
 import { initializeAppCheck, ReCaptchaEnterpriseProvider } from 'firebase/app-check';
@@ -67,7 +70,44 @@ if (Platform.OS === 'web') {
   }
 }
 
-const db = getFirestore(app);
+// ─── Firestore, with an offline cache on web ───────────────────────────────
+// The browser keeps a copy of what this user has loaded (stores, menus, their
+// orders, wallet) in IndexedDB. On reopen, screens show it at once and then
+// update live, with fewer reads and working lists on a weak signal. Shared
+// by every open DormDash tab. Where IndexedDB isn't available (some private
+// windows) the SDK quietly uses memory, as before. Native keeps the memory
+// cache. Signing out clears it (clearLocalData), so a shared laptop doesn't
+// keep the last person's data.
+function startFirestore(): Firestore {
+  if (Platform.OS === 'web' && typeof window !== 'undefined' && typeof indexedDB !== 'undefined') {
+    try {
+      return initializeFirestore(app, {
+        localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
+      });
+    } catch {
+      // Already initialised (hot reload).
+    }
+  }
+  return getFirestore(app);
+}
+const db = startFirestore();
+
+/**
+ * Web: wipes this browser's Firestore cache after sign-out, then reloads to
+ * the start page (a cleared Firestore can't be used again in this page).
+ * If another DormDash tab is still open the cache can't be cleared; the
+ * reload still happens and that tab's data stays cached until it closes.
+ */
+export async function clearLocalData(): Promise<void> {
+  if (Platform.OS !== 'web' || typeof window === 'undefined') return;
+  const clearing = (async () => {
+    await terminate(db);
+    await clearIndexedDbPersistence(db);
+  })().catch((e: any) => console.log('Offline cache not cleared:', e?.code ?? e?.message));
+  // Never leave the page stuck on a terminated Firestore: reload regardless.
+  await Promise.race([clearing, new Promise(r => setTimeout(r, 3000))]);
+  window.location.replace('/');
+}
 const storage = getStorage(app);
 
 // Region must match where the functions are deployed (default us-central1).

@@ -11,7 +11,7 @@ import {
     updateProfile,
   } from 'firebase/auth';
   import { doc, setDoc, getDoc } from 'firebase/firestore';
-  import { auth, db } from './firebase';
+  import { auth, db, clearLocalData } from './firebase';
   import { LEGAL } from '../constants/legal';
   import { clearPushToken } from './notifications';
   import { goOffline } from './dasher';
@@ -292,6 +292,8 @@ export const resetPassword = async (
       } finally {
         try {
           await signOut(auth);
+          // Web: forget this account's cached data (reloads the page).
+          await clearLocalData();
         } finally {
           signingOut = null;
         }

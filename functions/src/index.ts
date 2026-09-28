@@ -1070,18 +1070,36 @@ export const deleteMyAccount = onCall({ ...APP_CHECK }, async (request) => {
 // dashers/* is private (earnings, floats), so checkout can't count online
 // dashers itself. It reads publicStats/app instead, which this keeps current.
 // Recounting (rather than +1/-1) means the number can never drift.
+//
+// One document takes about one write a second. When many dashers switch on
+// or off together (a shift change), recounts that land on the same number
+// skip the write, a write that loses the race is logged rather than
+// retried, and the 5-minute scheduler recounts, so the number is always
+// right again within minutes.
 async function refreshOnlineDasherCount(): Promise<void> {
-  const agg = await db.collection('dashers').where('isOnline', '==', true).count().get();
-  await db.collection('publicStats').doc('app').set(
-    { onlineDashers: agg.data().count, updatedAt: Date.now() }, { merge: true });
+  const ref = db.collection('publicStats').doc('app');
+  const [agg, current] = await Promise.all([
+    db.collection('dashers').where('isOnline', '==', true).count().get(),
+    ref.get(),
+  ]);
+  const count = agg.data().count;
+  if (current.get('onlineDashers') === count) return;
+  try {
+    await ref.set({ onlineDashers: count, updatedAt: Date.now() }, { merge: true });
+  } catch (e: any) {
+    logger.warn('Online dasher count not saved; the scheduler will catch up', { count, message: e?.message });
+  }
 }
 
-export const onDasherOnlineChanged = onDocumentWritten('dashers/{uid}', async (event) => {
-  const wasOnline = event.data?.before?.data()?.isOnline === true;
-  const isOnline = event.data?.after?.data()?.isOnline === true;
-  if (wasOnline === isOnline) return; // stat updates, old-app heartbeats
-  await refreshOnlineDasherCount();
-});
+export const onDasherOnlineChanged = onDocumentWritten(
+  { document: 'dashers/{uid}', maxInstances: 5 },
+  async (event) => {
+    const wasOnline = event.data?.before?.data()?.isOnline === true;
+    const isOnline = event.data?.after?.data()?.isOnline === true;
+    if (wasOnline === isOnline) return; // stat updates, activity, offers
+    await refreshOnlineDasherCount();
+  },
+);
 
 // ─── ONE-TIME MIGRATIONS ───────────────────────────────────────────────────
 // Runs by itself after deploy; each step records itself in meta/migrations
@@ -1317,6 +1335,22 @@ async function retireIdleDashers(now = Date.now()): Promise<{ nudged: number; of
   return { nudged, offline };
 }
 
+// Card payments that need a person: held for review, or still pending long
+// after the student left for WiPay (see "Card payments to check" on the
+// admin dashboard). The "Card payments need checking" warning is what the
+// monitoring alert emails on (scripts/setup-alerts.mjs).
+const PAYMENT_CHECK_AFTER_MS = 30 * 60 * 1000;
+async function reportPaymentsToCheck(now = Date.now()): Promise<number> {
+  const [review, stale] = await Promise.all([
+    db.collection('payments').where('status', '==', 'review').count().get(),
+    db.collection('payments').where('status', '==', 'pending')
+      .where('createdAt', '<', now - PAYMENT_CHECK_AFTER_MS).count().get(),
+  ]);
+  const n = review.data().count + stale.data().count;
+  if (n) logger.warn('Card payments need checking', { review: review.data().count, pending: stale.data().count });
+  return n;
+}
+
 export const cancelStalePendingOrders = onSchedule('every 5 minutes', async () => {
   // Finish anything a failed trigger left half-done (see above) first, so
   // an order that was never checked is published rather than auto-cancelled.
@@ -1326,4 +1360,8 @@ export const cancelStalePendingOrders = onSchedule('every 5 minutes', async () =
   await retryVerifiedPayments();
   // Online dashers who haven't opened DormDash for hours.
   await retireIdleDashers();
+  // Card payments an admin should look at (monitoring emails on this log).
+  await reportPaymentsToCheck().catch(e => logger.error('Payments-to-check count failed', { message: e?.message }));
+  // Catch up the public online count (see refreshOnlineDasherCount).
+  await refreshOnlineDasherCount().catch(e => logger.error('Online count refresh failed', { message: e?.message }));
 });

@@ -40,7 +40,7 @@ import * as crypto from 'crypto';
 import { logger } from 'firebase-functions/v2';
 import { onCall, onRequest, HttpsError } from 'firebase-functions/v2/https';
 import { defineSecret, defineString } from 'firebase-functions/params';
-import { TOKEN_JMD, TOKEN_PACKS, PAY_WINDOW_MS, minutes } from './shared';
+import { TOKEN_JMD, TOKEN_PACKS, PAY_WINDOW_MS, MAX_PAYMENT_STARTS, PAYMENT_START_WINDOW_MS, minutes } from './shared';
 import { APP_CHECK } from './appCheck';
 
 // ES imports run before index.ts's own code, so this module can load first:
@@ -298,6 +298,26 @@ export const payOrderWithTokens = onCall({
   return { ok: true };
 });
 
+// Rate limit: MAX_PAYMENT_STARTS card payments per student per
+// PAYMENT_START_WINDOW_MS. The recent start times live in paymentStarts/{uid}
+// (server only), updated in a transaction so parallel taps can't slip past.
+async function countPaymentStart(uid: string): Promise<void> {
+  const ref = db.collection('paymentStarts').doc(uid);
+  const waitMs = await db.runTransaction(async tx => {
+    const now = Date.now();
+    const recent = (((await tx.get(ref)).data()?.times ?? []) as number[])
+      .filter(t => t > now - PAYMENT_START_WINDOW_MS);
+    if (recent.length >= MAX_PAYMENT_STARTS) return Math.min(...recent) + PAYMENT_START_WINDOW_MS - now;
+    tx.set(ref, { times: [...recent, now], updatedAt: now });
+    return 0;
+  });
+  if (waitMs > 0) {
+    logger.warn('Payment starts rate limited', { uid });
+    throw new HttpsError('resource-exhausted',
+      `Too many payment attempts. Try again in ${Math.max(1, Math.ceil(waitMs / 60000))} minute${waitMs > 60000 ? 's' : ''}.`);
+  }
+}
+
 // ─── WiPay: start a payment ────────────────────────────────────────────────
 // purpose 'order': pay for an accepted card order (student only, own order).
 // purpose 'tokens': buy one of the TOKEN_PACKS.
@@ -333,6 +353,7 @@ export const createPayment = onCall({
     throw new HttpsError('invalid-argument', 'Unknown payment type.');
   }
   if (!(amountJmd > 0)) throw new HttpsError('failed-precondition', 'Nothing to pay.');
+  await countPaymentStart(uid);
 
   const payRef = db.collection('payments').doc();
   const totalSent = amountJmd.toFixed(2); // exactly what the hash is checked against later

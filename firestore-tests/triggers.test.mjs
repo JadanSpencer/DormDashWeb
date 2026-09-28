@@ -285,6 +285,21 @@ test('repair sweep finishes half-done work and leaves healthy work alone', async
   }
 });
 
+// ── Online dasher count (publicStats/app) ─────────────────────────────────
+test('the online count follows dashers, and the scheduler repairs a wrong one', async () => {
+  const uid = `count_${Date.now()}`;
+  const truth = async () => (await db.collection('dashers').where('isOnline', '==', true).count().get()).data().count;
+  const shown = async () => (await get('publicStats/app'))?.onlineDashers;
+  await db.doc(`dashers/${uid}`).set({ uid, isOnline: false, totalDeliveries: 0, totalEarnings: 0 });
+  await db.doc(`dashers/${uid}`).update({ isOnline: true, lastSeenAt: Date.now() });
+  assert.ok(await until(async () => (await shown()) === (await truth())), 'counted on switch-on');
+  // A lost write (e.g. a burst at shift change) is caught up within 5 minutes.
+  await db.doc('publicStats/app').set({ onlineDashers: 999 }, { merge: true });
+  await fns.cancelStalePendingOrders.run({});
+  assert.equal(await shown(), await truth());
+  await db.doc(`dashers/${uid}`).update({ isOnline: false });
+});
+
 // ── Wave dispatch (publishNewOrder + offerNextWave) ────────────────────────
 test('wave dispatch: least recently offered first, then the next few, then everyone', async () => {
   // Start from a known set of online dashers.
