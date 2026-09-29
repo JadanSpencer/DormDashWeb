@@ -34,6 +34,7 @@ import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { APP_CHECK } from './appCheck';
 import { sendPushes, jmd } from './push';
 import { Candidate, StorePoint, pickGroup, groupKey, groupSpanM } from './grouping';
+import { pickupPoint } from './campus';
 import {
   GROUP_SIZES, GROUP_DISTANCES_M, GROUP_OFFER_MS, GROUP_REOFFER_MS, GROUP_MAX_STORES, orderPayoutJmd,
 } from './shared';
@@ -92,13 +93,18 @@ export async function matchGroups(opts: { dasherIds?: string[] } = {}): Promise<
 
   const storeIds = [...new Set(pending.map(d => String(d.get('storeId') ?? '')).filter(id => ID_RE.test(id)))];
   const storeDocs = storeIds.length
-    ? await db.getAll(...storeIds.map(id => db.collection('stores').doc(id)), { fieldMask: ['location'] })
+    ? await db.getAll(...storeIds.map(id => db.collection('stores').doc(id)), { fieldMask: ['location', 'pickupPointId'] })
     : [];
-  const stores = new Map<string, StorePoint>(storeDocs.map(s => [s.id, {
-    id: s.id,
-    latitude: Number(s.get('location.latitude')),
-    longitude: Number(s.get('location.longitude')),
-  }]));
+  // A store's position: its campus food spot (campus.ts) if it has one,
+  // otherwise the position typed in the admin store form.
+  const stores = new Map<string, StorePoint>(storeDocs.map(s => {
+    const spot = pickupPoint(s.get('pickupPointId'));
+    return [s.id, {
+      id: s.id,
+      latitude: spot?.latitude ?? Number(s.get('location.latitude')),
+      longitude: spot?.longitude ?? Number(s.get('location.longitude')),
+    }];
+  }));
 
   const dasherById = new Map(dasherDocs.map(d => [d.id, d.data()]));
   const userById = new Map(userDocs.map(d => [d.id, d.data()]));

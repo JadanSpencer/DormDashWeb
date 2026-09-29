@@ -14,7 +14,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, router } from 'expo-router';
 import { useStore, useMenu } from '../../../hooks/useStores';
 import { MenuItem, CartItem } from '../../../types';
-import { MAX_ITEMS_PER_ORDER, DELIVERY_FEE_JMD } from '../../../constants';
+import { MAX_ITEMS_PER_ORDER, MIN_DELIVERY_FEE_JMD } from '../../../constants';
 import { usePriceUnit } from '../../../hooks/usePriceUnit';
 import { PriceUnitToggle } from '../../../components/PriceUnitToggle';
 import { T, useReducedMotion } from '../../../constants/theme';
@@ -211,10 +211,11 @@ export default function StoreMenuScreen() {
                 </View>
                 <View style={styles.infoPill}>
                   <Text style={styles.infoIcon}>◇</Text>
-                  <Text style={styles.infoText}>{fmt(DELIVERY_FEE_JMD)} delivery</Text>
+                  <Text style={styles.infoText}>Delivery from {fmt(MIN_DELIVERY_FEE_JMD)}</Text>
                 </View>
               </View>
             )}
+            {store?.hours ? <Text style={styles.hours}>Hours: {store.hours}</Text> : null}
           </Animated.View>
         </TideBand>
 
@@ -393,6 +394,7 @@ const styles = StyleSheet.create({
   storeDesc: { ...T.type.body, fontSize: 14, color: T.color.seaSoft, marginTop: 4 },
 
   infoRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: T.space.sm, marginTop: T.space.lg },
+  hours: { ...T.type.body, fontSize: 13, fontWeight: '600', color: T.color.seaSoft, marginTop: T.space.sm },
   infoPill: {
     flexDirection: 'row', alignItems: 'center', gap: 6,
     backgroundColor: 'rgba(7, 42, 64, 0.55)',

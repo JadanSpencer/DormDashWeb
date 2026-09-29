@@ -40,7 +40,10 @@ export interface Store {
         address: string;
     };
     isOpen: boolean;
-    deliveryFee: number;
+    deliveryFee: number;     // kept in step with MIN_DELIVERY_FEE_JMD; the real fee depends on distance
+    pickupPointId?: string;  // its food spot on campus (functions/src/campus.ts), used for delivery fees
+    hours?: string;          // opening hours as text, e.g. "Mon-Fri 8am-9pm, Sat 8am-5pm"
+    phone?: string;          // the store's own public number (for DormDash staff)
     estimatedTime: string;
     rating: number;
     createdAt: number;
@@ -94,11 +97,15 @@ export interface Order {
     dasherPayoutJmd?: number; // the dasher's share of the fee (server-set; see orderPayoutJmd)
     platformFeeJmd?: number;  // DormDash's share of the fee (server-set)
     deliveryAddress: {
+        pointId?: string;        // campus place (functions/src/campus.ts); older orders have none
+        area?: 'hall' | 'faculty' | 'other';
         latitude: number;
         longitude: number;
         label: string;
         hasGpsFix?: boolean;
     };
+    deliveryDistanceM?: number | null; // walking metres store → place (server-set)
+    feeBasis?: 'route' | 'estimate' | 'fallback'; // how the fee was worked out (server-set)
     createdAt: number;
     acceptedAt?: number;
     deliveredAt?: number;

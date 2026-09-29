@@ -10,7 +10,8 @@
     "deploy": "firebase deploy --only functions",
     "logs": "firebase functions:log",
     "test:payments": "tsc && node test/payments.test.js",
-    "test:grouping": "tsc && node --test test/grouping.test.js"
+    "test:grouping": "tsc && node --test test/grouping.test.js",
+    "test:pricing": "tsc && node --test test/pricing.test.js"
   },
   "engines": {
     "node": "22"

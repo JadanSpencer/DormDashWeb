@@ -36,8 +36,7 @@ import {
 import {
   MAX_ACTIVE_ORDERS, MAX_ITEMS_PER_ORDER, PAY_WINDOW_MS, PENDING_TIMEOUT_MS, minutes,
   DASHER_IDLE_NUDGE_MS, DASHER_IDLE_GRACE_MS,
-  OFFER_WAVE_SIZE, OFFER_WAVE_MS, OFFER_OPEN_WAVE, DELIVERY_FEE_JMD,
-  DASHER_PAYOUT_JMD, PLATFORM_FEE_JMD, orderPayoutJmd,
+  OFFER_WAVE_SIZE, OFFER_WAVE_MS, OFFER_OPEN_WAVE, orderPayoutJmd,
   ACTIVE_STATUSES, IN_DELIVERY_STATUSES, CancelReason,
 } from './shared';
 export { createPayment, wipayReturn, adminAdjustTokens, adminAdjustFloat, payOrderWithTokens, adminResolvePayment } from './payments';
@@ -45,6 +44,7 @@ import { alertStore } from './storeAlerts';
 import { APP_CHECK } from './appCheck';
 import { Push, sendPushes, sendPushNotification, getUserToken, jmd } from './push';
 import { matchGroups, expireOldGroups } from './groups';
+import { dropPoint, quoteDelivery } from './campus';
 export { storeAlertsAdmin } from './storeAlerts';
 export { setGroupSearch, acceptOrderGroup } from './groups';
  
@@ -357,7 +357,13 @@ async function verifyNewOrder(
   }
   if (count > MAX_ITEMS_PER_ORDER) return cancel('too_many_items');
 
-  const deliveryFee = DELIVERY_FEE_JMD; // flat, whatever the store doc says
+  // Delivery fee by walking distance (campus.ts, shared.ts): from the
+  // store's food spot to the delivery point the student picked. The label
+  // and position come from the campus list, never the phone. Orders from
+  // older app versions (a typed address, no point) pay the fallback fee.
+  const drop = dropPoint(order.deliveryAddress?.pointId);
+  const quote = quoteDelivery(store.pickupPointId, drop?.id);
+  const deliveryFee = quote.feeJmd;
   const totalAmount = subtotal + deliveryFee;
 
   // Payment. Orders from app versions before payments have no method: they
@@ -367,9 +373,17 @@ async function verifyNewOrder(
   const verified = {
     items: cleanItems,
     deliveryFee,
-    // The 70/30 split of the fee, fixed on the order (shared.ts).
-    dasherPayoutJmd: DASHER_PAYOUT_JMD,
-    platformFeeJmd: PLATFORM_FEE_JMD,
+    // The split of the fee (shared.ts splitDeliveryFee), fixed on the order.
+    dasherPayoutJmd: quote.dasherPayoutJmd,
+    platformFeeJmd: quote.platformFeeJmd,
+    deliveryDistanceM: quote.distanceM,
+    feeBasis: quote.basis,
+    ...(drop ? {
+      deliveryAddress: {
+        pointId: drop.id, area: drop.area ?? 'other', label: drop.name,
+        latitude: drop.latitude ?? 0, longitude: drop.longitude ?? 0, hasGpsFix: drop.latitude !== null,
+      },
+    } : {}),
     totalAmount,
     storeName: String(store.name ?? ''),
     studentName: String(userSnap.data()?.name ?? 'Student'),

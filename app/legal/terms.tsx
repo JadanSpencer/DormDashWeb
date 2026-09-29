@@ -5,7 +5,12 @@
 
 import { LegalDocument, Section } from '../../components/LegalDocument';
 import { LEGAL } from '../../constants/legal';
-import { DELIVERY_FEE_JMD, DASHER_SHARE, DASHER_PAYOUT_JMD, PLATFORM_FEE_JMD, formatJMD } from '../../constants';
+import { MIN_DELIVERY_FEE_JMD, deliveryFeeForDistance, splitDeliveryFee, formatJMD } from '../../constants';
+
+// Figures quoted in the Terms, from the live pricing rules (functions/src/shared.ts).
+const FEE_EXAMPLE = deliveryFeeForDistance(1000);   // a longer walk
+const MIN_SPLIT = splitDeliveryFee(MIN_DELIVERY_FEE_JMD);
+const EXAMPLE_SPLIT = splitDeliveryFee(FEE_EXAMPLE);
 
 const sections: Section[] = [
   {
@@ -26,7 +31,7 @@ const sections: Section[] = [
   {
     title: 'Ordering',
     blocks: [{ list: [
-      `Prices and availability shown in the app come from the stores and can change. DormDash charges one delivery fee on every order (currently ${formatJMD(DELIVERY_FEE_JMD)}), shown before you place it. Our servers check every order against the current menu. If something is wrong or unavailable, your order may be corrected or cancelled, and the app will tell you.`,
+      `Prices and availability shown in the app come from the stores and can change. The delivery fee depends on how far your delivery location is from the store: it starts at ${formatJMD(MIN_DELIVERY_FEE_JMD)} for the closest places and rises with the walking distance (for example ${formatJMD(FEE_EXAMPLE)} for about 1 km). You choose your location from our list of halls, faculties and other places, and the exact fee is shown before you place the order. Our servers check every order against the current menu. If something is wrong or unavailable, your order may be corrected or cancelled, and the app will tell you.`,
       'You can cancel an order until a dasher accepts it. After that, contact your dasher or us.',
       'Give a delivery address your dasher can actually find, and be reachable when your order arrives.',
       'Allergen information comes from the stores. If you have a serious allergy, check with the store before ordering.',
@@ -49,7 +54,7 @@ const sections: Section[] = [
     title: 'Dashers',
     blocks: [{ list: [
       'Dashers are independent students using the platform. They are not employees or agents of DormDash.',
-      `For each order delivered, the dasher earns ${Math.round(DASHER_SHARE * 100)}% of the delivery fee (currently ${formatJMD(DASHER_PAYOUT_JMD)}). DormDash keeps the other ${100 - Math.round(DASHER_SHARE * 100)}% (currently ${formatJMD(PLATFORM_FEE_JMD)}) to run the service.`,
+      `For each order delivered, the dasher earns most of the delivery fee and DormDash keeps a smaller part to run the service. The split depends on the fee: for example, on a ${formatJMD(MIN_DELIVERY_FEE_JMD)} fee the dasher earns ${formatJMD(MIN_SPLIT.dasherPayoutJmd)} and DormDash keeps ${formatJMD(MIN_SPLIT.platformFeeJmd)}; on ${formatJMD(FEE_EXAMPLE)} the dasher earns ${formatJMD(EXAMPLE_SPLIT.dasherPayoutJmd)} and DormDash keeps ${formatJMD(EXAMPLE_SPLIT.platformFeeJmd)}. The dasher sees their payout on each order before accepting it.`,
       'When you accept an order, deliver it promptly, handle food with care, and do not open, swap or tamper with it.',
       'Go offline when you stop taking orders, so students are not left waiting.',
       'Follow campus rules and the law while delivering, including road safety rules.',

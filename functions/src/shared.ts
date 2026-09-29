@@ -25,20 +25,49 @@ export const TOKEN_PACKS = [5, 10, 20, 50];
 export const PAY_WINDOW_MS = 10 * 60 * 1000;
 /** A pending order nobody accepts is cancelled after this long. */
 export const PENDING_TIMEOUT_MS = 30 * 60 * 1000;
-// ─── Delivery fee ──────────────────────────────────────────────────────────
-// One delivery fee for every store, charged on every order (J$). The server
-// (verifyNewOrder) always uses this, whatever the store doc or the app says.
-export const DELIVERY_FEE_JMD = 400;
-// The fee is split: the dasher earns DASHER_SHARE of it, DormDash keeps the
-// rest. verifyNewOrder writes both amounts on each order (dasherPayoutJmd,
-// platformFeeJmd), so changing the split later never changes past orders.
-export const DASHER_SHARE = 0.7;
-export const dasherPayoutOf = (feeJmd: number) => Math.round((Number(feeJmd) || 0) * DASHER_SHARE);
-export const DASHER_PAYOUT_JMD = dasherPayoutOf(DELIVERY_FEE_JMD);     // J$280
-export const PLATFORM_FEE_JMD = DELIVERY_FEE_JMD - DASHER_PAYOUT_JMD;  // J$120
-/** What the dasher earns for this order (orders from before the split: the share of its fee). */
+// ─── Delivery fee: by walking distance ─────────────────────────────────────
+// The fee depends on how far the dasher walks from the store's food spot to
+// the delivery point (functions/src/campus.ts; measured walking routes).
+// Up to FEE_BASE_DISTANCE_M costs MIN_DELIVERY_FEE_JMD; every further
+// FEE_STEP_M (or part of it) adds FEE_STEP_JMD. On UWI Mona that runs from
+// J$300 (next door) to J$600 (across campus). The server (verifyNewOrder)
+// prices every order itself; the app only shows the same quote first.
+// See PRICING.md for the table and the cost maths.
+export const MIN_DELIVERY_FEE_JMD = 300;
+export const FEE_BASE_DISTANCE_M = 400;
+export const FEE_STEP_M = 200;
+export const FEE_STEP_JMD = 50;
+/** Safety cap, so a bad distance can never produce a silly fee. */
+export const MAX_DELIVERY_FEE_JMD = 800;
+/** When the store or the delivery point has no map position yet. */
+export const FALLBACK_DELIVERY_FEE_JMD = 400;
+/** Walking routes are longer than a straight line; used only for unmeasured pairs. */
+export const STRAIGHT_LINE_WALK_FACTOR = 1.4;
+
+export function deliveryFeeForDistance(distanceM: number): number {
+  const m = Math.max(0, Number(distanceM) || 0);
+  const steps = Math.ceil(Math.max(0, m - FEE_BASE_DISTANCE_M) / FEE_STEP_M);
+  return Math.min(MAX_DELIVERY_FEE_JMD, MIN_DELIVERY_FEE_JMD + steps * FEE_STEP_JMD);
+}
+
+// The split is not a fixed percentage: DormDash keeps PLATFORM_TAKE_BASE_JMD
+// of the minimum fee plus PLATFORM_TAKE_RATE of every dollar above it
+// (rounded to J$5), and the dasher gets the rest. J$300 → DormDash 50,
+// dasher 250; J$500 → 90 / 410; J$600 → 110 / 490. Longer walks pay the
+// dasher more in dollars and DormDash a little more too.
+export const PLATFORM_TAKE_BASE_JMD = 50;
+export const PLATFORM_TAKE_RATE = 0.2;
+
+export function splitDeliveryFee(feeJmd: number): { dasherPayoutJmd: number; platformFeeJmd: number } {
+  const fee = Math.max(0, Math.round(Number(feeJmd) || 0));
+  const raw = PLATFORM_TAKE_BASE_JMD + PLATFORM_TAKE_RATE * Math.max(0, fee - MIN_DELIVERY_FEE_JMD);
+  const platformFeeJmd = Math.min(fee, Math.round(raw / 5) * 5);
+  return { dasherPayoutJmd: fee - platformFeeJmd, platformFeeJmd };
+}
+
+/** What the dasher earns for this order (fixed on the order; older orders: today's split of its fee). */
 export const orderPayoutJmd = (o: { dasherPayoutJmd?: number; deliveryFee?: number }) =>
-  typeof o.dasherPayoutJmd === 'number' ? o.dasherPayoutJmd : dasherPayoutOf(Number(o.deliveryFee) || 0);
+  typeof o.dasherPayoutJmd === 'number' ? o.dasherPayoutJmd : splitDeliveryFee(Number(o.deliveryFee) || 0).dasherPayoutJmd;
 
 // At most this many card payments can be started per student per window
 // (createPayment). Stops a script from flooding WiPay and payments/*.

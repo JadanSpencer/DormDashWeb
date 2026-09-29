@@ -1,10 +1,13 @@
 // app/(student)/checkout.tsx
 // DormDash — Checkout (Route identity).
 //
-// FUNCTIONALITY UNCHANGED. All handlers preserved: GPS capture with
-// permission fallback to CAMPUS_CENTER, no-dashers listener, active-order
-// gate (getDocs check), sanitizeText/Address/Note, order placement with
-// hasGpsFix flag, hand-off to order/[id].
+// Delivery location is picked from the UWI Mona list (components/
+// CampusPicker: Halls, Faculties, Other places), not typed, and the delivery
+// fee depends on how far that place is from this store (proximity pricing,
+// functions/src/campus.ts). The server prices the order the same way and
+// never trusts these numbers. Room or block details go in the note. Also:
+// no-dashers warning, active-order limit, order placement, hand-off to
+// order/[id].
 //
 // Visual layer:
 //   • Cream canvas, ink type, cerulean action.
@@ -17,6 +20,7 @@
 //   • Sticky footer with proper safe-area padding.
 
 import React, { useState, useEffect, useRef } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   View, Text, StyleSheet, ScrollView, Pressable,
   TextInput, Alert, ActivityIndicator,
@@ -28,13 +32,15 @@ import { placeOrder } from '../../services/orders';
 import { useOnlineDasherCount } from '../../hooks/useOrders';
 import { useAuth } from '../../hooks/useAuth';
 import { CartItem, Order } from '../../types';
-import { CAMPUS_CENTER, MAX_ACTIVE_ORDERS, PAY_WINDOW_MIN, DELIVERY_FEE_JMD } from '../../constants';
+import { MAX_ACTIVE_ORDERS, PAY_WINDOW_MIN } from '../../constants';
+import { dropPoint, quoteDelivery } from '../../constants/campus';
+import { useStore } from '../../hooks/useStores';
+import { CampusPicker } from '../../components/CampusPicker';
 import { serverNow } from '../../services/serverClock';
 import { usePriceUnit } from '../../hooks/usePriceUnit';
 import { PriceUnitToggle } from '../../components/PriceUnitToggle';
-import { sanitizeText, sanitizeAddress, sanitizeNote, isValidCoordinate } from '../../services/sanitize';
+import { sanitizeText, sanitizeNote } from '../../services/sanitize';
 import { T } from '../../constants/theme';
-import * as Location from 'expo-location';
 import { Backdrop } from '../../components/Backdrop';
 import { TideHeader } from '../../components/Tide';
 import { Money } from '../../components/Money';
@@ -45,6 +51,8 @@ const safeGoBack = () => {
   else router.replace('/(student)/(tabs)/home');
 };
 
+const DROP_KEY = 'dd_drop_point';
+
 export default function CheckoutScreen() {
   const { user } = useAuth();
   const insets = useSafeAreaInsets();
@@ -53,8 +61,20 @@ export default function CheckoutScreen() {
   }>();
 
   const cart: CartItem[] = JSON.parse(params.cart ?? '[]');
-  const deliveryFee = DELIVERY_FEE_JMD; // one fee for every store
   const subtotal = cart.reduce((sum, c) => sum + c.menuItem.price * c.quantity, 0);
+
+  // Where to deliver (a campus place id), remembered for next time.
+  const store = useStore(params.storeId, { cached: true });
+  const [dropId, setDropId] = useState<string | null>(null);
+  useEffect(() => {
+    AsyncStorage.getItem(DROP_KEY).then(v => { if (v && dropPoint(v)) setDropId(cur => cur ?? v); }).catch(() => {});
+  }, []);
+  const chooseDrop = (id: string) => {
+    setDropId(id);
+    AsyncStorage.setItem(DROP_KEY, id).catch(() => {});
+  };
+  const quote = dropId ? quoteDelivery(store?.pickupPointId, dropId) : null;
+  const deliveryFee = quote?.feeJmd ?? 0;
   const total = subtotal + deliveryFee;
 
   // Payment happens after a dasher accepts: the student then chooses their
@@ -62,50 +82,23 @@ export default function CheckoutScreen() {
   // or charged here. Prices show in J$ or tokens.
   const { fmt } = usePriceUnit();
 
-  const [deliveryLabel, setDeliveryLabel] = useState('');
   const [note, setNote] = useState('');
   const [placing, setPlacing] = useState(false);
   // Synchronous lock. `placing` is React state, so it only takes effect on the
   // next render; fast taps (or taps while the network is slow) all got
   // through before it did, and one tap-burst created 9 orders at once.
   const placingRef = useRef(false);
-  const [coords, setCoords] = useState<{ latitude: number; longitude: number } | null>(null);
   const onlineDashers = useOnlineDasherCount();
-  const [focused, setFocused] = useState<'address' | 'note' | null>(null);
+  const [focused, setFocused] = useState<'note' | null>(null);
 
   // Motion — press feedback on the CTA
   const ctaScale = useRef(new Animated.Value(1)).current;
 
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const { status } = await Location.requestForegroundPermissionsAsync();
-        if (status !== 'granted') return;
-        const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-        if (!cancelled && isValidCoordinate(loc.coords.latitude, loc.coords.longitude)) {
-          setCoords({ latitude: loc.coords.latitude, longitude: loc.coords.longitude });
-        }
-      } catch {
-        // GPS silent — text label carries the delivery
-      }
-    })();
-    return () => { cancelled = true; };
-  }, []);
-
-
   const handlePlaceOrder = async () => {
-    const cleanLabel = sanitizeAddress(deliveryLabel);
     const cleanNote = sanitizeNote(note);
-
-    // Real campus addresses are short — "C204", "Blk A", "Rm 12" are all valid.
-    // Only reject genuinely empty input, with a message that says what's wrong.
-    if (!cleanLabel) {
-      Alert.alert('Where should we deliver?', 'Enter your hall, block and room so your dasher can find you.');
-      return;
-    }
-    if (cleanLabel.length < 3) {
-      Alert.alert('Add a little more detail', 'Your dasher needs enough to find you, for example "Block C, Room 204".');
+    const drop = dropPoint(dropId);
+    if (!drop) {
+      Alert.alert('Where should we deliver?', 'Choose your hall, faculty or place. Add your room or block in the note to your dasher.');
       return;
     }
     if (!user) return;
@@ -126,10 +119,12 @@ export default function CheckoutScreen() {
         totalAmount: total,
         deliveryFee,
         deliveryAddress: {
-          latitude: coords?.latitude ?? CAMPUS_CENTER.latitude,
-          longitude: coords?.longitude ?? CAMPUS_CENTER.longitude,
-          label: cleanLabel,
-          hasGpsFix: coords !== null,
+          pointId: drop.id,
+          area: drop.area,
+          label: drop.name,
+          latitude: drop.latitude ?? 0,
+          longitude: drop.longitude ?? 0,
+          hasGpsFix: drop.latitude !== null,
         },
         createdAt: serverNow(),
         // "Pay after a dasher accepts". The student picks tokens or card
@@ -191,18 +186,13 @@ export default function CheckoutScreen() {
         <Text style={styles.sectionLabel}>Delivery location</Text>
         <View style={styles.card}>
           <Text style={styles.inputHint}>Where should we deliver?</Text>
-          <TextInput
-            style={[styles.input, focused === 'address' && styles.inputFocused]}
-            placeholder="Block C, Room 204"
-            placeholderTextColor={T.color.inkFaint}
-            value={deliveryLabel}
-            onChangeText={setDeliveryLabel}
-            onFocus={() => setFocused('address')}
-            onBlur={() => setFocused(null)}
-            maxLength={100}
+          <CampusPicker
+            value={dropId}
+            onChange={chooseDrop}
+            feeFor={id => fmt(quoteDelivery(store?.pickupPointId, id).feeJmd)}
           />
           <Text style={styles.gpsHint}>
-            {coords ? 'Location pinned. Your dasher gets a map pin.' : 'No location pin. Your dasher will go by the address you type.'}
+            The delivery fee depends on how far this is from {params.storeName}. Add your room or block in the note.
           </Text>
         </View>
 
@@ -211,7 +201,7 @@ export default function CheckoutScreen() {
         <View style={styles.card}>
           <TextInput
             style={[styles.input, styles.noteInput, focused === 'note' && styles.inputFocused]}
-            placeholder="Allergies, gate code, landmark… (you can skip this)"
+            placeholder="Room, block, landmark, allergies… (you can skip this)"
             placeholderTextColor={T.color.inkFaint}
             value={note}
             onChangeText={setNote}
@@ -241,8 +231,12 @@ export default function CheckoutScreen() {
             <Money style={styles.summaryValue}>{fmt(subtotal)}</Money>
           </View>
           <View style={styles.summaryRow}>
-            <Text style={styles.summaryLabel}>Delivery</Text>
-            <Money style={styles.summaryValue}>{fmt(deliveryFee)}</Money>
+            <Text style={styles.summaryLabel}>
+              Delivery{quote?.distanceM != null ? ` · about ${Math.round(quote.distanceM / 10) * 10} m` : ''}
+            </Text>
+            {quote
+              ? <Money style={styles.summaryValue}>{fmt(deliveryFee)}</Money>
+              : <Text style={styles.summaryLabel}>Choose a location</Text>}
           </View>
           <View style={styles.divider} />
           <View style={styles.summaryRow}>

@@ -63,8 +63,8 @@ const settled = (id) => until(async () => {
 
 before(async () => {
   fns = require('../functions/lib/index.js');
-  // The store's own fee is ignored: every order pays DELIVERY_FEE_JMD (400),
-  // split 70/30: the dasher earns 280, DormDash keeps 120.
+  // store1 has no campus food spot and the test orders have no delivery
+  // point, so they pay FALLBACK_DELIVERY_FEE_JMD (400): dasher 330, DormDash 70.
   await db.doc('stores/store1').set({ name: 'Ring Road Grill', isOpen: true, deliveryFee: 150 });
   await db.doc('stores/store1/menuItems/patty').set({ name: 'Beef patty', price: 300, isAvailable: true, category: 'Hot' });
   await db.doc('stores/store1/menuItems/soldout').set({ name: 'Oxtail', price: 900, isAvailable: false, category: 'Hot' });
@@ -78,9 +78,9 @@ test('new order is re-priced from the menu with the flat delivery fee; tampered 
   const o = await settled(await place(order(uid)));
   assert.equal(o.status, 'pending');
   assert.equal(o.totalAmount, 2 * 300 + 400);
-  assert.equal(o.deliveryFee, 400, 'the flat fee, not the store doc\'s');
-  assert.equal(o.dasherPayoutJmd, 280, 'dasher gets 70% of the fee');
-  assert.equal(o.platformFeeJmd, 120, 'DormDash keeps 30%');
+  assert.equal(o.deliveryFee, 400, 'the fallback fee, not the store doc\'s');
+  assert.equal(o.dasherPayoutJmd, 330);
+  assert.equal(o.platformFeeJmd, 70);
   assert.equal(o.items[0].menuItem.price, 300);
   assert.equal(o.items[0].menuItem.name, 'Beef patty');
   assert.equal(o.storeName, 'Ring Road Grill');
@@ -272,8 +272,8 @@ test('repair sweep finishes half-done work and leaves healthy work alone', async
 
     await wait(1500); // the credit's own write re-triggers; let it settle
     const credited = await get(`dashers/${dR}`);
-    // An order from before the 70/30 split (no dasherPayoutJmd): 70% of its fee.
-    assert.equal(credited.totalDeliveries, 1); assert.equal(credited.totalEarnings, 210);
+    // An order from before per-order splits (no dasherPayoutJmd): today's split of its J$300 fee.
+    assert.equal(credited.totalDeliveries, 1); assert.equal(credited.totalEarnings, 250);
     assert.ok((await O('uncredited').get()).get('dasherCreditedAt'));
 
     assert.equal((await get(`dashers/${dB}`)).activeOrderId, null, 'freed');
@@ -283,7 +283,7 @@ test('repair sweep finishes half-done work and leaves healthy work alone', async
     await fns.cancelStalePendingOrders.run({});
     await wait(1500);
     const again = await get(`dashers/${dR}`);
-    assert.equal(again.totalDeliveries, 1); assert.equal(again.totalEarnings, 210);
+    assert.equal(again.totalDeliveries, 1); assert.equal(again.totalEarnings, 250);
     assert.equal((await get(`wallets/${stu}`)).reservedJmd, 0);
   } finally {
     delete process.env.REPAIR_MIN_AGE_MS;
@@ -467,7 +467,7 @@ test('group orders: a search finds nearby stores\' orders, numbers the group, an
     assert.ok(g.groupNo >= 1);
     assert.ok(g.spanM > 150 && g.spanM <= 250, `span ${g.spanM}`);
     assert.deepEqual([...g.storeIds].sort(), [`${t}_a`, `${t}_b`].sort());
-    assert.equal(g.payoutJmd, 3 * 280, 'the dasher\'s share of each fee');
+    assert.equal(g.payoutJmd, 3 * 330, 'the dasher\'s share of each (fallback) fee');
 
     const res = await call('acceptOrderGroup', dasher, { groupId });
     assert.equal(res.outcome, 'ok');
@@ -539,3 +539,34 @@ test('an account with tokens left cannot be deleted', async () => {
   await assert.rejects(call('deleteMyAccount', uid, {}), /tokens/);
   assert.ok(await get(`users/${uid}`), 'account kept');
 });
+
+// ── Proximity pricing ──────────────────────────────────────────────────────
+test('delivery fee by walking distance: from the store\'s food spot to the chosen campus point', async () => {
+  const t = `prox_${Date.now()}`;
+  await db.doc(`stores/${t}`).set({ name: 'The Spot', isOpen: true, deliveryFee: 300, pickupPointId: 'spot' });
+  await db.doc(`stores/${t}/menuItems/patty`).set({ name: 'Beef patty', price: 300, isAvailable: true, category: 'Hot' });
+  const to = (pointId, extra = {}) => ({ pointId, label: 'Tampered label', latitude: 1, longitude: 1, hasGpsFix: false, ...extra });
+
+  // Spot → George Alleyne (240 m): the minimum fee.
+  const near = await settled(await place(order(await student(), { storeId: t, deliveryAddress: to('george-alleyne'), deliveryFee: 1, totalAmount: 1 })));
+  assert.equal(near.deliveryFee, 300);
+  assert.equal(near.totalAmount, 2 * 300 + 300);
+  assert.equal(near.dasherPayoutJmd, 250);
+  assert.equal(near.platformFeeJmd, 50);
+  assert.equal(near.deliveryDistanceM, 240);
+  assert.equal(near.feeBasis, 'route');
+  assert.equal(near.deliveryAddress.label, 'George Alleyne Hall', 'name and position from the campus list, not the phone');
+  assert.equal(near.deliveryAddress.hasGpsFix, true);
+
+  // Spot → Taylor Hall (838 m): three steps above the minimum.
+  const far = await settled(await place(order(await student(), { storeId: t, deliveryAddress: to('taylor') })));
+  assert.equal(far.deliveryFee, 450);
+  assert.equal(far.dasherPayoutJmd, 370);
+  assert.equal(far.platformFeeJmd, 80);
+
+  // A hall with no map position yet: the fallback fee.
+  const unknown = await settled(await place(order(await student(), { storeId: t, deliveryAddress: to('wjc') })));
+  assert.equal(unknown.deliveryFee, 400);
+  assert.equal(unknown.feeBasis, 'fallback');
+});
+

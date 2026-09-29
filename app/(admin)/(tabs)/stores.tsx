@@ -14,7 +14,8 @@ import { router } from 'expo-router';
 import { saveStore, deleteStore, setStoreOpen } from '../../../services/stores';
 import { useStores, useStoreFloats } from '../../../hooks/useStores';
 import { Store } from '../../../types';
-import { formatJMD, DELIVERY_FEE_JMD } from '../../../constants';
+import { formatJMD, MIN_DELIVERY_FEE_JMD } from '../../../constants';
+import { PICKUP_POINTS, pickupPoint } from '../../../constants/campus';
 import { S } from '../../../constants/themeMid';
 import { AmountPrompt } from '../../../components/AmountPrompt';
 import { adminAdjustFloat } from '../../../services/payments';
@@ -26,6 +27,7 @@ const blankForm = () => ({
   name: '', description: '', category: 'Fast Food',
   estimatedTime: '20-30 mins', rating: '5.0',
   isOpen: true, address: '', latitude: '', longitude: '',
+  pickupPointId: '', hours: '', phone: '',
 });
 
 // ─── Store form modal ───────────────────────────────────────────────
@@ -51,6 +53,9 @@ const StoreFormModal: React.FC<{
         address: initialData.location.address,
         latitude: String(initialData.location.latitude),
         longitude: String(initialData.location.longitude),
+        pickupPointId: initialData.pickupPointId ?? '',
+        hours: initialData.hours ?? '',
+        phone: initialData.phone ?? '',
       });
     } else {
       setForm(blankForm());
@@ -64,7 +69,7 @@ const StoreFormModal: React.FC<{
   const validate = () => {
     if (!form.name.trim()) return 'Store name is required';
     if (!form.description.trim()) return 'Description is required';
-    if (!form.address.trim()) return 'Address is required';
+    if (!form.pickupPointId && !form.address.trim()) return 'Choose the store\'s food spot, or type an address';
     return null;
   };
 
@@ -75,16 +80,26 @@ const StoreFormModal: React.FC<{
     setSaving(true);
     setError('');
 
+    const spot = pickupPoint(form.pickupPointId);
     const data = {
       name: form.name.trim(),
       description: form.description.trim(),
       category: form.category,
-      // Kept in step with the one fee the server charges (DELIVERY_FEE_JMD).
-      deliveryFee: DELIVERY_FEE_JMD,
+      // The real fee depends on distance (campus.ts); this field is kept
+      // at the minimum because the rules require a number here.
+      deliveryFee: MIN_DELIVERY_FEE_JMD,
+      // Its food spot on campus: delivery fees are measured from here.
+      ...(spot ? { pickupPointId: spot.id } : {}),
       estimatedTime: form.estimatedTime.trim() || '20-30 mins',
+      hours: form.hours.trim(),
+      phone: form.phone.trim(),
       rating: parseFloat(form.rating) || 5.0,
       isOpen: form.isOpen,
-      location: {
+      location: spot ? {
+        address: spot.name,
+        latitude: spot.latitude ?? 0,
+        longitude: spot.longitude ?? 0,
+      } : {
         address: form.address.trim(),
         latitude: parseFloat(form.latitude) || 0,
         longitude: parseFloat(form.longitude) || 0,
@@ -151,6 +166,36 @@ const StoreFormModal: React.FC<{
           </View>
 
           <View style={m.field}>
+            <Text style={m.label}>Opening hours</Text>
+            <TextInput style={m.input} value={form.hours} onChangeText={v => setField('hours', v)}
+              placeholder="Mon-Fri 8am-9pm, Sat 8am-5pm" placeholderTextColor={S.color.inkFaint} />
+          </View>
+
+          <View style={m.field}>
+            <Text style={m.label}>Store phone</Text>
+            <TextInput style={m.input} value={form.phone} onChangeText={v => setField('phone', v)}
+              placeholder="876-000-0000" placeholderTextColor={S.color.inkFaint} keyboardType="phone-pad" />
+          </View>
+
+          {/* Where the dasher picks up. Delivery fees are measured from here. */}
+          <Text style={m.label}>Food spot on campus</Text>
+          <Text style={m.toggleSub}>Delivery fees are worked out from here. Choose "Not listed" to type a position.</Text>
+          <View style={[m.catRow, m.spotWrap]}>
+            {[...PICKUP_POINTS.map(pt => ({ id: pt.id, label: pt.name })), { id: '', label: 'Not listed' }].map(pt => (
+              <Pressable
+                key={pt.id || 'none'}
+                style={[m.chip, form.pickupPointId === pt.id && m.chipActive]}
+                onPress={() => setField('pickupPointId', pt.id)}
+                accessibilityRole="radio"
+                accessibilityState={{ checked: form.pickupPointId === pt.id }}
+              >
+                <Text style={[m.chipText, form.pickupPointId === pt.id && m.chipTextActive]}>{pt.label}</Text>
+              </Pressable>
+            ))}
+          </View>
+
+          {!form.pickupPointId && (<>
+          <View style={m.field}>
             <Text style={m.label}>Address</Text>
             <TextInput style={m.input} value={form.address} onChangeText={v => setField('address', v)}
               placeholder="Building / street name" placeholderTextColor={S.color.inkFaint} />
@@ -160,14 +205,15 @@ const StoreFormModal: React.FC<{
             <View style={m.half}>
               <Text style={m.label}>Latitude</Text>
               <TextInput style={m.input} value={form.latitude} onChangeText={v => setField('latitude', v)}
-                placeholder="18.0179" placeholderTextColor={S.color.inkFaint} keyboardType="decimal-pad" />
+                placeholder="18.0061" placeholderTextColor={S.color.inkFaint} keyboardType="decimal-pad" />
             </View>
             <View style={m.half}>
               <Text style={m.label}>Longitude</Text>
               <TextInput style={m.input} value={form.longitude} onChangeText={v => setField('longitude', v)}
-                placeholder="-76.8099" placeholderTextColor={S.color.inkFaint} keyboardType="decimal-pad" />
+                placeholder="-76.7466" placeholderTextColor={S.color.inkFaint} keyboardType="decimal-pad" />
             </View>
           </View>
+          </>)}
 
           <View style={m.toggleRow}>
             <View>
@@ -287,7 +333,9 @@ export default function AdminStores() {
 
               <View style={styles.metaRow}>
                 <View style={styles.feePlate}>
-                  <Text style={styles.feeText}>{formatJMD(DELIVERY_FEE_JMD)}</Text>
+                  <Text style={styles.feeText}>
+                    {pickupPoint(item.pickupPointId)?.name ?? 'No food spot set: fee J$400'}
+                  </Text>
                 </View>
                 <Text style={styles.metaText}>{item.estimatedTime}</Text>
                 <View style={styles.metaDot} />
@@ -451,6 +499,7 @@ const m = StyleSheet.create({
   half: { flex: 1 },
   catScroll: { marginBottom: S.space.md },
   catRow: { flexDirection: 'row', gap: S.space.sm },
+  spotWrap: { flexWrap: 'wrap', marginTop: S.space.sm, marginBottom: S.space.md },
   chip: {
     paddingHorizontal: S.space.md, paddingVertical: 8, borderRadius: S.radius.pill,
     backgroundColor: 'rgba(242, 239, 230, 0.08)',

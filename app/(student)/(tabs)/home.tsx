@@ -17,7 +17,7 @@ import { router } from 'expo-router';
 import { useStores } from '../../../hooks/useStores';
 import { useAuth } from '../../../hooks/useAuth';
 import { Store } from '../../../types';
-import { formatJMD, DELIVERY_FEE_JMD } from '../../../constants';
+import { formatJMD, MIN_DELIVERY_FEE_JMD } from '../../../constants';
 import { T } from '../../../constants/theme';
 import { Backdrop } from '../../../components/Backdrop';
 import { TideBand, StoreMark, StoreArt, pressPlate } from '../../../components/Tide';
@@ -66,7 +66,7 @@ const FeaturedCard: React.FC<{ store: Store; onPress: () => void }> = ({ store, 
         <View style={styles.metaDot} />
         <Text style={styles.metaText}>{store.estimatedTime}</Text>
         <View style={styles.metaDot} />
-        <Text style={styles.feeText}>{formatJMD(DELIVERY_FEE_JMD)}</Text>
+        <Text style={styles.feeText}>from {formatJMD(MIN_DELIVERY_FEE_JMD)}</Text>
       </View>
     </View>
   </Pressable>
@@ -92,7 +92,7 @@ const StoreRow: React.FC<{ store: Store; onPress: () => void }> = ({ store, onPr
         <View style={styles.metaDot} />
         <Text style={styles.metaText}>{store.estimatedTime}</Text>
         <View style={styles.metaDot} />
-        <Text style={styles.feeText}>{formatJMD(DELIVERY_FEE_JMD)}</Text>
+        <Text style={styles.feeText}>from {formatJMD(MIN_DELIVERY_FEE_JMD)}</Text>
       </View>
     </View>
     <Text style={styles.rowChevron}>›</Text>
@@ -169,7 +169,7 @@ export default function StudentHome() {
               <JcBadge />
             </View>
             <Swoosh width={Math.min(260, 40 + firstName.length * 26)} />
-            <Text style={styles.headerNote}>Anything on campus, to your door for {formatJMD(DELIVERY_FEE_JMD)}.</Text>
+            <Text style={styles.headerNote}>Anything on campus, to your door from {formatJMD(MIN_DELIVERY_FEE_JMD)}.</Text>
           </Animated.View>
 
           <View style={styles.searchWrap}>

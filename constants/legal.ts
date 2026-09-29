@@ -12,8 +12,8 @@ export const LEGAL = {
   // Shown publicly in both documents as the contact for privacy requests,
   // account deletion and disputes. Replace with a dedicated support address.
   contactEmail: 'sp3nc3rjadan29@gmail.com',
-  privacyUpdated: '28 September 2026',
-  termsUpdated: '28 September 2026',
+  privacyUpdated: '29 September 2026',
+  termsUpdated: '29 September 2026',
   minimumAge: 18,
   // How fast personal data is removed after an account is deleted.
   deletionDays: 30,
