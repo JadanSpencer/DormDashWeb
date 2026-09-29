@@ -184,6 +184,7 @@ const ActiveOrderCard: React.FC<{ order: Order; onCancel: () => void; reduced: b
   const liveOpacity = glow.interpolate({ inputRange: [0, 1], outputRange: [0.6, 0] });
   const code = order.id.slice(-6).toUpperCase();
   const needsPay = order.paymentMethod === 'card' && order.paymentStatus === 'awaiting_payment';
+  const cashDue = order.paymentMethod === 'cash' && order.paymentStatus === 'cash_due';
 
   const liveDot = (
     <View style={active.liveWrap}>
@@ -219,6 +220,11 @@ const ActiveOrderCard: React.FC<{ order: Order; onCancel: () => void; reduced: b
         {needsPay && (
           <View style={[active.payNeeded, active.drawerPay]}>
             <Text style={active.payNeededText}>{`Payment needed within ${PAY_WINDOW_MIN} minutes`}</Text>
+          </View>
+        )}
+        {cashDue && (
+          <View style={[active.payNeeded, active.drawerPay, active.cashDue]}>
+            <Text style={[active.payNeededText, active.cashDueText]}>Cash on delivery</Text>
           </View>
         )}
       </Pressable>
@@ -262,6 +268,11 @@ const ActiveOrderCard: React.FC<{ order: Order; onCancel: () => void; reduced: b
         {order.status === 'on_the_way' && <Seal char="走" size={54} stamp />}
       </View>
 
+      {cashDue && (
+        <View style={[active.payNeeded, active.cashDue]}>
+          <Text style={[active.payNeededText, active.cashDueText]}>{`Cash on delivery. Have ${fmt(order.totalAmount)} ready for your dasher.`}</Text>
+        </View>
+      )}
       {needsPay && (
         <View style={active.payNeeded}>
           <Text style={active.payNeededText}>{`Payment needed. Tap to pay within ${PAY_WINDOW_MIN} minutes.`}</Text>
@@ -324,6 +335,8 @@ const active = StyleSheet.create({
     borderRadius: T.radius.md, backgroundColor: T.color.ceruleanTint,
   },
   payNeededText: { fontSize: 12, fontWeight: '800', color: T.color.ceruleanDeep },
+  cashDue: { backgroundColor: T.color.tealTint },
+  cashDueText: { color: T.color.teal },
   card: {
     backgroundColor: T.color.card,
     marginHorizontal: T.space.lg,

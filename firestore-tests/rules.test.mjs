@@ -382,3 +382,32 @@ test('group searches and groups: the dasher reads their own, nobody writes', asy
   await assertFails(updateDoc(doc(db('dash'), 'orderGroups', 'g1'), { status: 'accepted' }));
   await assertFails(getDoc(doc(db('dash'), 'meta', 'orderGroups')));
 });
+
+// ── Cash on delivery ───────────────────────────────────────────────────────
+test('cash on delivery: students can choose it; dasher can start before it is paid', async () => {
+  await assertSucceeds(addDoc(collection(db('stu'), 'orders'), { ...baseOrder, paymentMethod: 'cash' }));
+  await assertFails(addDoc(collection(db('stu'), 'orders'), { ...baseOrder, paymentMethod: 'cheque' }));
+  await env.withSecurityRulesDisabled(async (ctx) => {
+    await setDoc(doc(ctx.firestore(), 'orders', 'cashOrder'), {
+      ...baseOrder, status: 'accepted', dasherId: 'dash', dasherName: 'D', verifiedAt: 1,
+      paymentMethod: 'cash', paymentStatus: 'cash_due',
+    });
+  });
+  await assertSucceeds(updateDoc(doc(db('dash'), 'orders', 'cashOrder'), { status: 'picking_up' }));
+  // A student can't cancel a cash order once a dasher has it (the store is already cooking).
+  await env.withSecurityRulesDisabled(async (ctx) => {
+    await updateDoc(doc(ctx.firestore(), 'orders', 'cashOrder'), { status: 'accepted' });
+  });
+  await assertFails(updateDoc(doc(db('stu'), 'orders', 'cashOrder'), { status: 'cancelled', cancelledAt: 1 }));
+  // Nobody can mark it paid or change what a dasher owes from the app.
+  await assertFails(updateDoc(doc(db('dash'), 'orders', 'cashOrder'), { paymentStatus: 'paid' }));
+  await assertFails(updateDoc(doc(db('dash'), 'dashers', 'dash'), { isOnline: true, cashOwedJmd: 0 }));
+});
+test('the cash ledger is admin-read-only', async () => {
+  await env.withSecurityRulesDisabled(async (ctx) => {
+    await setDoc(doc(ctx.firestore(), 'cashTx', 'c1'), { type: 'collected', dasherId: 'dash', amountJmd: 1000 });
+  });
+  await assertSucceeds(getDoc(doc(db('boss'), 'cashTx', 'c1')));
+  await assertFails(getDoc(doc(db('dash'), 'cashTx', 'c1')));
+  await assertFails(setDoc(doc(db('boss'), 'cashTx', 'c2'), { type: 'settled' }));
+});

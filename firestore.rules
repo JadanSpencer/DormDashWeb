@@ -124,7 +124,7 @@ service cloud.firestore {
               'totalAmount', 'deliveryFee', 'deliveryAddress', 'createdAt', 'studentNote',
               'paymentMethod'])
         && (!('paymentMethod' in request.resource.data)
-            || request.resource.data.paymentMethod in ['card', 'tokens'])
+            || request.resource.data.paymentMethod in ['card', 'tokens', 'cash'])
         && request.resource.data.studentId == request.auth.uid
         && request.resource.data.status == 'pending'
         && request.resource.data.items is list
@@ -169,10 +169,12 @@ service cloud.firestore {
 
       // The assigned dasher moves the order forward one step at a time, and
       // can't start (picking up) until the order is paid. Orders from before
-      // payments existed have no paymentMethod and are exempt.
+      // payments existed have no paymentMethod and are exempt. Cash on
+      // delivery is paid at the door, so it can start straight away.
       allow update: if isDasher()
         && resource.data.get('dasherId', null) == request.auth.uid
         && (resource.data.get('paymentMethod', null) == null
+            || resource.data.get('paymentMethod', null) == 'cash'
             || resource.data.get('paymentStatus', null) == 'paid')
         && onlyChanged(['status', 'deliveredAt'])
         && (
@@ -246,6 +248,11 @@ service cloud.firestore {
       allow write: if false;
     }
     match /floatTx/{id} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+    // Cash on delivery: what dashers collected and handed over (server only).
+    match /cashTx/{id} {
       allow read: if isAdmin();
       allow write: if false;
     }

@@ -40,6 +40,19 @@ export const PLATFORM_FEE_JMD = DELIVERY_FEE_JMD - DASHER_PAYOUT_JMD;  // J$120
 export const orderPayoutJmd = (o: { dasherPayoutJmd?: number; deliveryFee?: number }) =>
   typeof o.dasherPayoutJmd === 'number' ? o.dasherPayoutJmd : dasherPayoutOf(Number(o.deliveryFee) || 0);
 
+// ─── Cash on delivery ──────────────────────────────────────────────────────
+// A launch stopgap while card payments are pending. The student pays the
+// dasher in cash when the food arrives; the store is paid from its daily
+// DormDash float when the dasher accepts. The dasher keeps their share of
+// the fee and owes DormDash the rest (dashers/{uid}.cashOwedJmd), which an
+// admin marks settled. Set CASH_ENABLED to false to stop offering it; orders
+// already placed carry on.
+export const CASH_ENABLED = true;
+/** Largest cash order (food + delivery), so one no-show can't cost much. */
+export const CASH_MAX_ORDER_JMD = 3000;
+/** Cash orders a student can have in progress at once. */
+export const MAX_ACTIVE_CASH_ORDERS = 1;
+
 // At most this many card payments can be started per student per window
 // (createPayment). Stops a script from flooding WiPay and payments/*.
 export const MAX_PAYMENT_STARTS = 5;
@@ -95,12 +108,14 @@ export const IN_DELIVERY_STATUSES: OrderStatus[] = ['accepted', 'picking_up', 'o
 /** The happy path, in order (status rails in the app). */
 export const STATUS_STEPS: OrderStatus[] = ['pending', 'accepted', 'picking_up', 'on_the_way', 'delivered'];
 
-export type PaymentMethod = 'card' | 'tokens';
+export type PaymentMethod = 'card' | 'tokens' | 'cash';
 export type PaymentStatus =
-  | 'unpaid' | 'reserved' | 'awaiting_payment' | 'paid' | 'released' | 'refunded_tokens';
+  | 'unpaid' | 'reserved' | 'awaiting_payment' | 'paid' | 'released' | 'refunded_tokens'
+  | 'cash_due'; // cash on delivery, not collected yet
 
 /** Why an order was cancelled (orders/{id}.cancelReason). No reason = the student cancelled. */
 export type CancelReason =
   | 'store_not_found' | 'store_closed' | 'item_unavailable' | 'invalid_item' | 'too_many_items'
   | 'empty_order' | 'rate_limited' | 'account_inactive' | 'too_many_active'
-  | 'duplicate_order' | 'insufficient_tokens' | 'no_dasher' | 'payment_timeout' | 'admin';
+  | 'duplicate_order' | 'insufficient_tokens' | 'no_dasher' | 'payment_timeout' | 'admin'
+  | 'cash_over_limit' | 'too_many_cash';

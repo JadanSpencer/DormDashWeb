@@ -31,16 +31,17 @@ import { onTaskDispatched } from 'firebase-functions/v2/tasks';
 import { getFunctions } from 'firebase-admin/functions';
 import {
   reserveTokensAndVerify, chargeTokensOnAccept, settleCancelledOrder,
-  migrateLegacyStoreFloats, retryVerifiedPayments,
+  migrateLegacyStoreFloats, retryVerifiedPayments, startCashOrder, recordCashCollected,
 } from './payments';
 import {
   MAX_ACTIVE_ORDERS, MAX_ITEMS_PER_ORDER, PAY_WINDOW_MS, PENDING_TIMEOUT_MS, minutes,
   DASHER_IDLE_NUDGE_MS, DASHER_IDLE_GRACE_MS,
   OFFER_WAVE_SIZE, OFFER_WAVE_MS, OFFER_OPEN_WAVE, DELIVERY_FEE_JMD,
   DASHER_PAYOUT_JMD, PLATFORM_FEE_JMD, orderPayoutJmd,
+  CASH_ENABLED, CASH_MAX_ORDER_JMD, MAX_ACTIVE_CASH_ORDERS,
   ACTIVE_STATUSES, IN_DELIVERY_STATUSES, CancelReason,
 } from './shared';
-export { createPayment, wipayReturn, adminAdjustTokens, adminAdjustFloat, payOrderWithTokens, adminResolvePayment } from './payments';
+export { createPayment, wipayReturn, adminAdjustTokens, adminAdjustFloat, payOrderWithTokens, adminResolvePayment, adminSettleCash } from './payments';
 import { alertStore } from './storeAlerts';
 import { APP_CHECK } from './appCheck';
 import { Push, sendPushes, sendPushNotification, getUserToken, jmd } from './push';
@@ -211,7 +212,7 @@ const ORDER_WINDOW_MS = 10 * 60 * 1000;
 // parallel instead. The second needs the index in firestore.indexes.json; if
 // that index is still building, fall back to the old full read so nothing
 // breaks while it finishes.
-const ORDER_FIELDS = ['createdAt', 'verifiedAt', 'status', 'cancelReason', 'storeId', 'items'];
+const ORDER_FIELDS = ['createdAt', 'verifiedAt', 'status', 'cancelReason', 'storeId', 'items', 'paymentMethod'];
 async function getRecentOrdersForStudent(studentId: string): Promise<admin.firestore.QueryDocumentSnapshot[]> {
   const orders = db.collection('orders');
   try {
@@ -362,7 +363,16 @@ async function verifyNewOrder(
 
   // Payment. Orders from app versions before payments have no method: they
   // are treated as card orders (paid when a dasher accepts).
-  const paymentMethod = order.paymentMethod === 'tokens' ? 'tokens' : 'card';
+  // Cash on delivery only while it is switched on (CASH_ENABLED); otherwise
+  // a cash order is treated as a normal "pay after accept" order.
+  const paymentMethod = order.paymentMethod === 'tokens' ? 'tokens'
+    : order.paymentMethod === 'cash' && CASH_ENABLED ? 'cash' : 'card';
+  if (paymentMethod === 'cash') {
+    // A small cap and one at a time, so a no-show can't cost much.
+    if (totalAmount > CASH_MAX_ORDER_JMD) return cancel('cash_over_limit');
+    const cashInProgress = realEarlier.filter(d => d.get('paymentMethod') === 'cash').length;
+    if (cashInProgress >= MAX_ACTIVE_CASH_ORDERS) return cancel('too_many_cash');
+  }
 
   const verified = {
     items: cleanItems,
@@ -374,7 +384,7 @@ async function verifyNewOrder(
     storeName: String(store.name ?? ''),
     studentName: String(userSnap.data()?.name ?? 'Student'),
     paymentMethod,
-    paymentStatus: paymentMethod === 'tokens' ? 'reserved' : 'unpaid',
+    paymentStatus: paymentMethod === 'tokens' ? 'reserved' : paymentMethod === 'cash' ? 'cash_due' : 'unpaid',
     verifiedAt: Date.now(),
     ...dispatch, // who may take it when (see planOffer), published in the same write
   };
@@ -448,7 +458,8 @@ async function offerTo(dashers: FreeDasher[], order: admin.firestore.DocumentDat
     sendPushes(dashers.filter(d => d.token).map(d => ({
       token: d.token!,
       title: `${MARK.newOrder} New order available`,
-      body: `${order.storeName} — ${jmd(orderPayoutJmd(order))} to deliver`,
+      body: `${order.storeName} — ${jmd(orderPayoutJmd(order))} to deliver` +
+        (order.paymentMethod === 'cash' ? ` · cash: collect ${jmd(order.totalAmount)}` : ''),
       data: { screen: '/(dasher)/dash', orderId },
       ttlSeconds: 600, // an order alert older than 10 minutes is useless
     })), 'new_order'),
@@ -679,6 +690,22 @@ export const onOrderStatusChanged = onDocumentWritten(
         return;
       }
 
+      if (after.paymentMethod === 'cash') {
+        // Cash on delivery: no pay window. The store is paid from its float
+        // and starts on it now; the student gets the cash ready.
+        const [token, started] = await Promise.all([tokenPromise, startCashOrder(ref), busy]);
+        const storeAlert = started ? alertStore(after, orderId, 'confirmed') : Promise.resolve();
+        if (token) await sendPushNotification(
+          token,
+          `${MARK.assigned} Dasher assigned`,
+          `${after.dasherName} accepted your order and is heading to ${after.storeName}. Have ${jmd(after.totalAmount)} in cash ready when it arrives.`,
+          { screen: `/(student)/order/${orderId}`, orderId },
+          'accepted'
+        );
+        await storeAlert;
+        return;
+      }
+
       if (after.paymentMethod === 'card' && after.paymentStatus === 'unpaid') {
         tokenPromise.catch(() => {}); // not needed on this path
         await Promise.all([openPayWindow(ref, orderId), busy]);
@@ -749,7 +776,8 @@ export const onOrderStatusChanged = onDocumentWritten(
       const wasPaid = after.paymentStatus === 'paid';
       // The store only heard about orders that were paid and had a dasher,
       // so only those get a "don't make it" alert.
-      const storeWasTold = before?.paymentStatus === 'paid' &&
+      // (A cash order is told as soon as the store is paid from its float.)
+      const storeWasTold = (before?.paymentStatus === 'paid' || (before?.paymentMethod === 'cash' && !!before?.floatUsedAt)) &&
         IN_DELIVERY_STATUSES.includes(before?.status);
       const [, studentToken, dasherToken] = await Promise.all([
         storeWasTold ? alertStore(after, orderId, 'cancelled') : Promise.resolve(),
@@ -769,6 +797,8 @@ export const onOrderStatusChanged = onDocumentWritten(
         no_dasher: 'No dasher was free to take it in time. You were not charged. Please try again later.',
         admin: `Your order from ${after.storeName} was cancelled by DormDash support.`,
         insufficient_tokens: 'You don\'t have enough tokens for this order. You were not charged.',
+        cash_over_limit: `Cash orders can be up to ${jmd(CASH_MAX_ORDER_JMD)}. Order again and pay with tokens or card.`,
+        too_many_cash: 'You already have a cash order on the way. Wait for it to arrive, or pay with tokens or card.',
         payment_timeout: `Your order from ${after.storeName} wasn't paid within ${minutes(PAY_WINDOW_MS)} minutes, so it was cancelled. You were not charged.`,
       };
       const refundNote = wasPaid ? ' Your payment was returned to you as DormDash tokens.' : '';
@@ -825,6 +855,10 @@ async function creditDasherForDelivery(orderRef: admin.firestore.DocumentReferen
       totalEarnings: FieldValue.increment(orderPayoutJmd(fresh)), // the dasher's share, not the whole fee
     }, { merge: true });
     tx.update(orderRef, { dasherCreditedAt: Date.now(), ...deliveryMinsOf(fresh, Date.now()) });
+    // Cash on delivery: the dasher collected it. Mark it paid and record
+    // what they owe DormDash (total minus their share). Same transaction,
+    // so it happens exactly once.
+    recordCashCollected(tx, orderRef, fresh, dasherId);
     return true;
   });
   if (credited) logger.info(`Credited dasher ${dasherId} for order ${orderRef.id}`);
@@ -1187,7 +1221,7 @@ async function repairHalfFinishedWork(): Promise<Record<string, number>> {
   const cutoff = Date.now() - repairMinAgeMs();
   const quiet = (d: admin.firestore.QueryDocumentSnapshot) => d.updateTime.toMillis() <= cutoff;
   const orders = db.collection('orders');
-  const done: Record<string, number> = { unverified: 0, unsettled: 0, payWindow: 0, uncharged: 0, uncredited: 0, busy: 0 };
+  const done: Record<string, number> = { unverified: 0, unsettled: 0, payWindow: 0, cashStart: 0, uncharged: 0, uncredited: 0, busy: 0 };
   const fix = async (kind: string, id: string, work: () => Promise<unknown>) => {
     try {
       await work();
@@ -1201,7 +1235,7 @@ async function repairHalfFinishedWork(): Promise<Record<string, number>> {
   const [pending, unsettled, accepted, delivered, busy] = await Promise.all([
     orders.where('status', '==', 'pending').get(),
     orders.where('status', '==', 'cancelled').where('paymentStatus', 'in', ['reserved', 'paid']).get(),
-    orders.where('status', '==', 'accepted').where('paymentStatus', 'in', ['unpaid', 'reserved']).get(),
+    orders.where('status', '==', 'accepted').where('paymentStatus', 'in', ['unpaid', 'reserved', 'cash_due']).get(),
     orders.where('status', '==', 'delivered').where('deliveredAt', '>=', Date.now() - DAY_MS).get(),
     db.collection('dashers').where('activeOrderId', '!=', null).get(),
   ]);
@@ -1216,6 +1250,10 @@ async function repairHalfFinishedWork(): Promise<Record<string, number>> {
     if (!quiet(d)) continue;
     if (d.get('paymentMethod') === 'card' && d.get('paymentStatus') === 'unpaid') {
       await fix('payWindow', d.id, () => openPayWindow(d.ref, d.id));
+    } else if (d.get('paymentMethod') === 'cash' && !d.get('floatUsedAt')) {
+      await fix('cashStart', d.id, async () => {
+        if (await startCashOrder(d.ref)) await alertStore(d.data(), d.id, 'confirmed');
+      });
     } else if (d.get('paymentMethod') === 'tokens' && d.get('paymentStatus') === 'reserved') {
       await fix('uncharged', d.id, async () => {
         if (await chargeTokensOnAccept(d.ref)) await alertStore(d.data(), d.id, 'confirmed');

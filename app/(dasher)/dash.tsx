@@ -222,6 +222,23 @@ export default function DasherHome() {
   };
 
   const handleStatusUpdate = async (activeOrder: Order) => {
+    // Cash on delivery: marking it delivered records that the cash was
+    // collected (and what is owed to DormDash), so confirm the amount first.
+    if (activeOrder.paymentMethod === 'cash' && NEXT_STATUS[activeOrder.status] === 'delivered') {
+      Alert.alert(
+        'Cash collected?',
+        `Only confirm once you have ${formatJMD(activeOrder.totalAmount)} in cash from the customer.`,
+        [
+          { text: 'Not yet', style: 'cancel' },
+          { text: `Yes, collected ${formatJMD(activeOrder.totalAmount)}`, onPress: () => advance(activeOrder) },
+        ]
+      );
+      return;
+    }
+    await advance(activeOrder);
+  };
+
+  const advance = async (activeOrder: Order) => {
     try {
       await advanceOrder(activeOrder);
     } catch (e) {
@@ -376,7 +393,17 @@ export default function DasherHome() {
 
                 {/* Payment gate: don't buy anything until the order is paid.
                     (Orders from before payments have no paymentMethod.) */}
-                {activeOrder.paymentMethod && activeOrder.paymentStatus !== 'paid' && (
+                {/* Cash on delivery: what to collect at the door. */}
+                {activeOrder.paymentMethod === 'cash' && activeOrder.paymentStatus === 'cash_due' && (
+                  <View style={styles.cashBox}>
+                    <Text style={styles.cashTitle}>Collect {formatJMD(activeOrder.totalAmount)} cash</Text>
+                    <Text style={styles.payWaitText}>
+                      Cash on delivery. The store is paid from DormDash's float. Keep your {formatJMD(orderPayoutJmd(activeOrder))}; the rest is settled with DormDash.
+                    </Text>
+                  </View>
+                )}
+
+                {activeOrder.paymentMethod && activeOrder.paymentMethod !== 'cash' && activeOrder.paymentStatus !== 'paid' && (
                   <View style={styles.payWait}>
                     <Text style={styles.payWaitTitle}>
                       {activeOrder.paymentMethod === 'tokens' ? 'Confirming payment…' : 'Waiting for the customer to pay'}
@@ -389,12 +416,16 @@ export default function DasherHome() {
                   </View>
                 )}
 
-                {NEXT_STATUS[activeOrder.status] && (!activeOrder.paymentMethod || activeOrder.paymentStatus === 'paid') && (
+                {NEXT_STATUS[activeOrder.status] && (!activeOrder.paymentMethod || activeOrder.paymentMethod === 'cash' || activeOrder.paymentStatus === 'paid') && (
                   <Pressable
                     onPress={() => handleStatusUpdate(activeOrder)}
                     style={({ pressed }) => [styles.statusBtn, pressed && { transform: [{ scale: 0.97 }] }]}
                   >
-                    <Text style={styles.statusBtnText}>{NEXT_STATUS_LABEL[activeOrder.status]}</Text>
+                    <Text style={styles.statusBtnText}>
+                      {activeOrder.paymentMethod === 'cash' && NEXT_STATUS[activeOrder.status] === 'delivered'
+                        ? 'Cash collected, mark delivered'
+                        : NEXT_STATUS_LABEL[activeOrder.status]}
+                    </Text>
                   </Pressable>
                 )}
               </View>
@@ -454,6 +485,9 @@ export default function DasherHome() {
               <Text style={styles.orderMetaText}>Order {formatJMD(item.totalAmount)}</Text>
               <View style={styles.orderMetaDot} />
               <Text style={styles.orderMetaText}>{minsAgo(item.verifiedAt ?? item.createdAt)}</Text>
+              {item.paymentMethod === 'cash' && (
+                <View style={styles.cashBadge}><Text style={styles.cashBadgeText}>Cash</Text></View>
+              )}
             </View>
 
             <Pressable
@@ -606,6 +640,16 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: D.color.line, gap: 4,
   },
   payWaitTitle: { color: D.color.cream, fontSize: 15, fontWeight: '800' },
+  cashBox: {
+    padding: D.space.md, borderRadius: D.radius.md, gap: 4,
+    backgroundColor: D.color.warningTint, borderWidth: 1, borderColor: D.color.warning,
+  },
+  cashTitle: { color: D.color.warning, fontSize: 16, fontWeight: '900' },
+  cashBadge: {
+    marginLeft: 'auto', paddingHorizontal: 8, paddingVertical: 2, borderRadius: D.radius.pill,
+    backgroundColor: D.color.warningTint, borderWidth: 1, borderColor: D.color.warning,
+  },
+  cashBadgeText: { fontSize: 11, fontWeight: '900', color: D.color.warning },
   payWaitText: { color: D.color.creamFaint, fontSize: 13, lineHeight: 18 },
   statusBtn: {
     backgroundColor: D.color.cerulean,

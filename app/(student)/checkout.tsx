@@ -28,7 +28,7 @@ import { placeOrder } from '../../services/orders';
 import { useOnlineDasherCount } from '../../hooks/useOrders';
 import { useAuth } from '../../hooks/useAuth';
 import { CartItem, Order } from '../../types';
-import { CAMPUS_CENTER, MAX_ACTIVE_ORDERS, PAY_WINDOW_MIN, DELIVERY_FEE_JMD } from '../../constants';
+import { CAMPUS_CENTER, MAX_ACTIVE_ORDERS, PAY_WINDOW_MIN, DELIVERY_FEE_JMD, CASH_ENABLED, CASH_MAX_ORDER_JMD } from '../../constants';
 import { serverNow } from '../../services/serverClock';
 import { usePriceUnit } from '../../hooks/usePriceUnit';
 import { PriceUnitToggle } from '../../components/PriceUnitToggle';
@@ -57,10 +57,14 @@ export default function CheckoutScreen() {
   const subtotal = cart.reduce((sum, c) => sum + c.menuItem.price * c.quantity, 0);
   const total = subtotal + deliveryFee;
 
-  // Payment happens after a dasher accepts: the student then chooses their
-  // tokens or their card (app/(student)/order/[id].tsx). Nothing is chosen
-  // or charged here. Prices show in J$ or tokens.
+  // Two ways to pay: after a dasher accepts (tokens or card, chosen then on
+  // app/(student)/order/[id].tsx), or cash on delivery (while CASH_ENABLED,
+  // up to CASH_MAX_ORDER_JMD; the server checks both). Nothing is charged
+  // here. Prices show in J$ or tokens.
   const { fmt } = usePriceUnit();
+  const cashAllowed = CASH_ENABLED && total <= CASH_MAX_ORDER_JMD;
+  const [payBy, setPayBy] = useState<'later' | 'cash'>('later');
+  const payCash = payBy === 'cash' && cashAllowed;
 
   const [deliveryLabel, setDeliveryLabel] = useState('');
   const [note, setNote] = useState('');
@@ -132,9 +136,10 @@ export default function CheckoutScreen() {
           hasGpsFix: coords !== null,
         },
         createdAt: serverNow(),
-        // "Pay after a dasher accepts". The student picks tokens or card
-        // then; the server switches this to 'tokens' if they use tokens.
-        paymentMethod: 'card',
+        // "Pay after a dasher accepts": the student picks tokens or card
+        // then, and the server switches this to 'tokens' if they use tokens.
+        // Or cash on delivery.
+        paymentMethod: payCash ? 'cash' : 'card',
         ...(cleanNote ? { studentNote: cleanNote } : {}),
       };
 
@@ -227,10 +232,39 @@ export default function CheckoutScreen() {
         {/* Payment */}
         <Text style={styles.sectionLabel}>Payment</Text>
         <View style={styles.card}>
-          <Text style={styles.payTitle}>Pay after a dasher accepts</Text>
-          <Text style={styles.paySub}>
-            Nothing is charged now. When a dasher accepts, you'll get a notification and choose how to pay: with your DormDash tokens or by card. You then have {PAY_WINDOW_MIN} minutes to pay.
-          </Text>
+          <Pressable
+            onPress={() => setPayBy('later')}
+            accessibilityRole="radio"
+            accessibilityState={{ checked: !payCash }}
+            style={[styles.payOpt, !payCash && styles.payOptOn]}
+          >
+            <View style={[styles.radio, !payCash && styles.radioOn]}>{!payCash && <View style={styles.radioDot} />}</View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.payTitle}>Pay after a dasher accepts</Text>
+              <Text style={styles.paySub}>
+                Nothing is charged now. When a dasher accepts, you'll get a notification and choose how to pay: with your DormDash tokens or by card. You then have {PAY_WINDOW_MIN} minutes to pay.
+              </Text>
+            </View>
+          </Pressable>
+          {CASH_ENABLED && (
+            <Pressable
+              onPress={() => cashAllowed && setPayBy('cash')}
+              disabled={!cashAllowed}
+              accessibilityRole="radio"
+              accessibilityState={{ checked: payCash, disabled: !cashAllowed }}
+              style={[styles.payOpt, payCash && styles.payOptOn, !cashAllowed && { opacity: 0.6 }]}
+            >
+              <View style={[styles.radio, payCash && styles.radioOn]}>{payCash && <View style={styles.radioDot} />}</View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.payTitle}>Cash on delivery</Text>
+                <Text style={styles.paySub}>
+                  {cashAllowed
+                    ? `Pay your dasher ${fmt(total)} in cash when the food arrives. Exact change helps. One cash order at a time; if you don't pay for a cash order, your account may be paused.`
+                    : `For orders up to ${fmt(CASH_MAX_ORDER_JMD)}. This order is ${fmt(total)}, so pay with tokens or card.`}
+                </Text>
+              </View>
+            </Pressable>
+          )}
         </View>
 
         {/* Summary */}

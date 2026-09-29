@@ -40,7 +40,7 @@ import * as crypto from 'crypto';
 import { logger } from 'firebase-functions/v2';
 import { onCall, onRequest, HttpsError } from 'firebase-functions/v2/https';
 import { defineSecret, defineString } from 'firebase-functions/params';
-import { TOKEN_JMD, TOKEN_PACKS, PAY_WINDOW_MS, MAX_PAYMENT_STARTS, PAYMENT_START_WINDOW_MS, minutes } from './shared';
+import { TOKEN_JMD, TOKEN_PACKS, PAY_WINDOW_MS, MAX_PAYMENT_STARTS, PAYMENT_START_WINDOW_MS, minutes, orderPayoutJmd } from './shared';
 import { APP_CHECK } from './appCheck';
 
 // ES imports run before index.ts's own code, so this module can load first:
@@ -227,6 +227,76 @@ export async function settleCancelledOrder(orderRef: admin.firestore.DocumentRef
     }
   });
 }
+
+// ─── Cash on delivery ─────────────────────────────────────────────────────
+// Cash orders skip the pay window. When a dasher accepts, the store is paid
+// from its DormDash float (the same float as paid orders), so it can start
+// cooking. When the dasher marks it delivered they have collected the cash:
+// they keep their share of the fee and owe DormDash the rest, recorded on
+// dashers/{uid}.cashOwedJmd and in cashTx. An admin marks it settled.
+// Each step is one transaction and runs once (floatUsedAt, dasherCreditedAt).
+
+/** Accepted cash order: the food cost comes off the store's float. Idempotent. */
+export async function startCashOrder(orderRef: admin.firestore.DocumentReference): Promise<boolean> {
+  return db.runTransaction(async tx => {
+    const order = (await tx.get(orderRef)).data();
+    if (!order || order.paymentMethod !== 'cash' || order.floatUsedAt) return false;
+    if (!['accepted', 'picking_up', 'on_the_way'].includes(order.status)) return false;
+    const target = await readFloatTarget(tx, order);
+    tx.update(orderRef, { floatUsedAt: Date.now() });
+    writeFloat(tx, target, orderRef.id, foodCost(order), -1, 'Cash order: store paid from float');
+    return true;
+  });
+}
+
+/**
+ * Inside the delivery-credit transaction (index.ts creditDasherForDelivery):
+ * a delivered cash order was paid to the dasher in cash. Marks it paid and
+ * adds what the dasher owes DormDash (total minus their share). The caller
+ * has already read the order in `tx`; this only writes.
+ */
+export function recordCashCollected(
+  tx: Tx, orderRef: admin.firestore.DocumentReference, order: admin.firestore.DocumentData, dasherId: string,
+): void {
+  if (order.paymentMethod !== 'cash' || order.paymentStatus !== 'cash_due') return;
+  const collected = Number(order.totalAmount) || 0;
+  const kept = orderPayoutJmd(order);
+  const owed = Math.max(0, collected - kept);
+  tx.update(orderRef, { paymentStatus: 'paid', paidAt: Date.now(), cashCollectedJmd: collected });
+  tx.set(db.collection('dashers').doc(dasherId), { cashOwedJmd: FieldValue.increment(owed) }, { merge: true });
+  tx.set(db.collection('cashTx').doc(`${orderRef.id}_collect`), {
+    type: 'collected', dasherId, orderId: orderRef.id,
+    collectedJmd: collected, keptJmd: kept, amountJmd: owed, createdAt: Date.now(),
+  });
+}
+
+/** Admin: a dasher handed over cash they collected. Lowers what they owe. */
+export const adminSettleCash = onCall({ ...APP_CHECK }, async (request) => {
+  await requireAdmin(request.auth?.uid);
+  const dasherId = String(request.data?.dasherId ?? '');
+  const amountJmd = Math.round(Number(request.data?.amountJmd));
+  const note = String(request.data?.note ?? '').trim().slice(0, 200);
+  if (!dasherId || !Number.isFinite(amountJmd) || amountJmd <= 0 || amountJmd > 1_000_000) {
+    throw new HttpsError('invalid-argument', 'Enter the J$ amount the dasher handed over, e.g. 2500.');
+  }
+  if (!note) throw new HttpsError('invalid-argument', 'Add a short note (e.g. "Lynk ref 12345").');
+  const ref = db.collection('dashers').doc(dasherId);
+  const left = await db.runTransaction(async tx => {
+    const snap = await tx.get(ref);
+    if (!snap.exists) throw new HttpsError('not-found', 'Dasher not found.');
+    const owed = Number(snap.get('cashOwedJmd')) || 0;
+    if (amountJmd > owed) {
+      throw new HttpsError('failed-precondition', `They only owe J$${owed.toLocaleString('en-US')}.`);
+    }
+    tx.update(ref, { cashOwedJmd: owed - amountJmd });
+    tx.set(db.collection('cashTx').doc(), {
+      type: 'settled', dasherId, amountJmd: -amountJmd, note, by: request.auth!.uid, createdAt: Date.now(),
+    });
+    return owed - amountJmd;
+  });
+  logger.info('Cash settled', { dasherId, amountJmd, by: request.auth!.uid });
+  return { cashOwedJmd: left };
+});
 
 // ─── Pay an accepted order with tokens ────────────────────────────────────
 // Once a dasher accepts, the student chooses: tokens (here) or card

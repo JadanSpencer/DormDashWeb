@@ -76,3 +76,17 @@ Every resolution records which admin did it and the note (`payments/{id}.resolve
 
 Also automatic: if WiPay's return arrived but applying it failed, the server retries every 5 minutes (`retryVerifiedPayments`), so those never need an admin.
 
+## Cash on delivery (launch stopgap)
+While card payments are waiting on a payment provider, students can choose **Cash on delivery** at checkout. Switch it off with `CASH_ENABLED = false` in `functions/src/shared.ts` (then deploy functions and web); orders already placed carry on.
+
+| | What happens |
+|---|---|
+| Student places a cash order | Up to J$3,000 (`CASH_MAX_ORDER_JMD`), one cash order at a time; the server refuses others (`cash_over_limit`, `too_many_cash`) |
+| Dasher accepts | No pay window. The food cost comes off the **store's float** (top it up daily: Admin → Stores → float), the store gets its order alert, and the student is told to have the cash ready. The student can't cancel it from here (the store is cooking) |
+| Delivered | The dasher confirms "Cash collected". The order is marked paid; the dasher keeps their J$280 share and **owes DormDash the rest** (food + J$120), shown on the admin dashboard |
+| Settling | Admin → Board → **Cash to collect from dashers** → Received, with the amount and a note (e.g. "Lynk ref 12345"). Can't record more than they owe |
+
+Records: `dashers/{uid}.cashOwedJmd` (running total), `cashTx` (every collection and hand-over, admin-only), `floatTx` (store float used).
+
+**Daily routine:** top up each store's float in the morning; collect cash from dashers and record it at the end of the day. A no-show: cancel the order as admin (the food cost stays spent from the float) and pause the student's account if needed.
+

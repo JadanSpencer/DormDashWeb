@@ -114,6 +114,8 @@ export interface Order {
     paymentStatus?: PaymentStatus;
     payDeadline?: number;    // card: pay by this time after a dasher accepts
     paidAt?: number;
+    floatUsedAt?: number;     // cash on delivery: when the store was paid from its float
+    cashCollectedJmd?: number; // cash on delivery: what the dasher collected
     studentNote?: string;
     groupId?: string;        // taken as part of a group (orderGroups/{groupId})
     groupNo?: number;        // that group's number, "Group #12"

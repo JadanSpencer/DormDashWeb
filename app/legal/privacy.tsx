@@ -30,7 +30,7 @@ const sections: Section[] = [
         ['Notifications', 'A notification token for your device, so we can send order updates. It is removed when you sign out.'],
         ['Technical data', 'Our hosting and database provider (Google) keeps short-lived security and error logs, which can include your IP address and device type. We do not use these to track you.'],
       ] },
-      { p: 'Payments: card payments are handled by WiPay on its own secure page, so we never receive your card number. From WiPay we keep the transaction reference, amount, date, whether it succeeded and the last 4 digits of the card. We also keep your DormDash token balance and a history of every change to it, and the times of your card payment attempts in the last 10 minutes (to stop misuse).' },
+      { p: 'Payments: card payments are handled by WiPay on its own secure page, so we never receive your card number. From WiPay we keep the transaction reference, amount, date, whether it succeeded and the last 4 digits of the card. We also keep your DormDash token balance and a history of every change to it, and the times of your card payment attempts in the last 10 minutes (to stop misuse). For cash on delivery, we record that the order was paid in cash and the amount; for dashers, how much cash they collected and handed over to DormDash.' },
       { p: 'We do not collect full payment card details, contacts, photos, microphone or camera data.' },
     ],
   },

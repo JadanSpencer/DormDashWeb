@@ -12,10 +12,10 @@ export const PREVIEW_USERS: Record<string, any> = {
 };
 
 const stores = [
-  { id: 's1', name: 'Ring Road Grill', description: 'Jerk chicken, festival and fries off the grill.', category: 'Jamaican', deliveryFee: 250, estimatedTime: '20-30 min', rating: 4.7, isOpen: true },
-  { id: 's2', name: 'Chancellor Tuck Shop', description: 'Snacks, drinks and late-night essentials.', category: 'Snacks', deliveryFee: 250, estimatedTime: '10-15 min', rating: 4.4, isOpen: true },
-  { id: 's3', name: 'Irie Bowls', description: 'Rice bowls, ital stew and fresh juices.', category: 'Healthy', deliveryFee: 250, estimatedTime: '25-35 min', rating: 4.8, isOpen: true },
-  { id: 's4', name: 'Mona Patty Hut', description: 'Beef, chicken and veggie patties, coco bread.', category: 'Bakery', deliveryFee: 250, estimatedTime: '15-20 min', rating: 4.5, isOpen: false },
+  { id: 's1', name: 'Ring Road Grill', description: 'Jerk chicken, festival and fries off the grill.', category: 'Jamaican', deliveryFee: 400, estimatedTime: '20-30 min', rating: 4.7, isOpen: true },
+  { id: 's2', name: 'Chancellor Tuck Shop', description: 'Snacks, drinks and late-night essentials.', category: 'Snacks', deliveryFee: 400, estimatedTime: '10-15 min', rating: 4.4, isOpen: true },
+  { id: 's3', name: 'Irie Bowls', description: 'Rice bowls, ital stew and fresh juices.', category: 'Healthy', deliveryFee: 400, estimatedTime: '25-35 min', rating: 4.8, isOpen: true },
+  { id: 's4', name: 'Mona Patty Hut', description: 'Beef, chicken and veggie patties, coco bread.', category: 'Bakery', deliveryFee: 400, estimatedTime: '15-20 min', rating: 4.5, isOpen: false },
 ];
 
 const menu: Record<string, any[]> = {
@@ -48,7 +48,7 @@ function order(id: string, sid: string, items: any[], status: string, createdAgo
   const s = stores.find(x => x.id === sid)!;
   return {
     studentId: 'stu1', studentName: 'Tanesha Brown', storeId: sid, storeName: s.name,
-    items, status, deliveryFee: s.deliveryFee, totalAmount: total(sid, items),
+    items, status, deliveryFee: s.deliveryFee, dasherPayoutJmd: 280, platformFeeJmd: 120, totalAmount: total(sid, items),
     deliveryAddress: { ...CAMPUS, latitude: CAMPUS.latitude + 0.002, label: 'Chancellor Hall, Block C, Room 204', hasGpsFix: true },
     createdAt: now - createdAgo, ...extra,
   };
@@ -94,16 +94,18 @@ export function seed(): Record<string, any> {
   db['payments/pv4uFs9Djm3XwK1fTCSaP'] = { uid: 'stu1', purpose: 'tokens', tokens: 10, amountJmd: 1000, status: 'pending', createdAt: now - 40 * min, orderId: null };
   db['payments/pFKSk0IYcr9atWTOVi4Tt'] = { uid: 'stu1', purpose: 'order', amountJmd: 2100, status: 'review', createdAt: now - 25 * min, orderId: 'o1', returnTransactionId: 'SB-44-1-pFKSk0IYcr9atWTOVi4Tt-20260927220901', reviewReason: 'transaction_id_changed' };
   db['payments/pRecentCheckout123'] = { uid: 'stu1', purpose: 'tokens', tokens: 5, amountJmd: 500, status: 'pending', createdAt: now - 3 * min, orderId: null };
+  // Cash on delivery: an open cash order (dasher list shows the Cash badge).
+  db['orders/o9'] = { ...order('o9', 's1', [item('s1', 'm3', 2)], 'pending', 3 * min), studentId: 'stu2', studentName: 'Daniel Williams', verifiedAt: now - 3 * min, paymentMethod: 'cash', paymentStatus: 'cash_due' };
   // Group orders (dasher): a saved search and a group on offer. It shows on
   // /dash once the preview dasher has no delivery in progress.
   db['groupSearches/das1'] = { dasherId: 'das1', active: true, size: 2, maxStoreDistanceM: 500, storeIds: [], offeredGroupId: 'g1' };
   db['orderGroups/g1'] = {
     groupNo: 12, dasherId: 'das1', orderIds: ['o4', 'o5'], size: 2, status: 'offered',
-    createdAt: now, expiresAt: now + 2 * min, payoutJmd: 500, spanM: 180, maxStoreDistanceM: 500,
+    createdAt: now, expiresAt: now + 2 * min, payoutJmd: 560, spanM: 180, maxStoreDistanceM: 500,
     storeIds: ['s2', 's3'], storeNames: ['Chancellor Tuck Shop', 'Irie Bowls'],
     stops: [
-      { orderId: 'o4', storeId: 's2', storeName: 'Chancellor Tuck Shop', dropOff: 'Chancellor Hall, Block C, Room 204', payoutJmd: 250 },
-      { orderId: 'o5', storeId: 's3', storeName: 'Irie Bowls', dropOff: 'Science Library, 2nd floor', payoutJmd: 250 },
+      { orderId: 'o4', storeId: 's2', storeName: 'Chancellor Tuck Shop', dropOff: 'Chancellor Hall, Block C, Room 204', payoutJmd: 280 },
+      { orderId: 'o5', storeId: 's3', storeName: 'Irie Bowls', dropOff: 'Science Library, 2nd floor', payoutJmd: 280 },
     ],
   };
   return db;

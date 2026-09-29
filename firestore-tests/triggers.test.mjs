@@ -539,3 +539,59 @@ test('an account with tokens left cannot be deleted', async () => {
   await assert.rejects(call('deleteMyAccount', uid, {}), /tokens/);
   assert.ok(await get(`users/${uid}`), 'account kept');
 });
+
+// ── Cash on delivery ───────────────────────────────────────────────────────
+test('cash on delivery: store paid from its float on accept; dasher owes the rest after delivery; admin settles', async () => {
+  const t = `cash_${Date.now()}`;
+  const storeId = `${t}_store`;
+  await db.doc(`stores/${storeId}`).set({ name: 'Cash Grill', isOpen: true, deliveryFee: 400 });
+  await db.doc(`stores/${storeId}/menuItems/patty`).set({ name: 'Beef patty', price: 300, isAvailable: true, category: 'Hot' });
+  await db.doc(`storeFloats/${storeId}`).set({ storeId, floatJmd: 10000 });
+  const dasher = `${t}_d`;
+  await onlineDasher(dasher);
+  await db.doc(`dashers/${dasher}`).update({ isOnline: false });
+  const boss = `${t}_admin`;
+  await db.doc(`users/${boss}`).set({ uid: boss, role: 'admin', name: 'Boss', isActive: true, createdAt: 1 });
+
+  const uid = await student();
+  const id = await place(order(uid, { storeId, paymentMethod: 'cash' })); // 2 patties: 600 + 400 = 1000
+  const o = await settled(id);
+  assert.equal(o.status, 'pending');
+  assert.equal(o.paymentMethod, 'cash');
+  assert.equal(o.paymentStatus, 'cash_due');
+  assert.equal(o.totalAmount, 1000);
+
+  // A second cash order while this one is in progress is refused.
+  const second = await settled(await place(order(uid, { storeId, paymentMethod: 'cash', items: [{ quantity: 1, menuItem: { id: 'patty' } }] })));
+  assert.equal(second.cancelReason, 'too_many_cash');
+
+  // Accepted: no pay window; the store float pays for the food (600).
+  await db.doc(`orders/${id}`).update({ status: 'accepted', dasherId: dasher, dasherName: 'D', acceptedAt: Date.now() });
+  assert.ok(await until(async () => (await get(`orders/${id}`)).floatUsedAt), 'store paid from float');
+  assert.equal((await get(`storeFloats/${storeId}`)).floatJmd, 10000 - 600);
+  assert.equal((await get(`orders/${id}`)).paymentStatus, 'cash_due', 'no pay window for cash');
+
+  for (const status of ['picking_up', 'on_the_way']) await db.doc(`orders/${id}`).update({ status });
+  await db.doc(`orders/${id}`).update({ status: 'delivered', deliveredAt: Date.now() });
+  assert.ok(await until(async () => (await get(`orders/${id}`)).dasherCreditedAt), 'credited');
+  const done = await get(`orders/${id}`);
+  assert.equal(done.paymentStatus, 'paid');
+  assert.equal(done.cashCollectedJmd, 1000);
+  const d = await get(`dashers/${dasher}`);
+  assert.equal(d.totalEarnings, 280, 'dasher keeps their 70% of the fee');
+  assert.equal(d.cashOwedJmd, 1000 - 280, 'owes DormDash the food cost and its 30%');
+  assert.equal((await get(`cashTx/${id}_collect`)).amountJmd, 720);
+
+  // Admin settles part, can't settle more than is owed.
+  await assert.rejects(call('adminSettleCash', boss, { dasherId: dasher, amountJmd: 5000, note: 'too much' }), /only owe/);
+  const r = await call('adminSettleCash', boss, { dasherId: dasher, amountJmd: 500, note: 'Lynk ref 1' });
+  assert.equal(r.cashOwedJmd, 220);
+  await assert.rejects(call('adminSettleCash', dasher, { dasherId: dasher, amountJmd: 220, note: 'self' }), /Admins only/);
+});
+
+test('cash orders over the cap are refused', async () => {
+  const uid = await student();
+  // 10 patties: 3000 + 400 = 3400 > 3000.
+  const o = await settled(await place(order(uid, { paymentMethod: 'cash', items: [{ quantity: 10, menuItem: { id: 'patty' } }] })));
+  assert.equal(o.cancelReason, 'cash_over_limit');
+});

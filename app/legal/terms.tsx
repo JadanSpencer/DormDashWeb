@@ -51,6 +51,7 @@ const sections: Section[] = [
       'Dashers are independent students using the platform. They are not employees or agents of DormDash.',
       `For each order delivered, the dasher earns ${Math.round(DASHER_SHARE * 100)}% of the delivery fee (currently ${formatJMD(DASHER_PAYOUT_JMD)}). DormDash keeps the other ${100 - Math.round(DASHER_SHARE * 100)}% (currently ${formatJMD(PLATFORM_FEE_JMD)}) to run the service.`,
       'When you accept an order, deliver it promptly, handle food with care, and do not open, swap or tamper with it.',
+      'On a cash-on-delivery order, collect the full amount shown before handing over the food, and only confirm "Cash collected" once you have it. Keep your share of the delivery fee and hand the rest over to DormDash when asked; DormDash keeps a record of what you collected and handed over.',
       'Go offline when you stop taking orders, so students are not left waiting.',
       'Follow campus rules and the law while delivering, including road safety rules.',
     ] }],

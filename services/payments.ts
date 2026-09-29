@@ -141,3 +141,13 @@ export async function adminStoreAlerts(storeId: string, action: 'get' | 'new' | 
     throw new Error(errorText(e, 'Could not load store alerts. Try again.'));
   }
 }
+
+/** Admin: a dasher handed over cash from cash-on-delivery orders (J$). */
+export async function adminSettleCash(dasherId: string, amountJmd: number, note: string) {
+  try {
+    const res: any = await httpsCallable(functions, 'adminSettleCash')({ dasherId, amountJmd, note });
+    return res.data as { cashOwedJmd: number };
+  } catch (e: any) {
+    throw new Error(errorText(e, 'Could not record the cash. Try again.'));
+  }
+}

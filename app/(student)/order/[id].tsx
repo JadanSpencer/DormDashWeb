@@ -87,6 +87,21 @@ const PaymentPanel: React.FC<{ order: Order }> = ({ order }) => {
 
   if (!order.paymentMethod) return null; // orders from before payments
 
+  // Cash on delivery: nothing to pay in the app.
+  if (order.paymentMethod === 'cash') {
+    const paidCash = order.paymentStatus === 'paid';
+    return (
+      <View style={pay_.box}>
+        <Text style={pay_.title}>{paidCash ? 'Paid in cash' : 'Cash on delivery'}</Text>
+        <Text style={pay_.text}>
+          {paidCash
+            ? `${fmt(order.totalAmount)} paid to your dasher.`
+            : `Have ${fmt(order.totalAmount)} in cash ready for your dasher when the food arrives. Exact change helps.`}
+        </Text>
+      </View>
+    );
+  }
+
   const total = order.totalAmount;
   const enoughTokens = wallet.loaded && wallet.availableJmd >= total;
 

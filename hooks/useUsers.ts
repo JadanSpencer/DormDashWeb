@@ -4,8 +4,9 @@
 // wallets/* directly. Writes live in services/users.ts and services/dasher.ts.
 
 import { useEffect, useState } from 'react';
-import { collection, doc, onSnapshot, orderBy, query } from 'firebase/firestore';
+import { collection, doc, onSnapshot, orderBy, query, where } from 'firebase/firestore';
 import { db } from '../services/firebase';
+import { getUserProfile } from '../services/users';
 import { User } from '../types';
 
 export type DasherStats = {
@@ -77,4 +78,27 @@ export function useDasherFloats() {
     setFloats(m);
   }, () => {}), []);
   return floats;
+}
+
+export type CashOwed = { uid: string; name: string; cashOwedJmd: number };
+
+/**
+ * Admin: dashers holding cash from cash-on-delivery orders that they still
+ * owe DormDash (dashers/{uid}.cashOwedJmd, kept by the server), most first.
+ */
+export function useCashToCollect() {
+  const [rows, setRows] = useState<CashOwed[]>([]);
+  useEffect(() => {
+    const names: Record<string, string> = {};
+    let alive = true;
+    const unsub = onSnapshot(query(collection(db, 'dashers'), where('cashOwedJmd', '>', 0)), async snap => {
+      const list = snap.docs.map(d => ({ uid: d.id, cashOwedJmd: Number(d.data().cashOwedJmd) || 0 }));
+      await Promise.all(list.filter(r => !(r.uid in names)).map(async r => {
+        names[r.uid] = (await getUserProfile(r.uid).catch(() => null))?.name ?? 'Dasher';
+      }));
+      if (alive) setRows(list.map(r => ({ ...r, name: names[r.uid] })).sort((a, b) => b.cashOwedJmd - a.cashOwedJmd));
+    }, () => {});
+    return () => { alive = false; unsub(); };
+  }, []);
+  return rows;
 }
