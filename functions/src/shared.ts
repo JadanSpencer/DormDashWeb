@@ -43,6 +43,13 @@ export const MAX_DELIVERY_FEE_JMD = 800;
 export const FALLBACK_DELIVERY_FEE_JMD = 400;
 /** Walking routes are longer than a straight line; used only for unmeasured pairs. */
 export const STRAIGHT_LINE_WALK_FACTOR = 1.4;
+/**
+ * A measured route is never counted as more than this many times the
+ * straight line. On UWI Mona routes are typically 1.44× the straight line;
+ * far longer ones usually mean a shortcut is missing from the map, and the
+ * student shouldn't pay for the map's gap (scripts/campus-distances.mjs).
+ */
+export const MAX_WALK_DETOUR = 1.8;
 
 export function deliveryFeeForDistance(distanceM: number): number {
   const m = Math.max(0, Number(distanceM) || 0);

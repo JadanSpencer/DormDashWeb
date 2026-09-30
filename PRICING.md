@@ -5,7 +5,12 @@ Written 29 Sep 2026. Code: `functions/src/shared.ts` (fee and split), `functions
 ## How a fee is worked out
 1. The student picks where to deliver from a list, not by typing: **Halls**, **Faculties** or **Other places**, then the place. Room and block go in the note to the dasher.
 2. Each store is linked to its **food spot** on campus (Admin → Stores → edit → "Food spot on campus").
-3. The fee is set by the **walking distance** from the food spot to the place. Distances are measured along OpenStreetMap footpaths, not in a straight line (routes are about 1.4× the straight line on campus).
+3. The fee is set by the **walking distance** from the food spot to the place:
+   - **Measured along OpenStreetMap footpaths**, not in a straight line. Routes are typically 1.44× the straight line on campus.
+   - **Includes the short walk from each pin to the nearest mapped path**, which the router leaves out. This was fixed on 29 Sep after an audit: 138 routes had been J$50 too cheap.
+   - **Never counted as more than 1.8× the straight line.** 150 map routes were longer than that, some 3–4×, because a shortcut students use isn't on the map. For example, Preston Cafe → Rex Nettleford is 294 m in a straight line, but the map routes it about 950 m. These are priced at 1.8× instead, so students don't pay for the map's gap.
+   - **Every capped route is listed in CAMPUS_ROUTES.md** with a Google Maps walking link. Where the real walk is longer, we set it by hand.
+   - **Checked with a second router:** Valhalla, also on OpenStreetMap, agrees with these routes to within about 10%. Both use the same map, so neither can see unmapped shortcuts.
 
 | Walking distance | Fee | Dasher earns | DormDash keeps |
 |---|---|---|---|
@@ -20,15 +25,15 @@ Written 29 Sep 2026. Code: `functions/src/shared.ts` (fee and split), `functions
 - **Fee rule:** J$300 up to 400 m, then +J$50 for every 200 m (or part of it) after that. Capped at J$800 as a safety net; nothing on campus comes close.
 - **Split rule:** DormDash keeps J$50 of the minimum fee plus 20% of every dollar above J$300, rounded to J$5. The dasher gets the rest. That gives exactly your two anchors: J$50 at J$300, and J$90 at J$500 (between your J$75 and J$100).
 - **Examples:**
-  - The Spot → George Alleyne: 240 m, **J$300**.
-  - Social Welfare → George Alleyne: 672 m, **J$400**.
-  - The Spot → Taylor: 838 m, J$450.
-  - Preston Cafe → UHWI: 1.4 km, J$600.
+  - The Spot → George Alleyne: 271 m, **J$300**.
+  - Social Welfare → George Alleyne: 706 m, **J$400**.
+  - The Spot → Taylor: 882 m, J$450.
+  - Preston Cafe → Rex Nettleford: about 530 m, J$350 (capped; the map says about 950 m).
   - Preston Cafe → ABC Hall: 1.9 km, J$700 (the longest trip).
 - **Across all 860 food-spot-to-place pairs:**
-  - Fees run from J$300 to J$700. The average fee is **J$411**, close to the old flat J$400, so students pay about the same on average and less when close.
-  - DormDash keeps **J$72** on average.
-  - The dasher earns J$339 on average.
+  - Fees run from J$300 to J$700. The average fee is **J$415**, close to the old flat J$400, so students pay about the same on average and less when close.
+  - DormDash keeps **J$73** on average.
+  - The dasher earns J$342 on average.
 - **The server prices every order itself** (`verifyNewOrder`). The fee shown at checkout comes from the same shared code, so the two always agree, and the app's numbers are never trusted. Each order stores its fee, its split, the distance and how the fee was worked out (`feeBasis`).
 
 ## Places and pins
@@ -42,7 +47,9 @@ Written 29 Sep 2026. Code: `functions/src/shared.ts` (fee and split), `functions
 - **Not added yet** (unconfirmed in your directory): ABC Hall Cafeteria, Mona Bowl, and the hall commissaries (Unique Buyers, Mae's Commissary, Panther's Grocery, R & R Minimart).
 - **Link your stores:** Admin → Stores → edit → "Food spot on campus". A store that isn't linked pays the J$400 fallback.
 
-**To add or move a place:** edit `campus.ts`, then run `cd functions && npm run build && cd .. && node scripts/campus-distances.mjs && node scripts/campus-pins.mjs`, build again and commit. This re-measures every walking route, prints the fee table and refreshes the pin list.
+**Only the store → place walk is priced.** The dasher's walk to the store isn't included, as specified.
+
+**To add or move a place:** edit `campus.ts`, then run `cd functions && npm run build && cd .. && node scripts/campus-distances.mjs && node scripts/campus-pins.mjs`, build again and commit. This re-measures every walking route, prints the fee table, and refreshes the pin list and CAMPUS_ROUTES.md.
 
 ## Do the costs get covered? (estimates; confirm the ones marked *)
 DormDash's income is its share of each delivery fee: **J$50–110 per order, about J$65–70 on average.**

@@ -547,18 +547,18 @@ test('delivery fee by walking distance: from the store\'s food spot to the chose
   await db.doc(`stores/${t}/menuItems/patty`).set({ name: 'Beef patty', price: 300, isAvailable: true, category: 'Hot' });
   const to = (pointId, extra = {}) => ({ pointId, label: 'Tampered label', latitude: 1, longitude: 1, hasGpsFix: false, ...extra });
 
-  // Spot → George Alleyne (240 m): the minimum fee.
+  // Spot → George Alleyne (271 m): the minimum fee.
   const near = await settled(await place(order(await student(), { storeId: t, deliveryAddress: to('george-alleyne'), deliveryFee: 1, totalAmount: 1 })));
   assert.equal(near.deliveryFee, 300);
   assert.equal(near.totalAmount, 2 * 300 + 300);
   assert.equal(near.dasherPayoutJmd, 250);
   assert.equal(near.platformFeeJmd, 50);
-  assert.equal(near.deliveryDistanceM, 240);
+  assert.equal(near.deliveryDistanceM, 271);
   assert.equal(near.feeBasis, 'route');
   assert.equal(near.deliveryAddress.label, 'George Alleyne Hall', 'name and position from the campus list, not the phone');
   assert.equal(near.deliveryAddress.hasGpsFix, true);
 
-  // Spot → Taylor Hall (838 m): three steps above the minimum.
+  // Spot → Taylor Hall (882 m): three steps above the minimum.
   const far = await settled(await place(order(await student(), { storeId: t, deliveryAddress: to('taylor') })));
   assert.equal(far.deliveryFee, 450);
   assert.equal(far.dasherPayoutJmd, 370);

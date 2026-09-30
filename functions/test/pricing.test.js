@@ -35,7 +35,22 @@ test('real pairs: the owner\'s example and the extremes', () => {
   assert.equal(spotGeorge.basis, 'route');
   assert.equal(spotGeorge.feeJmd, MIN_DELIVERY_FEE_JMD, 'Spot → George Alleyne is next door');
   assert.ok(welfareGeorge.feeJmd > spotGeorge.feeJmd, 'Social Welfare → George Alleyne costs more');
-  assert.equal(quoteDelivery('preston-cafeteria', 'uhwi').feeJmd, 600, 'across campus');
+  assert.equal(quoteDelivery('preston-cafeteria', 'abc').feeJmd, 700, 'across campus');
+});
+
+test('distances count the walk to the nearest path, and map detours are capped', () => {
+  const { MAX_WALK_DETOUR } = require('../lib/shared.js');
+  const rad = d => (d * Math.PI) / 180;
+  const straight = (a, b) => 2 * 6371000 * Math.asin(Math.sqrt(Math.sin(rad(b.latitude - a.latitude) / 2) ** 2 +
+    Math.cos(rad(a.latitude)) * Math.cos(rad(b.latitude)) * Math.sin(rad(b.longitude - a.longitude) / 2) ** 2));
+  const placed = l => l.filter(x => x.latitude !== null);
+  for (const from of placed(PICKUP_POINTS)) for (const to of placed(DROP_POINTS)) {
+    const m = WALK_M[from.id][to.id], s = straight(from, to);
+    assert.ok(m >= s - 1, `${from.id} → ${to.id}: never shorter than the straight line`);
+    assert.ok(m <= Math.max(s * MAX_WALK_DETOUR, s) + 1, `${from.id} → ${to.id}: at most ${MAX_WALK_DETOUR}× the straight line`);
+  }
+  // Preston Cafe → Rex Nettleford: the map routes the long way round (~950 m); priced as ~530 m.
+  assert.equal(quoteDelivery('preston-cafeteria', 'rex-nettleford').feeJmd, 350);
 });
 
 test('every placed pair is measured, and places without a position use the fallback fee', () => {
