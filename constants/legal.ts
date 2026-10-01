@@ -7,7 +7,7 @@ import { TOKEN_JMD, PAY_WINDOW_MIN } from './index';
 
 export const LEGAL = {
   operator: 'Jcommerce & Tech',           // who runs DormDash
-  appName: 'DormDash',
+  appName: 'Runner',
   country: 'Jamaica',
   // Shown publicly in both documents as the contact for privacy requests,
   // account deletion and disputes. Replace with a dedicated support address.
@@ -18,6 +18,6 @@ export const LEGAL = {
   // How fast personal data is removed after an account is deleted.
   deletionDays: 30,
   // How students pay. Payments: functions/src/payments.ts.
-  paymentMethod: `You pay only after a dasher accepts your order. You then choose to pay with your DormDash tokens or by card, and have ${PAY_WINDOW_MIN} minutes to pay, or the order is cancelled. Card payments are made on the secure payment page of our payment provider, WiPay.`,
+  paymentMethod: `You pay only after a runner accepts your order. You then choose to pay with your Runner tokens or by card, and have ${PAY_WINDOW_MIN} minutes to pay, or the order is cancelled. Card payments are made on the secure payment page of our payment provider, WiPay.`,
   tokenValueJmd: TOKEN_JMD,
 };

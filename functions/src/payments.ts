@@ -184,7 +184,7 @@ export async function chargeTokensOnAccept(orderRef: admin.firestore.DocumentRef
     }, { merge: true });
     tx.set(db.collection('walletTx').doc(`${orderRef.id}_charge`), {
       uid: order.studentId, type: 'order_charge', amountJmd: 0, orderId: orderRef.id,
-      note: 'Reserved tokens used when a dasher accepted', createdAt: Date.now(),
+      note: 'Reserved tokens used when a runner accepted', createdAt: Date.now(),
     });
     tx.update(orderRef, { paymentStatus: 'paid', paidAt: Date.now() });
     writeFloat(tx, target, orderRef.id, foodCost(order), -1, 'Tokens order paid');
@@ -260,7 +260,7 @@ export const payOrderWithTokens = onCall({
     if (!order || order.studentId !== uid) throw new HttpsError('not-found', 'Order not found.');
     if (order.paymentStatus === 'paid') throw new HttpsError('failed-precondition', 'This order is already paid.');
     if (order.status !== 'accepted' || order.paymentStatus !== 'awaiting_payment') {
-      throw new HttpsError('failed-precondition', 'You can pay once a dasher accepts your order.');
+      throw new HttpsError('failed-precondition', 'You can pay once a runner accepts your order.');
     }
     if (Number(order.payDeadline) > 0 && Date.now() > Number(order.payDeadline)) {
       throw new HttpsError('deadline-exceeded', `The ${minutes(PAY_WINDOW_MS)} minutes to pay are up, so this order is being cancelled.`);
@@ -280,7 +280,7 @@ export const payOrderWithTokens = onCall({
     tx.set(wRef, { balanceJmd: balance - total, reservedJmd: reserved, updatedAt: Date.now() }, { merge: true });
     tx.set(db.collection('walletTx').doc(`${orderId}_pay_tokens`), {
       uid, type: 'order_payment', amountJmd: -total, orderId,
-      note: 'Paid with tokens after a dasher accepted', createdAt: Date.now(),
+      note: 'Paid with tokens after a runner accepted', createdAt: Date.now(),
     });
     tx.update(orderRef, { paymentMethod: 'tokens', paymentStatus: 'paid', paidAt: Date.now() });
     writeFloat(tx, target, orderId, foodCost(order), -1, 'Order paid with tokens');
@@ -342,7 +342,7 @@ export const createPayment = onCall({
     if (order.paymentStatus === 'paid') throw new HttpsError('failed-precondition', 'This order is already paid.');
     if (order.paymentMethod !== 'card') throw new HttpsError('failed-precondition', 'This order is not a card order.');
     if (order.status !== 'accepted' || order.paymentStatus !== 'awaiting_payment') {
-      throw new HttpsError('failed-precondition', 'You can pay once a dasher accepts your order.');
+      throw new HttpsError('failed-precondition', 'You can pay once a runner accepts your order.');
     }
     amountJmd = Number(order.totalAmount) || 0;
   } else if (purpose === 'tokens') {
@@ -370,7 +370,7 @@ export const createPayment = onCall({
     fee_structure: 'customer_pay',
     method: 'credit_card',
     order_id: payRef.id,
-    origin: 'DormDash',
+    origin: 'Runner',
     response_url: RETURN_URL,
     total: totalSent,
     ...(me.email ? { email: String(me.email) } : {}),

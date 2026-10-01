@@ -28,9 +28,9 @@ import { FlowLines, FLOW_LOOPS, FLOW_W, FLOW_H } from './Flow';
 // edge line. Content stays in the top of the fade, where the band is still
 // ~90% solid, so cream text keeps its contrast.
 //
-// The contour loops and the big faint italic D are drawn in the same SVG,
+// The contour loops and the big faint italic R are drawn in the same SVG,
 // under the same fade, so they melt into the page with the band instead of
-// stopping at a hard edge. The D is sized to fit the band (never cropped at
+// stopping at a hard edge. The R is sized to fit the band (never cropped at
 // the top or the right) and its foot dissolves in the fade.
 const FADE = 110;
 const FADE_STOPS: [number, number][] = [[0, 1], [0.2, 0.9], [0.4, 0.66], [0.6, 0.34], [0.8, 0.1], [1, 0]];
@@ -105,7 +105,7 @@ export function TideBand({ children, style }: { children?: React.ReactNode; styl
                 fill={T.color.card}
                 fillOpacity={0.07}
               >
-                D
+                R
               </SvgText>
             </G>
           </Svg>

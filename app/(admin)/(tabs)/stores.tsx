@@ -349,7 +349,7 @@ export default function AdminStores() {
                 <Text style={styles.floatText}>
                   {floatOf(item) !== undefined
                     ? `Float: ${formatJMD(floatOf(item)!)}`
-                    : 'No store float (dasher\'s float pays)'}
+                    : 'No store float (runner\'s float pays)'}
                 </Text>
                 <Pressable onPress={() => setFloatTarget(item)} style={styles.floatBtn}>
                   <Text style={styles.floatBtnText}>{floatOf(item) !== undefined ? 'Adjust float' : 'Start float'}</Text>
@@ -385,7 +385,7 @@ export default function AdminStores() {
       <AmountPrompt
         visible={!!floatTarget}
         title={`Float for ${floatTarget?.name ?? ''}`}
-        hint="J$ you gave this store to prepare DormDash orders from. Each paid order's food cost is taken from it. Use a minus sign to reduce it."
+        hint="J$ you gave this store to prepare Runner orders from. Each paid order's food cost is taken from it. Use a minus sign to reduce it."
         unitLabel="J$"
         onCancel={() => setFloatTarget(null)}
         onSubmit={async (amount, note) => {

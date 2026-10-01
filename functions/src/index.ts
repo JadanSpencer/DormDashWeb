@@ -147,7 +147,7 @@ async function setDasherBusy(dasherId: string, orderId: string, busy: boolean): 
       tx.update(ref, { activeOrderId: next[0] ?? null, activeOrderIds: next });
     });
   } catch (e: any) {
-    if (e?.code !== 5) logger.warn('Could not update dasher busy flag', { dasherId, orderId, message: e?.message });
+    if (e?.code !== 5) logger.warn('Could not update runner busy flag', { dasherId, orderId, message: e?.message });
   }
 }
 
@@ -461,7 +461,7 @@ async function offerTo(dashers: FreeDasher[], order: admin.firestore.DocumentDat
     batch.commit().catch(e => logger.warn('Could not record offers', { orderId, message: e?.message })),
     sendPushes(dashers.filter(d => d.token).map(d => ({
       token: d.token!,
-      title: `${MARK.newOrder} New order available`,
+      title: `${MARK.newOrder} New run available`,
       body: `${order.storeName} — ${jmd(orderPayoutJmd(order))} to deliver`,
       data: { screen: '/(dasher)/dash', orderId },
       ttlSeconds: 600, // an order alert older than 10 minutes is useless
@@ -517,7 +517,7 @@ async function publishNewOrder(
     plan = planOffer(await freePromise, Date.now());
   } catch (e: any) {
     // Can't see who is online: publish it open to everyone (as before waves).
-    logger.error('Could not list free dashers', { orderId, message: e?.message });
+    logger.error('Could not list free runners', { orderId, message: e?.message });
   }
   const checked = await verifyNewOrder(ref, order, plan
     ? { offerAt: plan.offerAt, openToAllAt: plan.openToAllAt }
@@ -531,7 +531,7 @@ async function publishNewOrder(
     notified = plan.first.length;
   }
   await offerTo(plan.first, checked, orderId);
-  logger.info(`New order ${orderId}: offered to ${notified} dashers`, {
+  logger.info(`New order ${orderId}: offered to ${notified} runners`, {
     orderId, dashers: notified, waves: plan.lastWave + 1, handleMs: Date.now() - started, lagMs,
   });
   // A new open order may complete a group for a dasher's group search.
@@ -672,7 +672,7 @@ export const onOrderStatusChanged = onDocumentWritten(
       // already delivering another order (not in the same group) can't take
       // this one: the accept is undone and nobody is told anything.
       if (dasherId && !(await claimDasherForOrder(dasherId, ref))) {
-        logger.warn(`Order ${orderId}: second accept by a busy dasher undone`, { orderId, dasherId });
+        logger.warn(`Order ${orderId}: second accept by a busy runner undone`, { orderId, dasherId });
         return;
       }
       const busy = Promise.resolve();
@@ -684,7 +684,7 @@ export const onOrderStatusChanged = onDocumentWritten(
         const storeAlert = charged ? alertStore(after, orderId, 'confirmed') : Promise.resolve();
         if (token) await sendPushNotification(
           token,
-          `${MARK.assigned} Dasher assigned`,
+          `${MARK.assigned} Runner assigned`,
           `${after.dasherName} accepted your order and is heading to ${after.storeName}. Paid with tokens.`,
           { screen: `/(student)/order/${orderId}`, orderId },
           'accepted'
@@ -702,7 +702,7 @@ export const onOrderStatusChanged = onDocumentWritten(
       const [token] = await Promise.all([tokenPromise, busy]);
       if (token) await sendPushNotification(
         token,
-        `${MARK.assigned} Dasher assigned`,
+        `${MARK.assigned} Runner assigned`,
         `${after.dasherName} accepted your order and is heading to ${after.storeName}.`,
         { screen: `/(student)/order/${orderId}`, orderId },
         'accepted'
@@ -744,7 +744,7 @@ export const onOrderStatusChanged = onDocumentWritten(
       ]);
       if (token) await sendPushNotification(
         token,
-        `${MARK.delivered} Delivered`,
+        `${MARK.delivered} Food land!`,
         `Your order from ${after.storeName} has arrived. Enjoy.`,
         { screen: `/(student)/order/${orderId}`, orderId },
         'delivered'
@@ -780,12 +780,12 @@ export const onOrderStatusChanged = onDocumentWritten(
         item_unavailable: 'An item in your order is no longer available. You were not charged.',
         account_inactive: 'Your account is paused. Contact support to restore it.',
         too_many_active: `You already have ${MAX_ACTIVE_ORDERS} orders in progress. Wait for one to arrive, then order again.`,
-        no_dasher: 'No dasher was free to take it in time. You were not charged. Please try again later.',
-        admin: `Your order from ${after.storeName} was cancelled by DormDash support.`,
+        no_dasher: 'No runner was free to take it in time. You were not charged. Please try again later.',
+        admin: `Your order from ${after.storeName} was cancelled by Runner support.`,
         insufficient_tokens: 'You don\'t have enough tokens for this order. You were not charged.',
         payment_timeout: `Your order from ${after.storeName} wasn't paid within ${minutes(PAY_WINDOW_MS)} minutes, so it was cancelled. You were not charged.`,
       };
-      const refundNote = wasPaid ? ' Your payment was returned to you as DormDash tokens.' : '';
+      const refundNote = wasPaid ? ' Your payment was returned to you as Runner tokens.' : '';
 
       // Both alerts go out in the same round trip.
       const pushes: Push[] = [];
@@ -801,7 +801,7 @@ export const onOrderStatusChanged = onDocumentWritten(
         body: after.cancelReason === 'payment_timeout'
           ? `The customer didn't pay for the ${after.storeName} order in time, so it was cancelled. Don't buy it.`
           : after.cancelReason === 'admin'
-            ? `The ${after.storeName} order was cancelled by DormDash support.`
+            ? `The ${after.storeName} order was cancelled by Runner support.`
             : `The ${after.storeName} order was cancelled by the customer.`,
         data: { screen: '/(dasher)/dash' },
       });
@@ -841,8 +841,8 @@ async function creditDasherForDelivery(orderRef: admin.firestore.DocumentReferen
     tx.update(orderRef, { dasherCreditedAt: Date.now(), ...deliveryMinsOf(fresh, Date.now()) });
     return true;
   });
-  if (credited) logger.info(`Credited dasher ${dasherId} for order ${orderRef.id}`);
-  else logger.info(`Dasher already credited for order ${orderRef.id}, skipped`);
+  if (credited) logger.info(`Credited runner ${dasherId} for order ${orderRef.id}`);
+  else logger.info(`Runner already credited for order ${orderRef.id}, skipped`);
 }
 
 // ─── TRIGGER: USER WRITTEN ─────────────────────────────────────────────────
@@ -968,13 +968,13 @@ export const deleteMyAccount = onCall({ ...APP_CHECK }, async (request) => {
   if (balanceJmd > 0 || (Number(walletSnap.get('reservedJmd')) || 0) > 0) {
     throw new HttpsError(
       'failed-precondition',
-      `You still have ${jmd(balanceJmd)} in DormDash tokens. Use them, or email support to have them refunded, then delete your account.`
+      `You still have ${jmd(balanceJmd)} in Runner tokens. Use them, or email support to have them refunded, then delete your account.`
     );
   }
   if ((Number(dasherSnap.get('floatJmd')) || 0) !== 0) {
     throw new HttpsError(
       'failed-precondition',
-      'Your DormDash float isn\'t settled yet. Contact support to settle it, then delete your account.'
+      'Your Runner float isn\'t settled yet. Contact support to settle it, then delete your account.'
     );
   }
   const recent = Date.now() - 60 * 60 * 1000; // an abandoned WiPay page older than this can't still charge
@@ -1006,7 +1006,7 @@ export const deleteMyAccount = onCall({ ...APP_CHECK }, async (request) => {
           };
         } else {
           update.dasherId = 'deleted_user';
-          update.dasherName = 'Deleted dasher';
+          update.dasherName = 'Deleted runner';
         }
         update.anonymisedAt = Date.now();
         batch.update(docSnap.ref, update);
@@ -1040,7 +1040,7 @@ export const deleteMyAccount = onCall({ ...APP_CHECK }, async (request) => {
     throw new HttpsError('internal', 'Could not fully delete the account. Contact support.');
   }
  
-  logger.info(`Account deleted: ${uid} (anonymised ${studentOrders} student / ${dasherOrders} dasher orders)`);
+  logger.info(`Account deleted: ${uid} (anonymised ${studentOrders} student / ${dasherOrders} runner orders)`);
   return { ok: true, anonymisedOrders: studentOrders + dasherOrders };
 });
 
@@ -1066,7 +1066,7 @@ async function refreshOnlineDasherCount(): Promise<void> {
   try {
     await ref.set({ onlineDashers: count, updatedAt: Date.now() }, { merge: true });
   } catch (e: any) {
-    logger.warn('Online dasher count not saved; the scheduler will catch up', { count, message: e?.message });
+    logger.warn('Online runner count not saved; the scheduler will catch up', { count, message: e?.message });
   }
 }
 
@@ -1283,8 +1283,8 @@ async function retireIdleDashers(now = Date.now()): Promise<{ nudged: number; of
         const token = await getUserToken(d.id);
         if (token) await sendPushNotification(
           token,
-          'Still dashing?',
-          `You're online but haven't opened DormDash in a while. Open it to stay online, or we'll switch you off in ${minutes(DASHER_IDLE_GRACE_MS)} minutes.`,
+          'Still running?',
+          `You're online but haven't opened Runner in a while. Open it to stay online, or we'll switch you off in ${minutes(DASHER_IDLE_GRACE_MS)} minutes.`,
           { screen: '/(dasher)/dash' },
           'idle_nudge'
         );
@@ -1305,16 +1305,16 @@ async function retireIdleDashers(now = Date.now()): Promise<{ nudged: number; of
       if (token) await sendPushNotification(
         token,
         "You're offline now",
-        `We switched you off after ${Math.round(DASHER_IDLE_NUDGE_MS / 3600000)} hours without opening DormDash, so orders go to dashers who are around. Switch back on any time.`,
+        `We switched you off after ${Math.round(DASHER_IDLE_NUDGE_MS / 3600000)} hours without opening Runner, so orders go to runners who are around. Switch back on any time.`,
         { screen: '/(dasher)/dash' },
         'idle_offline'
       );
       offline++;
     } catch (e: any) {
-      logger.error('Idle dasher check failed', { dasherId: d.id, message: e?.message });
+      logger.error('Idle runner check failed', { dasherId: d.id, message: e?.message });
     }
   }
-  if (nudged || offline) logger.info('Idle dashers', { nudged, offline });
+  if (nudged || offline) logger.info('Idle runners', { nudged, offline });
   return { nudged, offline };
 }
 

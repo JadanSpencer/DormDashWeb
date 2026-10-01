@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "DormDash",
+    "name": "Runner",
     "slug": "dormdash",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -37,9 +37,9 @@
       "favicon": "./assets/favicon.png",
       "bundler": "metro",
       "output": "single",
-      "name": "DormDash",
-      "shortName": "DormDash",
-      "description": "Order meals and essentials on campus. Students deliver to students.",
+      "name": "Runner",
+      "shortName": "Runner",
+      "description": "Order food and essentials on campus. Students run it to your door.",
       "themeColor": "#1F4E79",
       "backgroundColor": "#FAF5EC",
       "lang": "en"
@@ -56,8 +56,8 @@
       [
         "expo-location",
         {
-          "locationAlwaysAndWhenInUsePermission": "DormDash needs your location to connect you with nearby dashers.",
-          "locationWhenInUsePermission": "DormDash needs your location to connect you with nearby dashers."
+          "locationAlwaysAndWhenInUsePermission": "Runner uses your location to show your position on the map while you deliver.",
+          "locationWhenInUsePermission": "Runner uses your location to show your position on the map while you deliver."
         }
       ],
       [

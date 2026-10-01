@@ -1,8 +1,8 @@
 {
   "id": "/",
-  "name": "DormDash — Campus Delivery",
-  "short_name": "DormDash",
-  "description": "Order meals and essentials on campus. Students deliver to students.",
+  "name": "Runner",
+  "short_name": "Runner",
+  "description": "Order food and essentials on campus. Students run it to your door.",
   "start_url": "/?source=pwa",
   "scope": "/",
   "display": "standalone",
@@ -10,14 +10,41 @@
   "background_color": "#FAF5EC",
   "theme_color": "#1F4E79",
   "lang": "en-JM",
-  "categories": ["food", "shopping", "lifestyle"],
+  "categories": [
+    "food",
+    "shopping",
+    "lifestyle"
+  ],
   "related_applications": [
-    { "platform": "webapp", "url": "https://dormdash-71035.web.app/manifest.webmanifest" }
+    {
+      "platform": "webapp",
+      "url": "https://dormdash-71035.web.app/manifest.webmanifest"
+    }
   ],
   "icons": [
-    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
-    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
-    { "src": "/icons/maskable-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
-    { "src": "/icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/maskable-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/icons/maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
   ]
 }

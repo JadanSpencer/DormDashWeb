@@ -127,7 +127,7 @@ export default function AdminDashboard() {
             <View style={styles.moneyPlate}>
               <Text style={styles.moneyText}>{formatJMD(stats.revenue)}</Text>
             </View>
-            <Text style={styles.cardLabel}>DormDash share of fees</Text>
+            <Text style={styles.cardLabel}>Business share of fees</Text>
             <View style={styles.heroTrend}>
               <Text style={styles.heroTrendText}>{formatJMD(stats.gmv)} GMV</Text>
             </View>
@@ -207,7 +207,7 @@ export default function AdminDashboard() {
           <View style={styles.actionNumber}><Icon name="people-outline" size={18} color={S.color.teal} /></View>
           <View style={{ flex: 1 }}>
             <Text style={styles.actionTitle}>Manage users</Text>
-            <Text style={styles.actionDesc}>Student and dasher accounts</Text>
+            <Text style={styles.actionDesc}>Student and runner accounts</Text>
           </View>
           <Text style={styles.actionArrow}>→</Text>
         </Pressable>

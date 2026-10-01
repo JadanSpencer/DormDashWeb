@@ -97,7 +97,7 @@ function RouteGuard({ introDone }: { introDone: boolean }) {
         resyncLiveData('push');
         const { title, body, data } = notification.request.content;
         bannerRef.current?.show({
-          title: title ?? 'DormDash',
+          title: title ?? 'Runner',
           body: body ?? '',
           onPress: () => { if (data?.screen) router.push(data.screen as any); },
         });

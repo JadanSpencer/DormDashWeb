@@ -41,15 +41,15 @@ const ROLES: { role: UserRole; label: string; description: string; icon: string;
   },
   {
     role: 'dasher',
-    label: 'Dasher',
-    description: 'Deliver orders and earn money',
+    label: 'Runner',
+    description: 'Run food between classes. Clean money, every run.',
     icon: 'motorcycle',
     iconSet: 'material',
     color: T.color.teal,
   },
 ];
 
-// Student university choices. Add campuses here as DormDash expands.
+// Student university choices. Add campuses here as Runner expands.
 const STUDENT_UNIVERSITIES = ['UWI Mona', 'Other'];
 
 const renderIcon = (iconName: string, iconSet: string, color: string, size: number = 26) => {
@@ -227,7 +227,7 @@ export default function RegisterScreen() {
             <Text style={styles.eyebrow}>{step === 1 ? 'Step 1 of 2' : 'Step 2 of 2'}</Text>
             <View style={styles.titleRow}>
               <Text style={styles.title}>
-                {step === 1 ? 'Join DormDash' : 'Almost there'}
+                {step === 1 ? 'Join Runner' : 'Almost there'}
               </Text>
             </View>
             <Text style={styles.subtitle}>

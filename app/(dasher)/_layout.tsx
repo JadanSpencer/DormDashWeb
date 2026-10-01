@@ -6,7 +6,7 @@ import { GlassTabBar } from '../../components/GlassTabBar';
 import { D } from '../../constants/themeDark';
 
 const TABS = {
-  dash: { icon: 'bicycle-outline', iconActive: 'bicycle', label: 'Dash' },
+  dash: { icon: 'bicycle-outline', iconActive: 'bicycle', label: 'Runs' },
   account: { icon: 'person-outline', iconActive: 'person', label: 'Profile' },
 };
 

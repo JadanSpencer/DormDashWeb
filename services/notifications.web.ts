@@ -273,7 +273,7 @@ function asNotification(msg: any) {
   return {
     request: {
       content: {
-        title: msg.title ?? 'DormDash',
+        title: msg.title ?? 'Runner',
         body: msg.body ?? '',
         data: msg.data ?? {},
       },

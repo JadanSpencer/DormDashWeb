@@ -94,16 +94,16 @@ export default function PaymentResult() {
     text = `This order was already paid or cancelled before your card payment finished, so ${formatJMD(pay!.amountJmd)} was added to your balance as ${formatTokens(pay!.amountJmd)}. Use them on your next order.`;
   } else if (ok) {
     title = 'Payment successful';
-    text = 'Your dasher has been told to go ahead with your order.';
+    text = 'Your runner has been told to go ahead with your order.';
   } else if (stillChecking) {
     title = 'Confirming your payment…';
     text = 'This usually takes a few seconds. You can leave this page: your balance or order updates on its own.';
   } else if (inReview) {
     title = 'We\'re confirming your payment';
-    text = `WiPay reported your payment in an unusual way, so DormDash is checking it by hand. You won't be charged twice. Reference: ${pid ?? 'unknown'}.`;
+    text = `WiPay reported your payment in an unusual way, so Runner is checking it by hand. You won't be charged twice. Reference: ${pid ?? 'unknown'}.`;
   } else if (urlStatus === 'error' || !pay) {
     title = 'We couldn\'t confirm this payment';
-    text = `If money was taken from your card, contact DormDash support with this reference: ${pid ?? 'unknown'}.`;
+    text = `If money was taken from your card, contact Runner support with this reference: ${pid ?? 'unknown'}.`;
   }
 
   return (

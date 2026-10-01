@@ -207,7 +207,7 @@ export default function AdminUsers() {
         visible={!!adjust}
         title={adjust?.kind === 'float' ? `Float for ${adjust?.user.name}` : `Tokens for ${adjust?.user.name}`}
         hint={adjust?.kind === 'float'
-          ? 'J$ to add to this dasher\'s float (money you gave them to buy orders). Use a minus sign to reduce it.'
+          ? 'J$ to add to this runner\'s float (money you gave them to buy orders). Use a minus sign to reduce it.'
           : `Tokens to add (1 token = J$${TOKEN_JMD}), e.g. after they pay you cash. Use a minus sign to remove.`}
         unitLabel={adjust?.kind === 'float' ? 'J$' : 'tokens'}
         onCancel={() => setAdjust(null)}

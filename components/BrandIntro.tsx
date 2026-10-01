@@ -1,5 +1,5 @@
 // components/BrandIntro.tsx
-// The two-act launch intro: "Jcommerce & Tech presents", then DormDash.
+// The two-act launch intro: "Jcommerce & Tech presents", then Runner.
 //
 // It is drawn ON TOP of the whole app by app/_layout.tsx, every time the app
 // is loaded (a fresh open, a refresh, or the installed PWA being launched),
@@ -8,8 +8,8 @@
 //
 // ACT ONE (0.0s – 2.0s): the JC mark fades up, the company is named, a gold
 //   rule draws, "presents".
-// ACT TWO (from 2.0s): the DormDash tile drops in, "Dorm" writes on,
-//   "Dash" slides in, a teal sweep runs under it, the tagline lands.
+// ACT TWO (from 2.0s): the Runner tile drops in, "Runner" writes on
+//   letter by letter, a teal sweep runs under it, the tagline lands.
 // The finished logo holds for a moment, then fades out (about 5–6s total).
 //
 // Web: the two images are small copies in public/brand/, preloaded by
@@ -22,7 +22,7 @@ import { T, useReducedMotion } from '../constants/theme';
 
 const ACT_ONE_MS = 2000;   // Jcommerce holds this long
 const TOTAL_MS = 4400;     // reduced-motion version: total length
-const HOLD_MS = 900;       // full DormDash logo stays up this long at the end
+const HOLD_MS = 900;       // full Runner logo stays up this long at the end
 const SAFETY_MS = 9000;    // never keep the app covered longer than this
 const FADE_OUT_MS = 320;
 const IMAGE_WAIT_MS = 2500; // never wait longer than this for images
@@ -56,7 +56,7 @@ export function shouldSkipIntro(): boolean {
   return window.location.pathname.startsWith('/payment-result');
 }
 
-const DORM = ['D', 'o', 'r', 'm'];
+const DORM = ['R', 'u', 'n', 'n', 'e', 'r'];
 
 type Props = {
   /** False while the native splash screen is still covering the app. */
@@ -94,8 +94,6 @@ export function BrandIntro({ canStart, onDone }: Props) {
     fade: new Animated.Value(0),
     rise: new Animated.Value(14),
   }))).current;
-  const dashX = useRef(new Animated.Value(220)).current;
-  const dashFade = useRef(new Animated.Value(0)).current;
   const sweepX = useRef(new Animated.Value(-160)).current;
   const taglineFade = useRef(new Animated.Value(0)).current;
   const taglineRise = useRef(new Animated.Value(8)).current;
@@ -126,7 +124,7 @@ export function BrandIntro({ canStart, onDone }: Props) {
       timers.push(setTimeout(() => {
         tileFade.setValue(1); tileScale.setValue(1); eyebrowFade.setValue(1);
         dormLetters.forEach(l => { l.fade.setValue(1); l.rise.setValue(0); });
-        dashX.setValue(0); dashFade.setValue(1); sweepX.setValue(200);
+        sweepX.setValue(200);
         taglineFade.setValue(1); taglineRise.setValue(0);
         setAct(2);
       }, ACT_ONE_MS));
@@ -166,10 +164,6 @@ export function BrandIntro({ canStart, onDone }: Props) {
               Animated.timing(l.rise, { toValue: 0, duration: 300, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
             ])
           )),
-          Animated.parallel([
-            Animated.timing(dashFade, { toValue: 1, duration: 170, useNativeDriver: true }),
-            Animated.spring(dashX, { toValue: 0, friction: 7, tension: 48, restDisplacementThreshold: 1, restSpeedThreshold: 4, useNativeDriver: true }),
-          ]),
           Animated.timing(sweepX, { toValue: 200, duration: 560, easing: Easing.inOut(Easing.cubic), useNativeDriver: true }),
           Animated.parallel([
             Animated.timing(taglineFade, { toValue: 1, duration: 340, useNativeDriver: true }),
@@ -189,7 +183,7 @@ export function BrandIntro({ canStart, onDone }: Props) {
   const ruleW = ruleWidth.interpolate({ inputRange: [0, 1], outputRange: [0, 120] });
 
   return (
-    <Animated.View style={[styles.root, { opacity: overlay }]} accessibilityLabel="DormDash, a Jcommerce and Tech venture">
+    <Animated.View style={[styles.root, { opacity: overlay }]} accessibilityLabel="Runner, a Jcommerce and Tech venture">
       {act === 1 ? (
         <Animated.View style={[styles.stage, { opacity: jcFade, transform: [{ translateY: jcLift }] }]}>
           <Animated.View style={[styles.jcPlate, { transform: [{ scale: jcScale }] }]}>
@@ -225,13 +219,6 @@ export function BrandIntro({ canStart, onDone }: Props) {
                 </Animated.Text>
               ))}
             </View>
-            <Animated.Text
-              style={[styles.wordmark, styles.dashWord, {
-                opacity: dashFade, transform: [{ translateX: dashX }],
-              }]}
-            >
-              Dash
-            </Animated.Text>
           </View>
           <View style={styles.sweepTrack} pointerEvents="none">
             <Animated.View style={[styles.sweep, { transform: [{ translateX: sweepX }] }]} />
@@ -239,7 +226,7 @@ export function BrandIntro({ canStart, onDone }: Props) {
           <Animated.Text
             style={[styles.tagline, { opacity: taglineFade, transform: [{ translateY: taglineRise }] }]}
           >
-            From the gate to your door.
+            Strictly food runnings.
           </Animated.Text>
         </View>
       )}
@@ -307,7 +294,6 @@ const styles = StyleSheet.create({
   wordRow: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'center' },
   wordGroup: { flexDirection: 'row' },
   wordmark: { fontSize: 52, fontWeight: '900', letterSpacing: -2, color: T.color.ink, lineHeight: 58 },
-  dashWord: { color: T.color.cerulean },
   sweepTrack: {
     marginTop: 4, width: 220, height: 4,
     overflow: 'hidden', borderRadius: 2, backgroundColor: T.color.line,

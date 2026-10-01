@@ -1,4 +1,4 @@
-/* DormDash service worker
+/* Runner service worker
  *
  * Goals: make the PWA installable, open instantly, and show the app shell
  * when the network drops. It deliberately does NOT cache anything
@@ -8,7 +8,7 @@
  * Bump VERSION whenever this file changes. App code updates don't need a
  * bump: JS bundles are content-hashed and navigations are network-first.
  */
-const VERSION = 'dd-v9';
+const VERSION = 'dd-v10';
 const SHELL = `${VERSION}-shell`;
 const RUNTIME = `${VERSION}-runtime`;
 
@@ -125,7 +125,7 @@ function parsePush(event) {
   const data = Object.assign({}, payload.data || {});
   const n = payload.notification || {};
   return {
-    title: data.title || n.title || 'DormDash',
+    title: data.title || n.title || 'Runner',
     body: data.body || n.body || '',
     data,
   };

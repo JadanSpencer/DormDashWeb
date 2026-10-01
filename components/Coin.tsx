@@ -1,9 +1,9 @@
 // components/Coin.tsx
-// A DormDash token as a struck gold coin (original SVG):
+// A Runner token as a struck gold coin (original SVG):
 //   • a milled (reeded) edge, like real money
 //   • a domed face: light from the top left, deeper gold at the bottom right
 //   • a bevelled inner ring
-//   • the DormDash mark, the three speed stripes beside the D, struck
+//   • the Runner mark, the three speed stripes beside the R, struck
 //     into the face with a light lower edge
 // Small coins (under 22px) drop the milling and the ring so they stay crisp.
 // CoinStack fans a few coins together to show an amount.
@@ -27,11 +27,12 @@ const MILLING = (() => {
   return d;
 })();
 
-// The DormDash mark (drawn in a 112 × 100 box, centre 58,50), scaled to sit
+// The Runner mark (drawn in a 112 × 100 box, centre 58,50), scaled to sit
 // in the middle of the face.
 const MARK_SCALE = 0.235;
 const MARK_T = `translate(${(20 - 58 * MARK_SCALE).toFixed(2)} ${(20 - 50 * MARK_SCALE).toFixed(2)}) scale(${MARK_SCALE})`;
-const D_PATH = 'M42 22 L82 22 A28 28 0 0 1 82 78 L42 78 Z M52 32 L52 68 L78 68 A18 18 0 0 0 78 32 Z';
+// R: stem, round bowl (counter cut out) and a kicked leg.
+const R_PATH = 'M42 22 L70 22 A17 17 0 0 1 70 56 L86 78 L72 78 L59 56 L54 56 L54 78 L42 78 Z M54 32 L54 46 L69 46 A7 7 0 0 0 69 32 Z';
 const STRIPES = ['M14 38 L32 38', 'M6 50 L32 50', 'M14 62 L32 62'];
 
 function Mark({ color, dx = 0, dy = 0, small }: { color: string; dx?: number; dy?: number; small: boolean }) {
@@ -40,7 +41,7 @@ function Mark({ color, dx = 0, dy = 0, small }: { color: string; dx?: number; dy
       <G stroke={color} strokeWidth={small ? 9 : 7} strokeLinecap="round">
         {STRIPES.map(d => <Path key={d} d={d} />)}
       </G>
-      <Path d={D_PATH} fill={color} fillRule="evenodd" />
+      <Path d={R_PATH} fill={color} fillRule="evenodd" />
     </G>
   );
 }

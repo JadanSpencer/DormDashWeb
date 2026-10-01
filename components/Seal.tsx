@@ -3,8 +3,8 @@
 // circle with a dashed inner ring and a word or two in the italic headline
 // face, tilted as if stuck on by hand. Marks an order's big moments:
 //   '寮'  order placed   "Order in!"
-//   '走'  on the way     "On di way"
-//   '配'  delivered      "Enjoy!"
+//   '走'  on the way     "Runner a run!"
+//   '配'  delivered      "Food land!"
 // (The characters are kept as the API from the earlier seal design.) Small
 // stamps (under 46px) show one mark instead of words so they stay legible.
 // `stamp` presses it in once when it first appears (native driver); it stays
@@ -15,7 +15,7 @@ import { Animated, Easing, StyleSheet, Text, View, type StyleProp, type ViewStyl
 import { FONT, T, useReducedMotion } from '../constants/theme';
 
 type Char = '寮' | '配' | '走';
-const WORDS: Record<Char, string[]> = { '寮': ['Order', 'in!'], '走': ['On di', 'way'], '配': ['Enjoy!'] };
+const WORDS: Record<Char, string[]> = { '寮': ['Order', 'in!'], '走': ['Runner', 'a run!'], '配': ['Food', 'land!'] };
 const MARKS: Record<Char, string> = { '寮': '•', '走': '→', '配': '✓' };
 const LABELS: Record<Char, string> = { '寮': 'Order placed', '走': 'On the way', '配': 'Delivered' };
 

@@ -49,7 +49,7 @@ export function orderCode(orderId: string): string {
 }
 
 function firstName(name: unknown): string {
-  return String(name ?? '').trim().split(/\s+/)[0] || 'A dasher';
+  return String(name ?? '').trim().split(/\s+/)[0] || 'A runner';
 }
 
 function itemLines(order: any): string {
@@ -115,7 +115,7 @@ export async function alertStore(
     const msg: NtfyMessage = kind === 'confirmed'
       ? {
           title: `New order #${code}`,
-          message: `${itemLines(order)}\n\nFood total: ${jmd(foodTotal(order))}\n${dasher} (DormDash dasher) is coming to collect it. Order #${code}.`,
+          message: `${itemLines(order)}\n\nFood total: ${jmd(foodTotal(order))}\n${dasher} from Runner is coming to collect it. Order #${code}.`,
           priority: 5,
           tags: ['shopping_bags'],
         }
@@ -164,8 +164,8 @@ export const storeAlertsAdmin = onCall({ ...APP_CHECK }, async (request) => {
   if (action === 'test') {
     try {
       await postNtfy(topic, {
-        title: 'DormDash test alert',
-        message: 'This phone will get DormDash orders for your store here.',
+        title: 'Runner test alert',
+        message: 'This phone will get Runner orders for your store here.',
         priority: 5,
         tags: ['white_check_mark'],
       });

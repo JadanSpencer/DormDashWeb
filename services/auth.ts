@@ -232,7 +232,7 @@ export const resetPassword = async (
       case 'auth/user-cancelled':
         return null; // they changed their mind: say nothing
       case 'auth/account-exists-with-different-credential':
-        return 'This email already has a DormDash password. Sign in with your email and password instead.';
+        return 'This email already has a Runner password. Sign in with your email and password instead.';
       case 'auth/operation-not-allowed':
         return 'Google sign-in isn\'t switched on yet. Use your email and password for now.';
       case 'auth/unauthorized-domain':

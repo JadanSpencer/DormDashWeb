@@ -168,7 +168,7 @@ export function GroupFinder({ uid, busy }: Props) {
             : <Text style={styles.primaryText}>Accept all {group.size} orders</Text>}
         </Pressable>
         <Text style={styles.fine}>
-          Not held for you: if another dasher takes one of these orders first, the group is gone. Each customer pays for their own order before you pick it up.
+          Not held for you: if another runner takes one of these orders first, the group is gone. Each customer pays for their own order before you pick it up.
         </Text>
       </View>
     );

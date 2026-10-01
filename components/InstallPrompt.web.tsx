@@ -36,9 +36,11 @@
 // and only lasts for this visit.
 import React, { useEffect, useState } from 'react';
 import { View, Text, Pressable, StyleSheet, Image, ScrollView } from 'react-native';
+import Svg, { Circle, Path, Rect } from 'react-native-svg';
 import { T, FONT } from '../constants/theme';
 import { PAY_WINDOW_MIN } from '../constants';
 import { TideBand, pressPlate } from './Tide';
+import { Icon } from './TabIcon';
 import { enableWebPush, webPushPermission } from '../services/notifications';
 
 const INSTALL_KEY = 'dd_install_dismissed_at';
@@ -112,23 +114,23 @@ async function isInstalled(): Promise<boolean> {
 type Guide = { key: string; label: string; steps: string; unblock: string };
 const GUIDES: Guide[] = [
   { key: 'ios-safari', label: 'iPhone / iPad (Safari)',
-    steps: 'Tap the Share button (square with an arrow), then "Add to Home Screen", then Add. Open DormDash from your Home Screen to get order alerts.',
-    unblock: 'Open the Settings app, tap Notifications, find DormDash and turn on Allow Notifications.' },
+    steps: 'Tap the three dots (⋯) at the bottom of Safari, then Share, then "Add to Home Screen", then Add. Open Runner from your Home Screen to get order alerts.',
+    unblock: 'Open the Settings app, tap Notifications, find Runner and turn on Allow Notifications.' },
   { key: 'ios-other', label: 'iPhone / iPad (Chrome, Edge)',
     steps: 'Tap the Share button in the address bar, then "Add to Home Screen". If you don\'t see it, open this page in Safari instead.',
-    unblock: 'Open the Settings app, tap Notifications, find DormDash and turn on Allow Notifications.' },
+    unblock: 'Open the Settings app, tap Notifications, find Runner and turn on Allow Notifications.' },
   { key: 'android-chrome', label: 'Android (Chrome)',
     steps: 'Tap the ⋮ menu at the top right, then "Install app" or "Add to Home screen".',
-    unblock: 'Tap the icon to the left of the address bar, then Permissions (or Site settings), then Notifications, then Allow. In the installed app: press and hold the DormDash icon, tap App info, then Notifications, and turn them on.' },
+    unblock: 'Tap the icon to the left of the address bar, then Permissions (or Site settings), then Notifications, then Allow. In the installed app: press and hold the Runner icon, tap App info, then Notifications, and turn them on.' },
   { key: 'android-samsung', label: 'Samsung Internet',
     steps: 'Tap the ≡ menu at the bottom, then "Add page to", then "Home screen".',
-    unblock: 'Tap the ≡ menu, then Settings, then Sites and downloads, then Notifications, and allow DormDash.' },
+    unblock: 'Tap the ≡ menu, then Settings, then Sites and downloads, then Notifications, and allow Runner.' },
   { key: 'android-firefox', label: 'Android (Firefox)',
     steps: 'Tap the ⋮ menu, then "Install".',
     unblock: 'Tap the lock icon in the address bar, then turn Notifications on.' },
   { key: 'mac-safari', label: 'Mac (Safari)',
     steps: 'In the menu bar, choose File, then "Add to Dock".',
-    unblock: 'In the menu bar choose Safari, then Settings, then Websites, then Notifications, and set DormDash to Allow.' },
+    unblock: 'In the menu bar choose Safari, then Settings, then Websites, then Notifications, and set Runner to Allow.' },
   { key: 'desktop-chrome', label: 'Mac / Windows (Chrome)',
     steps: 'Click the install icon at the right end of the address bar, or ⋮ menu → "Cast, save and share" → "Install page as app".',
     unblock: 'Click the icon to the left of the address bar, then Site settings, and set Notifications to Allow. Then reload this page.' },
@@ -136,7 +138,7 @@ const GUIDES: Guide[] = [
     steps: 'Click the … menu, then Apps, then "Install this site as an app".',
     unblock: 'Click the lock icon to the left of the address bar, then Permissions for this site, and set Notifications to Allow. Then reload this page.' },
   { key: 'desktop-firefox', label: 'Mac / Windows (Firefox)',
-    steps: 'Firefox on computers can\'t install web apps. Keep this tab pinned, or open DormDash in Chrome, Edge or Safari to install it.',
+    steps: 'Firefox on computers can\'t install web apps. Keep this tab pinned, or open Runner in Chrome, Edge or Safari to install it.',
     unblock: 'Click the lock icon in the address bar, then clear the "Blocked" setting next to Notifications. Then reload this page.' },
 ];
 
@@ -164,7 +166,10 @@ function snooze(key: string) {
   store(key, String(Date.now()));
 }
 
-// ─── iPhone / iPad: full-screen "add to Home Screen" warning ─────────────
+// ─── iPhone / iPad: full-screen "add to Home Screen" invitation ──────────
+// Steps for Safari on current iOS: ⋯ (three dots, bottom of Safari) →
+// Share → Add to Home Screen → Add. Older iOS shows the Share button
+// directly; the footnote covers it.
 const IOS_SKIP_KEY = 'dd_ios_gate_skipped'; // sessionStorage: this visit only
 const IOS_SKIP_DELAY_MS = 6000;             // read first, then the way out
 
@@ -206,54 +211,111 @@ function IOSInstallGate({ onClose }: { onClose: () => void }) {
     onClose();
   };
 
-  const steps: { n: number; text: React.ReactNode }[] = [
-    ...(wrongBrowser ? [{ n: 0, text: <>Open <Text style={gate.strong}>{link.replace(/^https?:\/\//, '')}</Text> in <Text style={gate.strong}>Safari</Text></> }] : []),
-    { n: 0, text: <>Tap <Text style={gate.key}> ⋯ </Text> at the bottom of Safari</> },
-    { n: 0, text: <>Tap <Text style={gate.key}> More </Text></> },
-    { n: 0, text: <>Tap <Text style={gate.key}> Add to Home Screen </Text>, then Add</> },
-    { n: 0, text: <>Open DormDash from your <Text style={gate.strong}>Home Screen</Text>. Done.</> },
-  ].map((st, i) => ({ ...st, n: i + 1 }));
+  // The three taps, each with a drawing of the button to look for.
+  const steps: { art: React.ReactNode; text: React.ReactNode }[] = [
+    ...(wrongBrowser ? [{
+      art: <StepArt kind="safari" />,
+      text: <>Open <Text style={gate.strong}>{link.replace(/^https?:\/\//, '')}</Text> in <Text style={gate.strong}>Safari</Text></>,
+    }] : []),
+    { art: <StepArt kind="dots" />, text: <>Tap the <Text style={gate.key}> ⋯ </Text> three dots at the bottom of Safari</> },
+    { art: <StepArt kind="share" />, text: <>Tap <Text style={gate.key}> Share </Text></> },
+    { art: <StepArt kind="add" />, text: <>Tap <Text style={gate.key}> Add to Home Screen </Text>, then <Text style={gate.strong}>Add</Text></> },
+  ];
 
   return (
     <View style={gate.screen} accessibilityRole="alert" accessibilityViewIsModal>
       <ScrollView contentContainerStyle={gate.scroll} bounces={false}>
         <TideBand>
           <View style={gate.head}>
-            <View style={gate.warnMark}><Text style={gate.warnMarkText}>!</Text></View>
-            <Text style={gate.kicker}>iPhone users, read this</Text>
-            <Text style={gate.title}>Add DormDash to your Home Screen</Text>
-            <Text style={gate.warn}>
-              Skip this and you <Text style={gate.warnStrong}>won't get order alerts</Text>. Miss the "Pay now" alert and your order is cancelled after {PAY_WINDOW_MIN} minutes.
+            {/* The real app icon, about to land on their Home Screen. */}
+            <View style={gate.iconWrap}>
+              <Image source={{ uri: '/brand/dormdash-tile.png' }} style={gate.appIcon} accessible={false} />
+              <View style={gate.iconBadge}><Text style={gate.iconBadgeText}>+</Text></View>
+            </View>
+            <Text style={gate.kicker}>3 taps, 10 seconds</Text>
+            <Text style={gate.title}>Put Runner on your Home Screen</Text>
+            <Text style={gate.lead}>
+              It opens like a real app, and it's the only way your iPhone can send you order alerts.
             </Text>
           </View>
         </TideBand>
 
         <View style={gate.body}>
-          <Text style={gate.takes}>Takes 10 seconds:</Text>
-          {steps.map(st => (
-            <View key={st.n} style={gate.step}>
-              <View style={gate.num}><Text style={gate.numText}>{st.n}</Text></View>
+          {/* What they get for it */}
+          <View style={gate.perks}>
+            {[
+              'An alert the moment a runner takes your order',
+              `Never miss "Pay now" (unpaid orders cancel after ${PAY_WINDOW_MIN} minutes)`,
+              'One tap from your Home Screen, full screen, still signed in',
+            ].map(t => (
+              <View key={t} style={gate.perk}>
+                <View style={gate.tick}><Icon name="checkmark" size={14} color={T.color.card} /></View>
+                <Text style={gate.perkText}>{t}</Text>
+              </View>
+            ))}
+          </View>
+
+          <Text style={gate.takes}>Here's how</Text>
+          {steps.map((st, i) => (
+            <View key={i} style={gate.step}>
+              <View style={gate.num}><Text style={gate.numText}>{i + 1}</Text></View>
               <Text style={gate.stepText}>{st.text}</Text>
+              <View style={gate.art}>{st.art}</View>
             </View>
           ))}
+          <View style={gate.finish}>
+            <Text style={gate.finishText}>
+              Then open Runner from your <Text style={gate.strong}>Home Screen</Text>. That's it, you're set.
+            </Text>
+          </View>
           {wrongBrowser && (
             <Pressable onPress={copy} style={({ pressed }) => [gate.copy, pressPlate(pressed, 3)]} accessibilityRole="button">
               <Text style={gate.copyText}>{copied ? 'Link copied. Paste it in Safari.' : 'Copy the link'}</Text>
             </Pressable>
           )}
-          <Text style={gate.older}>Older iPhone? Tap the Share button (square with an arrow), then Add to Home Screen.</Text>
+          <Text style={gate.older}>
+            No three dots? On older iPhones, tap the Share button (a square with an arrow) at the bottom of Safari, then Add to Home Screen.
+          </Text>
 
           <Pressable onPress={added} style={({ pressed }) => [gate.primary, pressPlate(pressed)]} accessibilityRole="button">
-            <Text style={gate.primaryText}>I've added it</Text>
+            <Text style={gate.primaryText}>Done, it's on my Home Screen</Text>
           </Pressable>
           {canSkip ? (
             <Pressable onPress={skip} style={gate.skip} accessibilityRole="button">
-              <Text style={gate.skipText}>Continue without alerts</Text>
+              <Text style={gate.skipText}>Maybe later (no order alerts)</Text>
             </Pressable>
           ) : <View style={gate.skip} />}
         </View>
       </ScrollView>
     </View>
+  );
+}
+
+// Small drawings of the Safari buttons each step talks about, so students
+// can match them to what's on their screen.
+function StepArt({ kind }: { kind: 'dots' | 'share' | 'add' | 'safari' }) {
+  const ink = T.color.cerulean;
+  return (
+    <Svg width={30} height={30} viewBox="0 0 36 36">
+      {kind === 'dots' && (<>
+        <Circle cx={18} cy={18} r={15} fill="none" stroke={ink} strokeWidth={2} />
+        <Circle cx={11.5} cy={18} r={2.2} fill={ink} />
+        <Circle cx={18} cy={18} r={2.2} fill={ink} />
+        <Circle cx={24.5} cy={18} r={2.2} fill={ink} />
+      </>)}
+      {kind === 'share' && (<>
+        <Path d="M13 15 H10 V31 H26 V15 H23" fill="none" stroke={ink} strokeWidth={2.2} strokeLinejoin="round" />
+        <Path d="M18 22 V4 M12.5 9.5 L18 4 L23.5 9.5" fill="none" stroke={ink} strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" />
+      </>)}
+      {kind === 'add' && (<>
+        <Rect x={5} y={5} width={26} height={26} rx={7} fill="none" stroke={ink} strokeWidth={2.2} />
+        <Path d="M18 11 V25 M11 18 H25" stroke={ink} strokeWidth={2.4} strokeLinecap="round" />
+      </>)}
+      {kind === 'safari' && (<>
+        <Circle cx={18} cy={18} r={15} fill="none" stroke={ink} strokeWidth={2} />
+        <Path d="M23 13 L20 20 L13 23 L16 16 Z" fill={ink} />
+      </>)}
+    </Svg>
   );
 }
 
@@ -380,7 +442,7 @@ function InstallCard({ uid, role }: { uid?: string | null; role?: string }) {
   const guide = typeof window !== 'undefined' ? detectGuide() : GUIDES[0];
   const canInstallDirectly = !!deferredPrompt;
 
-  let title = 'Install DormDash?';
+  let title = 'Install Runner?';
   let text = 'It opens full screen like a normal app, right from your home screen, and order alerts work best. No app store needed.';
   if (mode === 'steps') {
     title = `Install on ${guide.label}`;
@@ -389,8 +451,8 @@ function InstallCard({ uid, role }: { uid?: string | null; role?: string }) {
   if (mode === 'alerts') {
     title = 'Turn on order alerts';
     text = role === 'dasher'
-      ? 'Get a notification the moment a new order comes in, even with DormDash closed.'
-      : 'Get a notification when a dasher accepts your order, picks it up and arrives.';
+      ? 'Get a notification the moment a new order comes in, even with Runner closed.'
+      : 'Get a notification when a runner accepts your order, picks it up and arrives.';
     if (alertsResult === 'on') text = 'Order alerts are on.';
     if (alertsResult === 'blocked') text = 'Alerts are blocked. You can allow them later in your browser\'s site settings.';
   }
@@ -506,16 +568,33 @@ const gate = StyleSheet.create({
   },
   scroll: { flexGrow: 1 },
   head: { paddingHorizontal: T.space.lg, paddingTop: T.space.xl + 8, paddingBottom: T.space.xl, maxWidth: 520 },
-  warnMark: {
-    width: 52, height: 52, borderRadius: T.radius.md, backgroundColor: T.color.shu,
-    alignItems: 'center', justifyContent: 'center', marginBottom: T.space.md,
-    borderWidth: 2, borderColor: T.color.card, ...T.plate.sea,
+  iconWrap: { width: 76, height: 76, marginBottom: T.space.md },
+  appIcon: { width: 76, height: 76 },
+  iconBadge: {
+    position: 'absolute', right: -6, bottom: -6, width: 30, height: 30, borderRadius: 15,
+    backgroundColor: T.color.mustard, alignItems: 'center', justifyContent: 'center',
+    borderWidth: 2, borderColor: T.color.card,
   },
-  warnMarkText: { fontFamily: FONT.heading, fontSize: 32, lineHeight: 40, color: T.color.card },
-  kicker: { fontSize: 15, fontWeight: '800', color: T.color.seaFoam, marginBottom: 4 },
+  iconBadgeText: { fontSize: 20, lineHeight: 22, fontWeight: '900', color: T.color.ink },
+  kicker: { fontFamily: FONT.script, fontSize: 24, color: T.color.mustard, marginBottom: 2 },
   title: { ...T.type.display, fontSize: 36, lineHeight: 42, color: T.color.card },
-  warn: { fontSize: 17, lineHeight: 25, fontWeight: '600', color: T.color.seaSoft, marginTop: T.space.md },
-  warnStrong: { color: T.color.card, fontWeight: '900' },
+  lead: { fontSize: 17, lineHeight: 25, fontWeight: '600', color: T.color.seaSoft, marginTop: T.space.md },
+
+  perks: {
+    backgroundColor: T.color.tealTint, borderRadius: T.radius.lg, padding: T.space.md, gap: T.space.sm,
+  },
+  perk: { flexDirection: 'row', alignItems: 'flex-start', gap: T.space.sm },
+  tick: {
+    width: 22, height: 22, borderRadius: 11, backgroundColor: T.color.teal, marginTop: 1,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  perkText: { flex: 1, fontSize: 15, lineHeight: 22, fontWeight: '700', color: T.color.ink },
+  art: {
+    width: 48, height: 48, borderRadius: T.radius.md, backgroundColor: T.color.ceruleanTint,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  finish: { paddingHorizontal: T.space.xs },
+  finishText: { fontSize: 16, lineHeight: 24, fontWeight: '600', color: T.color.inkSoft },
 
   body: { paddingHorizontal: T.space.lg, paddingTop: T.space.lg, paddingBottom: T.space.xl, gap: T.space.md, maxWidth: 520 },
   takes: { ...T.type.title, fontSize: 22, color: T.color.ink },

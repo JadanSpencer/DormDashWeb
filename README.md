@@ -1,8 +1,8 @@
-﻿# DormDash
+﻿# Runner (formerly DormDash)
 
-**Campus peer-to-peer delivery app for Jamaican universities — students order, dashers deliver, admins manage.**
+**Campus peer-to-peer delivery app for UWI Mona: students order, runners deliver, admins manage.**
 
-DormDash connects students on the same campus. Students order food and items from local stores. Other students sign up as dashers, pick up orders, and deliver them for a fee. Everything is tracked in real time.
+Runner connects students on the same campus. Students order food and items from campus stores. Other students sign up as runners, pick up orders and deliver them for a fee. Everything is tracked in real time.
 
 ## Features
 

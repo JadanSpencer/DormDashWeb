@@ -212,7 +212,7 @@ export default function DasherHome() {
       const outcome = await acceptOrder(order.id, { uid: user.uid, name: user.name });
       if (outcome === 'ok') return;
       dismissPending(order.id);
-      if (outcome === 'taken') Alert.alert('Too slow!', 'Another dasher just took this order.');
+      if (outcome === 'taken') Alert.alert('Too slow!', 'Another runner just took this order.');
       else Alert.alert('Order no longer available', 'The customer cancelled this order, or it was a duplicate. It has been removed from your list.');
     } catch (e: any) {
       dismissPending(order.id);
@@ -251,7 +251,7 @@ export default function DasherHome() {
             {/* ── HEADER + ONLINE HERO ─────────────────────────────── */}
             <View style={[styles.header, { paddingTop: insets.top + D.space.md }]}>
               <Text style={styles.greeting}>
-                {user?.name?.split(' ')[0] ?? 'Dasher'}
+                {user?.name?.split(' ')[0] ?? 'Runner'}
               </Text>
             </View>
 
@@ -266,9 +266,9 @@ export default function DasherHome() {
                 </View>
                 <Text style={styles.onlineSub}>
                   {isOnline
-                    ? `Receiving orders${Platform.OS === 'web' ? ', and new orders arrive as notifications' : ''}. If you don't open DormDash for ${IDLE_HOURS} hours, we'll check you're still dashing.`
+                    ? `Receiving orders${Platform.OS === 'web' ? ', and new orders arrive as notifications' : ''}. If you don't open Runner for ${IDLE_HOURS} hours, we'll check you're still running.`
                     : idleOff
-                      ? `We switched you off after ${IDLE_HOURS} hours without opening DormDash, so orders went to dashers who were around. Switch on when you're ready.`
+                      ? `We switched you off after ${IDLE_HOURS} hours without opening Runner, so orders went to runners who were around. Switch on when you're ready.`
                       : 'Toggle on to start receiving orders'}
                 </Text>
               </View>
@@ -420,8 +420,8 @@ export default function DasherHome() {
             {!isOnline && !busy && (
               <View style={styles.offline}>
                 <View style={styles.offlineTile}><View style={styles.offlineInner} /></View>
-                <Text style={styles.offlineTitle}>Ready when you are</Text>
-                <Text style={styles.offlineSub}>Go online to see available orders.</Text>
+                <Text style={styles.offlineTitle}>Ready fi run?</Text>
+                <Text style={styles.offlineSub}>Go online to see available runs. Food only, clean money.</Text>
               </View>
             )}
           </>
@@ -429,7 +429,7 @@ export default function DasherHome() {
         ListEmptyComponent={
           isOnline && !busy && !loading ? (
             <View style={styles.empty}>
-              <Text style={styles.emptyTitle}>No orders right now</Text>
+              <Text style={styles.emptyTitle}>No runnings right now</Text>
               <Text style={styles.emptySub}>New orders show up here instantly, and you'll get a notification.</Text>
             </View>
           ) : null

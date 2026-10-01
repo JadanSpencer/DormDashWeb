@@ -267,7 +267,7 @@ export function useDasherOrders(uid: string | undefined, sinceMs: number) {
       snap => { setOrders(toOrders(snap.docs)); setLoading(false); },
       err => {
         if (err?.code !== 'failed-precondition') {
-          console.log('Dasher orders listener failed:', err?.message);
+          console.log('Runner orders listener failed:', err?.message);
           setLoading(false);
           return;
         }

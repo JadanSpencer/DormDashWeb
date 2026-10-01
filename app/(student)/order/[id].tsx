@@ -42,10 +42,10 @@ import { Seal } from '../../../components/Seal';
 import { Money } from '../../../components/Money';
 
 const STATUS_CONFIG: Record<OrderStatus, { label: string; color: string; description: string }> = {
-  pending:    { label: 'Finding a dasher', color: T.color.warning,  description: 'Waiting for a dasher to accept your order' },
-  accepted:   { label: 'Dasher assigned',  color: T.color.cerulean, description: 'Your dasher is heading to the store' },
-  picking_up: { label: 'Picking up',       color: T.color.cerulean, description: 'Your dasher is at the store collecting your order' },
-  on_the_way: { label: 'On the way',       color: T.color.teal,     description: 'Your dasher is heading to you!' },
+  pending:    { label: 'Finding a runner', color: T.color.warning,  description: 'Waiting for a runner to accept your order' },
+  accepted:   { label: 'Runner assigned',  color: T.color.cerulean, description: 'Your runner is heading to the store' },
+  picking_up: { label: 'Picking up',       color: T.color.cerulean, description: 'Your runner is at the store collecting your order' },
+  on_the_way: { label: 'On the way',       color: T.color.teal,     description: 'Your runner is heading to you!' },
   delivered:  { label: 'Delivered',        color: T.color.teal,     description: 'Enjoy your order!' },
   cancelled:  { label: 'Cancelled',        color: T.color.danger,   description: 'This order was cancelled' },
 };
@@ -61,9 +61,9 @@ const CANCEL_REASONS: Partial<Record<CancelReason, string>> = {
   account_inactive: 'Your account is paused. Contact support to restore it.',
   too_many_active: `You already had ${MAX_ACTIVE_ORDERS} orders in progress. You were not charged. Wait for one to arrive, then order again.`,
   insufficient_tokens: 'You didn\'t have enough tokens for this order. You were not charged.',
-  payment_timeout: `The order wasn't paid within ${PAY_WINDOW_MIN} minutes of a dasher accepting, so it was cancelled. You were not charged.`,
-  no_dasher: `No dasher was free to take it within ${PENDING_TIMEOUT_MIN} minutes. You were not charged. Please try again later.`,
-  admin: 'DormDash support cancelled this order. You were not charged. Email us if you have questions.',
+  payment_timeout: `The order wasn't paid within ${PAY_WINDOW_MIN} minutes of a runner accepting, so it was cancelled. You were not charged.`,
+  no_dasher: `No runner was free to take it within ${PENDING_TIMEOUT_MIN} minutes. You were not charged. Please try again later.`,
+  admin: 'Runner support cancelled this order. You were not charged. Email us if you have questions.',
   duplicate_order: 'This was an accidental repeat of an order you had just placed. Only the first one goes through, and you were not charged twice.',
 };
 
@@ -132,22 +132,22 @@ const PaymentPanel: React.FC<{ order: Order }> = ({ order }) => {
   let text = '';
   if (order.paymentStatus === 'paid') {
     title = order.paymentMethod === 'tokens' ? 'Paid with tokens' : 'Paid by card';
-    text = `${fmt(total)} paid. Your dasher is on it.`;
+    text = `${fmt(total)} paid. Your runner is on it.`;
   } else if (order.paymentMethod === 'tokens') {
     // Placed with tokens on an older app version.
     title = 'Tokens held';
-    text = `${fmt(total)} is held from your tokens. It is only used when a dasher accepts.`;
+    text = `${fmt(total)} is held from your tokens. It is only used when a runner accepts.`;
   } else if (awaiting) {
     const left = Math.max(0, (order.payDeadline ?? 0) - now);
     const mm = Math.floor(left / 60000);
     const ss = Math.floor((left % 60000) / 1000).toString().padStart(2, '0');
     title = 'Pay now to confirm';
     text = left > 0
-      ? `A dasher accepted your order. Choose how to pay within ${mm}:${ss}, or the order will be cancelled.`
+      ? `A runner accepted your order. Choose how to pay within ${mm}:${ss}, or the order will be cancelled.`
       : 'Time is up. The order will be cancelled shortly unless the payment already went through.';
   } else {
-    title = 'Pay after a dasher accepts';
-    text = 'You haven\'t been charged. When a dasher accepts, you\'ll get a notification and choose to pay with your tokens or by card.';
+    title = 'Pay after a runner accepts';
+    text = 'You haven\'t been charged. When a runner accepts, you\'ll get a notification and choose to pay with your tokens or by card.';
   }
 
   const tokenNote = !wallet.loaded
@@ -182,7 +182,7 @@ const PaymentPanel: React.FC<{ order: Order }> = ({ order }) => {
           >
             {busy === 'card' ? <ActivityIndicator color={T.color.card} /> : <Text style={pay_.btnText}>Pay {fmt(total)} by card</Text>}
           </Pressable>
-          <Text style={pay_.fine}>Card details are entered on WiPay's secure page. DormDash never sees them.</Text>
+          <Text style={pay_.fine}>Card details are entered on WiPay's secure page. Runner never sees them.</Text>
         </>
       )}
     </View>
@@ -305,7 +305,7 @@ export default function OrderTracking() {
             <Text style={styles.cancelledTitle}>Order cancelled</Text>
             <Text style={styles.cancelledSub}>
               {(order.cancelReason && CANCEL_REASONS[order.cancelReason]) ?? 'You were not charged. You can order again anytime.'}
-              {order.paymentStatus === 'refunded_tokens' ? ' Your payment was returned to you as DormDash tokens.' : ''}
+              {order.paymentStatus === 'refunded_tokens' ? ' Your payment was returned to you as Runner tokens.' : ''}
             </Text>
           </View>
         ) : (
@@ -335,7 +335,7 @@ export default function OrderTracking() {
                   <Text style={styles.dasherInitial}>{order.dasherName[0]}</Text>
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.dasherLabel}>Your dasher</Text>
+                  <Text style={styles.dasherLabel}>Your runner</Text>
                   <Text style={styles.dasherName}>{order.dasherName}</Text>
                 </View>
               </View>

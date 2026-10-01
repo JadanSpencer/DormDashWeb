@@ -27,9 +27,9 @@ import { Icon } from '../../../components/TabIcon';
 
 
 const STATUS_CONFIG: Record<OrderStatus, { label: string; description: string; color: string }> = {
-  pending:    { label: 'Pending',    description: 'Waiting for a dasher to accept', color: T.color.warning },
-  accepted:   { label: 'Accepted',   description: 'A dasher is heading to the store', color: T.color.cerulean },
-  picking_up: { label: 'Picking up', description: 'Dasher is at the store',           color: T.color.cerulean },
+  pending:    { label: 'Pending',    description: 'Waiting for a runner to accept', color: T.color.warning },
+  accepted:   { label: 'Accepted',   description: 'A runner is heading to the store', color: T.color.cerulean },
+  picking_up: { label: 'Picking up', description: 'Runner is at the store',           color: T.color.cerulean },
   on_the_way: { label: 'On the way', description: 'Your order is on its way!',        color: T.color.teal },
   delivered:  { label: 'Delivered',  description: 'Enjoy your order!',                 color: T.color.teal },
   cancelled:  { label: 'Cancelled',  description: 'This order was cancelled',         color: T.color.danger },
@@ -288,7 +288,7 @@ const ActiveOrderCard: React.FC<{ order: Order; onCancel: () => void; reduced: b
             <Text style={active.dasherInitial}>{order.dasherName[0]}</Text>
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={active.dasherLabel}>Your dasher</Text>
+            <Text style={active.dasherLabel}>Your runner</Text>
             <Text style={active.dasherName}>{order.dasherName}</Text>
           </View>
           <View style={[active.statusPill, { backgroundColor: cfg.color + '18' }]}>
@@ -531,8 +531,8 @@ export default function StudentOrders() {
               Alert.alert(
                 'Too Late to Cancel',
                 accepted
-                  ? 'This order has already been paid, so your dasher is on it. Contact DormDash support if you need to cancel.'
-                  : 'A dasher just accepted your order. Pay now to confirm it, or cancel it from here.'
+                  ? 'This order has already been paid, so your runner is on it. Contact Runner support if you need to cancel.'
+                  : 'A runner just accepted your order. Pay now to confirm it, or cancel it from here.'
               );
             }
           },

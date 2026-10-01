@@ -164,12 +164,12 @@ export default function LoginScreen() {
                   resizeMode="contain"
                   accessible={false}
                 />
-                <Text style={styles.wordmark} numberOfLines={1} maxFontSizeMultiplier={1.1}>DormDash</Text>
+                <Text style={styles.wordmark} numberOfLines={1} maxFontSizeMultiplier={1.1}>Runner</Text>
               </View>
               <Text style={styles.hungry} accessibilityRole="header">Hungry?</Text>
               <Text style={styles.dontMove}>Don't move.</Text>
               <Swoosh width={SMALL ? 170 : 210} />
-              <Text style={styles.script}>sign in & yuh food a come!</Text>
+              <Text style={styles.script}>sign in & di runner run it come!</Text>
             </Animated.View>
           </TideBand>
 

@@ -62,7 +62,7 @@ async function requireDasher(uid: string | undefined): Promise<OrderData> {
   if (!uid) throw new HttpsError('unauthenticated', 'Sign in first.');
   const me = (await db.collection('users').doc(uid).get()).data();
   if (!me || me.role !== 'dasher' || me.isActive === false) {
-    throw new HttpsError('permission-denied', 'Only dasher accounts can take groups.');
+    throw new HttpsError('permission-denied', 'Only runner accounts can take groups.');
   }
   return me;
 }
@@ -199,7 +199,7 @@ export async function matchGroups(opts: { dasherIds?: string[] } = {}): Promise<
         }], 'group_found');
       }
     } catch (e: any) {
-      logger.error('Group matching failed for a dasher', { uid, message: e?.message });
+      logger.error('Group matching failed for a runner', { uid, message: e?.message });
     }
   }
   return offered;
@@ -301,7 +301,7 @@ export const acceptOrderGroup = onCall({
       return 'gone';
     }
 
-    const dasherName = String(me.name ?? 'Dasher').slice(0, 100);
+    const dasherName = String(me.name ?? 'Runner').slice(0, 100);
     refs.forEach(ref => tx.update(ref, {
       status: 'accepted', dasherId: uid, dasherName, acceptedAt: now, groupId, groupNo: g.groupNo,
     }));

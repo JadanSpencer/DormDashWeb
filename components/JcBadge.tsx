@@ -96,7 +96,7 @@ export function JcBadge() {
           ref={tileRef}
           onPress={openCard}
           accessibilityRole="button"
-          accessibilityLabel="About Jcommerce and Tech, who made DormDash"
+          accessibilityLabel="About Jcommerce and Tech, who made Runner"
           hitSlop={8}
           style={({ pressed }) => [styles.tile, pressed && { transform: [{ scale: 0.94 }] }]}
         >
@@ -137,7 +137,7 @@ export function JcBadge() {
           </View>
 
           <Text style={styles.body}>
-            DormDash is designed, built and run by Jcommerce & Tech, a web and software studio in Kingston, Jamaica, on a mission to put Jamaican businesses online.
+            Runner is designed, built and run by Jcommerce & Tech, a web and software studio in Kingston, Jamaica, on a mission to put Jamaican businesses online.
           </Text>
 
           <Text style={styles.section}>What we build</Text>

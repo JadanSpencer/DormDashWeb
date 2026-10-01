@@ -100,10 +100,10 @@ export default function DasherProfile() {
                   <Text style={styles.avatarText}>{getInitials()}</Text>
                 </View>
               </View>
-              <Text style={styles.name}>{user?.name ?? 'Dasher'}</Text>
+              <Text style={styles.name}>{user?.name ?? 'Runner'}</Text>
               <View style={styles.roleBadge}>
                 <View style={styles.roleDot} />
-                <Text style={styles.roleText}>Dasher</Text>
+                <Text style={styles.roleText}>Runner</Text>
               </View>
             </View>
 

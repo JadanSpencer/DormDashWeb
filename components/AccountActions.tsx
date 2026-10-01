@@ -90,7 +90,7 @@ export const AccountActions: React.FC<{ dark?: boolean }> = ({ dark }) => {
         await clearPushToken(uid);
         Alert.alert(
           'Account deleted',
-          'Your account and personal information have been removed. Thanks for using DormDash.'
+          'Your account and personal information have been removed. Thanks for using Runner.'
         );
       } else {
         await deactivateMyAccount();
@@ -190,7 +190,7 @@ export const AccountActions: React.FC<{ dark?: boolean }> = ({ dark }) => {
                       <Text style={[styles.body, { color: C.soft }]}>Here is exactly what happens:</Text>
                       <Bullet C={C} text="Your profile, contact details and login are deleted." />
                       <Bullet C={C} text="Your name, delivery addresses and order notes are removed from every past order." />
-                      <Bullet C={C} text="If you dashed, your earnings history and dasher profile are deleted." />
+                      <Bullet C={C} text="If you were a runner, your earnings history and runner profile are deleted." />
                       <Bullet C={C} text="Past orders stay in our records as anonymous transactions, with no name or address, because merchants and tax records require them." />
                       <Bullet C={C} text="This cannot be undone. You would need to register again from scratch." />
                     </>
@@ -200,7 +200,7 @@ export const AccountActions: React.FC<{ dark?: boolean }> = ({ dark }) => {
                       <Bullet C={C} text="You are signed out and cannot sign in again until the account is restored." />
                       <Bullet C={C} text="If you dash, you go offline and stop receiving orders." />
                       <Bullet C={C} text="Nothing is deleted. Your history and earnings are kept." />
-                      <Bullet C={C} text="Message DormDash support to reactivate." />
+                      <Bullet C={C} text="Message Runner support to reactivate." />
                     </>
                   )}
 

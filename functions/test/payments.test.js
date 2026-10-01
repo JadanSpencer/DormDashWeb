@@ -154,7 +154,7 @@ const qs = u => Object.fromEntries(new URL(u).searchParams);
 
   await t('createPayment: only after a dasher accepts; not for others\' orders', async () => {
     order('c1', { paymentMethod: 'card', paymentStatus: 'unpaid' });
-    await assert.rejects(P.createPayment.run({ auth: { uid: 'stu' }, data: { purpose: 'order', orderId: 'c1' } }), /once a dasher accepts/);
+    await assert.rejects(P.createPayment.run({ auth: { uid: 'stu' }, data: { purpose: 'order', orderId: 'c1' } }), /once a runner accepts/);
     seed('users/stu2', { role: 'student', isActive: true });
     seed('orders/c1', { ...get('orders/c1'), status: 'accepted', paymentStatus: 'awaiting_payment', storeId: 'nf' });
     await assert.rejects(P.createPayment.run({ auth: { uid: 'stu2' }, data: { purpose: 'order', orderId: 'c1' } }), /not found/);
@@ -228,7 +228,7 @@ const qs = u => Object.fromEntries(new URL(u).searchParams);
   // ── Choose tokens after a dasher accepts ──
   await t('pay with tokens: refused before accept, for others, when short, or after the deadline', async () => {
     order('k1', { paymentMethod: 'card', paymentStatus: 'unpaid', totalAmount: 1500 });
-    await assert.rejects(P.payOrderWithTokens.run({ auth: { uid: 'stu' }, data: { orderId: 'k1' } }), /once a dasher accepts/);
+    await assert.rejects(P.payOrderWithTokens.run({ auth: { uid: 'stu' }, data: { orderId: 'k1' } }), /once a runner accepts/);
     seed('orders/k1', { ...get('orders/k1'), status: 'accepted', paymentStatus: 'awaiting_payment', payDeadline: Date.now() + 600000 });
     await assert.rejects(P.payOrderWithTokens.run({ auth: { uid: 'stu2' }, data: { orderId: 'k1' } }), /not found/);
     await assert.rejects(P.payOrderWithTokens.run({ auth: { uid: 'dash' }, data: { orderId: 'k1' } }), /student/);

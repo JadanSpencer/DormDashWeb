@@ -16,7 +16,7 @@ import { PriceUnitToggle } from './PriceUnitToggle';
 
 const TX_LABEL: Record<string, string> = {
   topup_card: 'Bought by card',
-  admin_adjust: 'Added by DormDash',
+  admin_adjust: 'Added by Runner',
   order_reserve: 'Held for an order',
   order_release: 'Returned (order cancelled)',
   order_charge: 'Used for an order',
@@ -99,7 +99,7 @@ export function WalletCard({ uid }: { uid: string }) {
           ))}
         </View>
         <Text style={styles.fine}>
-          Paid on WiPay's secure page (card fee added by WiPay). Paying cash? A DormDash admin can add tokens for you.
+          Paid on WiPay's secure page (card fee added by WiPay). Paying cash? A Runner admin can add tokens for you.
         </Text>
 
         {tx.length > 0 && (

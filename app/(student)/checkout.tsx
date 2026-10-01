@@ -98,7 +98,7 @@ export default function CheckoutScreen() {
     const cleanNote = sanitizeNote(note);
     const drop = dropPoint(dropId);
     if (!drop) {
-      Alert.alert('Where should we deliver?', 'Choose your hall, faculty or place. Add your room or block in the note to your dasher.');
+      Alert.alert('Where should we deliver?', 'Choose your hall, faculty or place. Add your room or block in the note to your runner.');
       return;
     }
     if (!user) return;
@@ -197,7 +197,7 @@ export default function CheckoutScreen() {
         </View>
 
         {/* Note — genuinely optional */}
-        <Text style={styles.sectionLabel}>Note to dasher · optional</Text>
+        <Text style={styles.sectionLabel}>Note to runner · optional</Text>
         <View style={styles.card}>
           <TextInput
             style={[styles.input, styles.noteInput, focused === 'note' && styles.inputFocused]}
@@ -217,9 +217,9 @@ export default function CheckoutScreen() {
         {/* Payment */}
         <Text style={styles.sectionLabel}>Payment</Text>
         <View style={styles.card}>
-          <Text style={styles.payTitle}>Pay after a dasher accepts</Text>
+          <Text style={styles.payTitle}>Pay after a runner accepts</Text>
           <Text style={styles.paySub}>
-            Nothing is charged now. When a dasher accepts, you'll get a notification and choose how to pay: with your DormDash tokens or by card. You then have {PAY_WINDOW_MIN} minutes to pay.
+            Nothing is charged now. When a runner accepts, you'll get a notification and choose how to pay: with your Runner tokens or by card. You then have {PAY_WINDOW_MIN} minutes to pay.
           </Text>
         </View>
 
@@ -253,7 +253,7 @@ export default function CheckoutScreen() {
         {onlineDashers === 0 && (
           <View style={styles.warning}>
             <Text style={styles.warningText}>
-              No dashers are online right now, so your order may take longer to be accepted.
+              No runners are online right now, so your order may take longer to be accepted.
             </Text>
           </View>
         )}

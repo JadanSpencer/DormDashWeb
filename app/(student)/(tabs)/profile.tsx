@@ -187,7 +187,7 @@ export default function StudentProfile() {
         </TideBand>
 
         {/* Tokens */}
-        <Text style={styles.sectionLabel}>DormDash tokens</Text>
+        <Text style={styles.sectionLabel}>Runner tokens</Text>
         {user && <WalletCard uid={user.uid} />}
 
         {/* Personal */}

@@ -530,9 +530,13 @@ Students (and sign-in) only; dasher (`themeDark`) and admin (`themeMid`) are unc
 
 ### iPhone: full-screen "Add to Home Screen" warning (2026-09-28)
 On iOS, notifications only work in the Home Screen app, and websites can't show an install button. So `IOSInstallGate` (components/InstallPrompt.web.tsx) covers the screen whenever DormDash is open in an iPhone/iPad browser tab, before or after sign-in (the Home Screen app has its own sign-in, so installing first saves signing in twice). Not for admins, not on /payment-result or /legal.
-- Copy: "Skip this and you won't get order alerts. Miss the 'Pay now' alert and your order is cancelled after 10 minutes." Steps: ⋯ → More → Add to Home Screen → open from the Home Screen. A footnote covers older iPhones (Share button).
+- Copy (rewritten 30 Sep as an invitation, not a warning):
+  - **Header:** the real app icon, then "3 taps, 10 seconds" and "Put DormDash on your Home Screen".
+  - **What they get:** order alerts, never missing "Pay now", and one-tap full-screen opening.
+  - **Steps:** ⋯ (three dots, bottom of Safari) → **Share** → **Add to Home Screen** → Add, each with a small drawing of the button. Then open DormDash from the Home Screen.
+  - **Footnote:** older iPhones show the Share button directly.
 - Instagram, TikTok, Snapchat, Facebook etc. in-app browsers (and Chrome/Edge on iOS) get a first step "Open dormdash-71035.web.app in Safari" and a "Copy the link" button.
-- "I've added it" hides it for good in that browser. "Continue without alerts" appears after 6 seconds and only lasts for this visit, so it comes back next time.
+- "Done, it's on my Home Screen" hides it for good in that browser. "Maybe later (no order alerts)" appears after 6 seconds and only lasts for this visit, so it comes back next time.
 - The small install card no longer asks iPhone browser tabs to install (the gate does); alerts cards are unchanged.
 
 ### Tide Print details (2026-09-28)
@@ -607,4 +611,23 @@ Replaces the flat J$400 fee and fixed 70/30 split. Full write-up, fee table and 
   - Link each store to its food spot in the admin form.
   - Add positions for ABC, Leslie Robinson and WJC halls, Social Sciences and Boardwalk Café.
   - Confirm the card fee is paid by the student.
+
+### Rebrand: DormDash → Runner (2026-09-30, branch `rebrand-runner`)
+- **Name:** the app is **Runner**, and couriers are **runners** in everything students and runners see: screens, pushes, store alerts, Terms, Privacy, manifest, page title and home-screen label (`app.json` and `public/manifest.webmanifest`).
+- **Internal names are unchanged** so nothing breaks: the `dasher` role, the `dashers` collection, `dasherId` fields, the `(dasher)` routes, `/dash` URLs, `dormdash-71035` project and web address, and `com.dormdash.app` identifiers. Rename those only with a data migration.
+- **Icon:** an italic **R** (Fraunces Black Italic, the app's heading face) with the same speed stripes on the blue-teal tile. All sizes were regenerated: `assets/icon.png`, `splash-icon`, `adaptive-icon` (foreground), `favicon`, `notification-icon` (white), `public/icons/*` (tile, maskable full-bleed, apple-touch, favicon, white badge) and `public/brand/dormdash-tile.png` (file name kept).
+- **Drawn marks:** the coin's struck mark and the big faint header letter are now R. Service worker `dd-v10`, so installed apps fetch the new icons.
+- **Voice:** a wink at the slang without saying it. Runners run food and nothing else:
+  - Sign-in line: "sign in & di runner run it come!"
+  - Launch tagline: "Strictly food runnings."
+  - Stamps: "Order in!", "Runner a run!", "Food land!"
+  - Runner role: "Run food between classes. Clean money, every run."
+  - Runner screen: "Ready fi run?", "No runnings right now", tab "Runs".
+  - Pushes: "New run available", "Food land!"
+  - Legal pages stay plain.
+- **Owner steps:**
+  - Firebase Auth email templates (sender name).
+  - Google OAuth consent screen app name.
+  - WiPay merchant display name, if set.
+  - ntfy topic names: unchanged, no action needed.
 
