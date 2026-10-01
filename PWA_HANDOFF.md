@@ -650,3 +650,17 @@ The whole brand moved from blue-teal to **red and gold**. Token names are kept, 
   - Service worker `dd-v11`.
 - **Web switches:** react-native-web ignores `thumbColor` when on, so switches also pass `activeThumbColor`.
 
+### Speed: near-instant opens (2026-10-01, branch `speed-polish`)
+- **Launch intro once per device** (`shouldSkipIntro`, localStorage `dd_seen_intro`). Every open used to play the 5–6 s intro.
+- **App shell served from the phone first** (`public/sw.js`, navigation stale-while-revalidate). A new deploy shows on the next open. A tab holding an old shell that asks for a removed screen file is reloaded once by `register-sw.js`.
+- **Every screen warmed in the background:**
+  - `scripts/web-postbuild.mjs`, run by `npm run build:web`, writes `dist/precache.json` listing all screen files and the app fonts.
+  - About 3 s after load, `register-sw.js` asks the service worker to fetch anything not yet cached (`warmCache`).
+- **Fonts preloaded:** the build injects `<link rel="preload">` for the two app fonts into `dist/index.html`.
+- **Profile from the device cache first** (`getCachedUserProfile` in `useAuth`), then refreshed from the server. Returning users no longer wait on a network round trip to see their screen.
+- **Unused Firebase Storage SDK removed** from the app.
+- **Cache headers:** `/assets/**` (content-hashed) 1 year immutable, `/icons/**` 1 day, `precache.json` no-cache.
+- **Measured on the production build:** the second open reached DOMContentLoaded in 81 ms, with 0 network bytes for the page; 34 files were warm in the cache.
+- **Polish:** the gold-tinted header R and a fine gold edge on the tab bars. Service worker `dd-v12`.
+- **Not done (costs money):** `minInstances: 1` on `createPayment` and `wipayReturn`, which removes the 2–5 s cold start on the first card payment after a quiet spell. About US$10–20 a month each.
+

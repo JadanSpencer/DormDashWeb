@@ -13,7 +13,7 @@ const TABS = {
 const PALETTE = {
   glass: 'rgba(43, 21, 25, 0.72)',
   solid: D.color.card,
-  edge: D.color.lineStrong,
+  edge: 'rgba(240, 194, 79, 0.4)', // a fine gold edge
   highlight: 'rgba(250, 245, 236, 0.12)',
   active: D.color.teal,
   activeText: D.color.bg,

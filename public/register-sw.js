@@ -6,6 +6,13 @@ if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('/sw.js').catch(function (err) {
       console.warn('Service worker registration failed', err);
     });
+    // Once the app is up, have the service worker fetch every other screen
+    // in the background (see warmCache in sw.js), so later taps are instant.
+    navigator.serviceWorker.ready.then(function (reg) {
+      setTimeout(function () {
+        if (reg.active) reg.active.postMessage({ type: 'dd-warm' });
+      }, 3000);
+    }).catch(function () {});
   });
 }
 

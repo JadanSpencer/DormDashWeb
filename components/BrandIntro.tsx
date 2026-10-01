@@ -1,9 +1,9 @@
 // components/BrandIntro.tsx
 // The two-act launch intro: "Jcommerce & Tech presents", then Runner.
 //
-// It is drawn ON TOP of the whole app by app/_layout.tsx, every time the app
-// is loaded (a fresh open, a refresh, or the installed PWA being launched),
-// whatever page it opens on. Routing happens underneath while it plays, so
+// It is drawn ON TOP of the whole app by app/_layout.tsx the first time the
+// app is opened on a device (web: remembered in localStorage, see
+// shouldSkipIntro); later opens go straight to the app. Routing happens underneath while it plays, so
 // when it fades away the right screen is already there.
 //
 // ACT ONE (0.0s – 2.0s): the JC mark fades up, the company is named, a gold
@@ -49,11 +49,16 @@ function imagesReady(): Promise<void> {
   ]);
 }
 
-/** Web: pages that should open straight away, without the intro. */
+// The full intro plays on a device's first visit only. After that the app
+// opens straight to its screen (speed matters more than ceremony).
+const SEEN_KEY = 'dd_seen_intro';
+
+/** Web: open straight away, without the intro (seen before, or a payment result). */
 export function shouldSkipIntro(): boolean {
   if (!IS_WEB || typeof window === 'undefined') return false;
   // Coming back from the WiPay card page: show the payment result at once.
-  return window.location.pathname.startsWith('/payment-result');
+  if (window.location.pathname.startsWith('/payment-result')) return true;
+  try { return window.localStorage.getItem(SEEN_KEY) === '1'; } catch { return false; }
 }
 
 const DORM = ['R', 'u', 'n', 'n', 'e', 'r'];
@@ -113,6 +118,7 @@ export function BrandIntro({ canStart, onDone }: Props) {
     const finish = () => {
       if (finished) return;
       finished = true;
+      if (IS_WEB) { try { window.localStorage.setItem(SEEN_KEY, '1'); } catch { /* private mode */ } }
       Animated.timing(overlay, { toValue: 0, duration: FADE_OUT_MS, useNativeDriver: true })
         .start(() => onDone());
     };

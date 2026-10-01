@@ -15,7 +15,7 @@ const TABS = {
 const PALETTE = {
   glass: 'rgba(155, 27, 34, 0.92)',
   solid: T.color.sea,
-  edge: 'rgba(245, 216, 206, 0.25)',
+  edge: 'rgba(242, 190, 69, 0.5)', // a fine gold edge
   highlight: 'rgba(245, 216, 206, 0.25)',
   active: T.color.mustard,
   activeText: T.color.ink,

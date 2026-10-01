@@ -14,7 +14,7 @@ const TABS = {
 const PALETTE = {
   glass: 'rgba(250, 245, 236, 0.78)',
   solid: S.color.card,
-  edge: S.color.lineOnBgStrong,
+  edge: 'rgba(240, 194, 79, 0.45)', // a fine gold edge
   highlight: 'rgba(255, 255, 255, 0.85)',
   active: S.color.cerulean,
   activeText: '#FFFDF8',

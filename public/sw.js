@@ -8,7 +8,7 @@
  * Bump VERSION whenever this file changes. App code updates don't need a
  * bump: JS bundles are content-hashed and navigations are network-first.
  */
-const VERSION = 'dd-v11';
+const VERSION = 'dd-v12';
 const SHELL = `${VERSION}-shell`;
 const RUNTIME = `${VERSION}-runtime`;
 
@@ -50,20 +50,29 @@ self.addEventListener('fetch', (event) => {
   // straight to the server, never cached as the app shell.
   if (url.pathname.startsWith('/__/')) return;
 
-  // Page loads (any route — it's a single-page app): network first, so a new
-  // deploy is picked up immediately; fall back to the cached shell offline.
+  // Page loads (any route, it's a single-page app): SPEED. Show the shell
+  // already on the phone at once, and fetch the latest in the background for
+  // next time (stale-while-revalidate). A new deploy shows on the following
+  // open; if an old page asks for a screen file the new release no longer
+  // has, public/register-sw.js reloads once and the fresh shell is there.
+  // First visit (nothing cached): straight from the network.
   if (req.mode === 'navigate') {
+    const refresh = fetch(req).then((res) => {
+      // Only cache a real page, never a redirect or an error.
+      if (res.ok && res.type === 'basic') {
+        const copy = res.clone();
+        return caches.open(SHELL).then((c) => c.put('/', copy)).then(() => res);
+      }
+      return res;
+    });
     event.respondWith(
-      fetch(req)
-        .then((res) => {
-          // Only cache a real page, never a redirect or an error.
-          if (res.ok && res.type === 'basic') {
-            const copy = res.clone();
-            caches.open(SHELL).then((c) => c.put('/', copy));
-          }
-          return res;
-        })
-        .catch(() => caches.match('/'))
+      caches.match('/').then((hit) => {
+        if (hit) {
+          event.waitUntil(refresh.catch(() => {}));
+          return hit;
+        }
+        return refresh.catch(() => caches.match('/'));
+      })
     );
     return;
   }
@@ -89,6 +98,34 @@ self.addEventListener('fetch', (event) => {
       return hit || net;
     })
   );
+});
+
+// ─── Warm every screen ─────────────────────────────────────────────────────
+// Screens load as separate files (Expo Router async routes), so the first
+// tap into a store or checkout used to wait for a download. After the page
+// has loaded, public/register-sw.js asks us to fetch every screen file and
+// the app fonts listed in /precache.json (written at build time by
+// scripts/web-postbuild.mjs) into the cache, quietly in the background, so
+// every later tap is instant and works offline. Files already cached are
+// skipped, so this costs nothing after the first time per release.
+async function warmCache() {
+  try {
+    const res = await fetch('/precache.json', { cache: 'no-store' });
+    if (!res.ok) return;
+    const { files } = await res.json();
+    const cache = await caches.open(RUNTIME);
+    for (const f of files || []) {
+      if (await cache.match(f)) continue;
+      try {
+        const r = await fetch(f);
+        if (r.ok) await cache.put(f, r);
+      } catch { /* offline: try next time */ }
+    }
+  } catch { /* no manifest (dev build): nothing to warm */ }
+}
+
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'dd-warm') event.waitUntil(warmCache());
 });
 
 // ─── Push notifications (FCM web push) ─────────────────────────────────────

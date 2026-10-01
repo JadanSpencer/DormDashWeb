@@ -95,6 +95,8 @@ export async function getAggregateFromServer(q: Q | Ref, spec: Record<string, an
 }
 
 export async function getDoc(ref: Ref) { return docSnap(ref.path); }
+// The fake has no network, so its cache and server answers are the same.
+export async function getDocFromCache(ref: Ref) { return docSnap(ref.path); }
 export async function getDocs(q: Q | Ref) { return run(q); }
 
 let frozen = false; // see disableNetwork / enableNetwork below

@@ -102,8 +102,8 @@ export function TideBand({ children, style }: { children?: React.ReactNode; styl
                 textAnchor="end"
                 fontFamily={FONT.heading}
                 fontSize={dSize}
-                fill={T.color.card}
-                fillOpacity={0.07}
+                fill={T.color.mustard}
+                fillOpacity={0.09}
               >
                 R
               </SvgText>

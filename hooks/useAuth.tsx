@@ -6,7 +6,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { onAuthStateChanged, type User as FirebaseUser } from 'firebase/auth';
 import { auth } from '../services/firebase';
-import { getUserProfile } from '../services/users';
+import { getUserProfile, getCachedUserProfile } from '../services/users';
 import { User } from '../types';
 
 // ─── CONTEXT SHAPE ─────────────────────────────────────────────────────────
@@ -39,13 +39,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // doesn't exist (not a network error) is a sign-up still to finish.
   // Email sign-ups never count: their account exists a moment before their
   // profile, and registerUser writes it straight away.
-  const load = async (fu: FirebaseUser) => {
+  const load = async (fu: FirebaseUser, fallback: User | null = null) => {
     let profile: User | null = null;
     let missing = false;
     try {
       profile = await getUserProfile(fu.uid);
       missing = profile === null;
-    } catch { /* offline or blocked: treat as signed out, as before */ }
+    } catch {
+      // Offline or blocked: keep the device's copy if there is one,
+      // otherwise treat as signed out, as before.
+      profile = fallback;
+    }
     const google = (fu.providerData ?? []).some(p => p?.providerId === 'google.com');
     setUser(profile);
     setPendingProfile(missing && google
@@ -66,8 +70,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // This is how the app knows to keep you logged in between sessions.
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
-        // User is logged in — fetch their full Firestore profile
-        await load(firebaseUser);
+        // SPEED: show the app at once from this device's copy of the
+        // profile, then refresh it from the server (role or account changes
+        // still land a moment later).
+        const cached = await getCachedUserProfile(firebaseUser.uid);
+        if (cached) {
+          setUser(cached);
+          setPendingProfile(null);
+          setLoading(false);
+        }
+        await load(firebaseUser, cached);
       } else {
         // No user logged in
         setUser(null);

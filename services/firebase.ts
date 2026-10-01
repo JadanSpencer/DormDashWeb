@@ -1,5 +1,6 @@
 // services/firebase.ts
-// Firebase app, App Check (web), Auth, Firestore, Storage and Functions.
+// Firebase app, App Check (web), Auth, Firestore and Functions. (No Storage:
+// the app has no uploads; leaving it out keeps it out of the download.)
 
 import { initializeApp, getApps, getApp } from 'firebase/app';
 // @ts-ignore — getReactNativePersistence has a typing gap in the SDK; works at runtime
@@ -8,7 +9,6 @@ import {
   getFirestore, initializeFirestore, persistentLocalCache, persistentMultipleTabManager,
   terminate, clearIndexedDbPersistence, type Firestore,
 } from 'firebase/firestore';
-import { getStorage } from 'firebase/storage';
 import { getFunctions } from 'firebase/functions';
 import { initializeAppCheck, ReCaptchaEnterpriseProvider } from 'firebase/app-check';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -108,9 +108,8 @@ export async function clearLocalData(): Promise<void> {
   await Promise.race([clearing, new Promise(r => setTimeout(r, 3000))]);
   window.location.replace('/');
 }
-const storage = getStorage(app);
 
 // Region must match where the functions are deployed (default us-central1).
 const functions = getFunctions(app);
 
-export { app, auth, db, storage, functions };
+export { app, auth, db, functions };
