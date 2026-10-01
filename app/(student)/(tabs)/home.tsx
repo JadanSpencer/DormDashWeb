@@ -364,7 +364,7 @@ const styles = StyleSheet.create({
   },
   openTagOn: { backgroundColor: T.color.tealTint },
   openTagOff: { backgroundColor: T.color.dangerTint },
-  openTagSea: { backgroundColor: 'rgba(7, 42, 64, 0.55)' },
+  openTagSea: { backgroundColor: 'rgba(60, 8, 14, 0.55)' },
   openDot: { width: 6, height: 6, borderRadius: 3 },
   openText: { fontSize: 11, fontWeight: '800', letterSpacing: 0.3 },
 

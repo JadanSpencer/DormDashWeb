@@ -32,15 +32,15 @@
       body {
         overflow: hidden;
         margin: 0;
-        background-color: #FAF5EC; /* T.color.cream — no white flash on launch */
+        background-color: #F4EEE3; /* T.color.cream — no white flash on launch */
         overscroll-behavior: none;
         -webkit-tap-highlight-color: transparent;
       }
       #root { display: flex; height: 100%; flex: 1; }
       /* Keep the phone-shaped layout readable on laptops/desktops */
       @media (min-width: 640px) {
-        body { background-color: #F1E9DB; }
-        #root { max-width: 480px; margin: 0 auto; background-color: #FAF5EC;
+        body { background-color: #2B0A0F; } /* deep wine around the app column on wide screens */
+        #root { max-width: 480px; margin: 0 auto; background-color: #F4EEE3;
                 box-shadow: 0 0 40px rgba(18, 51, 59, 0.08); }
       }
     </style>

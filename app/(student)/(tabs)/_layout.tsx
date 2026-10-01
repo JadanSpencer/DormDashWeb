@@ -13,10 +13,10 @@ const TABS = {
 
 // Flyer style: a deep blue glass bar, the active tab in mustard gold.
 const PALETTE = {
-  glass: 'rgba(14, 90, 128, 0.92)',
+  glass: 'rgba(155, 27, 34, 0.92)',
   solid: T.color.sea,
-  edge: 'rgba(207, 230, 238, 0.25)',
-  highlight: 'rgba(207, 230, 238, 0.25)',
+  edge: 'rgba(245, 216, 206, 0.25)',
+  highlight: 'rgba(245, 216, 206, 0.25)',
   active: T.color.mustard,
   activeText: T.color.ink,
   idle: T.color.seaSoft,

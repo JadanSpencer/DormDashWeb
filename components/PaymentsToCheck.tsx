@@ -143,7 +143,7 @@ const styles = StyleSheet.create({
   primaryText: { color: S.color.card, fontWeight: '800', fontSize: 13 },
   secondary: { paddingHorizontal: 14, height: 38, justifyContent: 'center' },
   secondaryText: { color: S.color.inkSoft, fontWeight: '800', fontSize: 13 },
-  backdrop: { flex: 1, backgroundColor: 'rgba(18,51,59,0.55)', alignItems: 'center', justifyContent: 'center', padding: 20 },
+  backdrop: { flex: 1, backgroundColor: 'rgba(43, 21, 20,0.55)', alignItems: 'center', justifyContent: 'center', padding: 20 },
   modal: { width: '100%', maxWidth: 420, backgroundColor: S.color.card, borderRadius: 16, padding: 18, gap: 10 },
   modalTitle: { fontSize: 18, fontWeight: '900', color: S.color.ink },
   hint: { fontSize: 13, color: S.color.inkSoft, lineHeight: 18 },

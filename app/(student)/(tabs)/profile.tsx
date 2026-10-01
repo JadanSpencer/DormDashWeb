@@ -431,8 +431,8 @@ const styles = StyleSheet.create({
   roleBadge: {
     flexDirection: 'row', alignItems: 'center', gap: 6,
     marginTop: T.space.sm,
-    backgroundColor: 'rgba(7, 42, 64, 0.6)',
-    borderWidth: 1, borderColor: 'rgba(127, 214, 200, 0.35)',
+    backgroundColor: 'rgba(60, 8, 14, 0.6)',
+    borderWidth: 1, borderColor: 'rgba(246, 210, 126, 0.35)',
     paddingHorizontal: 12, paddingVertical: 5,
     borderRadius: T.radius.pill,
   },
@@ -482,7 +482,7 @@ const styles = StyleSheet.create({
   modalOverlay: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   modalBackdrop: {
     position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-    backgroundColor: 'rgba(18, 51, 59, 0.5)',
+    backgroundColor: 'rgba(43, 21, 20, 0.5)',
   },
   modalCard: {
     width: '86%',

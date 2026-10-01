@@ -8,7 +8,7 @@
  * Bump VERSION whenever this file changes. App code updates don't need a
  * bump: JS bundles are content-hashed and navigations are network-first.
  */
-const VERSION = 'dd-v10';
+const VERSION = 'dd-v11';
 const SHELL = `${VERSION}-shell`;
 const RUNTIME = `${VERSION}-runtime`;
 

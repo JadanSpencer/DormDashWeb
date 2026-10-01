@@ -1,9 +1,12 @@
 // constants/theme.ts
-// DormDash design system for STUDENTS (and sign-in), matching the UWI Mona
-// launch flyer: a deep blue-to-teal header with flowing contour lines and a
-// big faint D, chunky italic serif headlines (Fraunces Black Italic) with
-// mustard-gold highlights, cream cards, gold stamp badges, and one
-// hand-written line (Caveat). Pieces: components/Tide.tsx (header, store
+// Runner design system for STUDENTS (and sign-in): RED AND GOLD. A crimson
+// header sweeping to deep wine, with gold contour lines and a big faint R,
+// chunky italic serif headlines (Fraunces Black Italic) with gold
+// highlights, ivory cards, gold stamps and coins, and one hand-written line
+// (Caveat). Token names are kept from the earlier blue-teal look so screens
+// didn't change: `sea` = crimson header, `cerulean` = red (actions),
+// `teal` = deep gold (the second ink), `mustard` = bright gold. Every text
+// pair is checked to WCAG AA (see the ratios beside each token). Pieces: components/Tide.tsx (header, store
 // marks), components/Flow.tsx (contour lines), components/Seal.tsx (gold
 // stamp). Cards and buttons sit on solid offset "plates" (T.plate), never
 // a blurred glow.
@@ -22,43 +25,43 @@ export const FONT = {
 export const T = {
   color: {
     // Paper
-    cream: '#F3EEE4',       // page
-    creamDeep: '#E7E0D2',   // sunken areas, dividers between sections
-    card: '#FBF8F2',        // cards: warm near-white, never pure #FFF
+    cream: '#F4EEE3',       // page
+    creamDeep: '#E8DCCB',   // sunken areas, dividers between sections
+    card: '#FBF7F0',        // cards: warm near-white, never pure #FFF
 
     // Ink
-    ink: '#163845',          // 10.8:1 on page
-    inkSoft: '#46606A',      // 5.8:1
-    inkFaint: '#526A73',     // 5.0:1 on page
+    ink: '#2B1514',          // 14.9:1 on page
+    inkSoft: '#6B4B45',      // 6.7:1
+    inkFaint: '#735650',     // 5.7:1 on page
 
-    // The header: deep blue fading to teal (cream text 7.1:1 on blue, 5.3:1 on teal)
-    sea: '#0E5A80',
-    seaTeal: '#0E7466',
-    seaSoft: '#CFE6EE',      // secondary text on the header (5.8:1 / 4.4:1)
-    seaFoam: '#9FE0D2',      // small highlights on the header
+    // The header: crimson sweeping to deep wine (cream text 7.6:1 on crimson, 12.9:1 on wine)
+    sea: '#9B1B22',
+    seaTeal: '#5C0D16',
+    seaSoft: '#F5D8CE',      // secondary text on the header (6.1:1 / 10.2:1)
+    seaFoam: '#F6D27E',      // gold highlights on the header (5.6:1)
 
-    // Cerulean: the action colour
-    cerulean: '#0E6690',     // 5.5:1 on page; card-coloured text on it 6.0:1
-    ceruleanDeep: '#0A5073', // pressed / plate under cerulean buttons
-    ceruleanBright: '#3AA6D6', // graphic only
-    ceruleanTint: '#E1EEF3',
+    // Red: the action colour (token name kept: cerulean)
+    cerulean: '#A91F1D',     // 6.3:1 on page; card-coloured text on it 6.8:1
+    ceruleanDeep: '#7A1414', // pressed / plate under cerulean buttons
+    ceruleanBright: '#E2493F', // graphic only
+    ceruleanTint: '#F8E2DC',
 
-    // Teal
-    teal: '#0B7766',         // text-safe: 4.7:1 on page, 4.6:1 on tealTint
-    tealDeep: '#075A4D',     // plate under teal fills
-    tealBright: '#22B3A0',   // graphic only
-    tealTint: '#DDEFEA',
+    // Deep gold: the second ink (token name kept: teal)
+    teal: '#845F0E',         // text-safe: 4.9:1 on page, 4.7:1 on tealTint; card text on it 5.3:1
+    tealDeep: '#5C420A',     // plate under teal fills
+    tealBright: '#D9A62E',   // graphic only
+    tealTint: '#F6EACB',
 
-    // Mustard: the flyer's gold. Large headline words on the header, stamps,
-    // the active chip and tab (ink text on it: 6.7:1).
-    mustard: '#EDB443',
-    mustardDeep: '#C48F22',  // plate under mustard fills
+    // Bright gold: big headline words on the header (4.8:1 on crimson, large
+    // text only), stamps, the active chip and tab (ink text on it: 10:1).
+    mustard: '#F2BE45',
+    mustardDeep: '#C28D1E',  // plate under mustard fills
 
     // Rare alarm red (the install warning)
     shu: '#B7412E',
     shuTint: '#F6E4DF',
 
-    // Money (DormDash tokens): coin graphics and the wallet's banknote band
+    // Money (Runner tokens): coin graphics and the wallet's banknote band
     gold: '#D4A537',         // coin face (graphic only, never text)
     goldDeep: '#7A5710',     // coin rim and stamp; 5.9:1 as text on goldTint
     goldLight: '#F0D27A',    // coin highlight
@@ -66,8 +69,8 @@ export const T = {
     goldTint: '#FBF3DC',     // wallet header band
 
     // Lines & feedback
-    line: 'rgba(22, 56, 69, 0.12)',
-    lineStrong: 'rgba(22, 56, 69, 0.22)',
+    line: 'rgba(43, 21, 20, 0.12)',
+    lineStrong: 'rgba(43, 21, 20, 0.22)',
     danger: '#B23E3A',
     dangerTint: '#F8E6E4',
     warning: '#D9963A',
@@ -88,18 +91,18 @@ export const T = {
   // Print plates: a solid layer offset below, like a second ink plate.
   // No blur, so it reads as depth, not glow.
   plate: {
-    card: plate('#DCD3C1', 4),          // cream-deep plate under cards
-    teal: plate('#065547', 4),          // under teal fills
-    cerulean: plate('#0A5073', 4),      // under cerulean buttons
-    sea: plate('#083A55', 5),           // under header surfaces
+    card: plate('#E0CFB8', 4),          // cream-deep plate under cards
+    teal: plate('#5C420A', 4),          // under gold (teal) fills
+    cerulean: plate('#7A1414', 4),      // under red (cerulean) buttons
+    sea: plate('#4A0A10', 5),           // under header surfaces
     mustard: plate('#C48F22', 4),       // under mustard fills
-    pressed: plate('#DCD3C1', 1),       // a pressed card or button
+    pressed: plate('#E0CFB8', 1),       // a pressed card or button
   },
 
   // Kept for screens that haven't moved to plates; same values as plates.
   shadow: {
-    card: plate('#DCD3C1', 4),
-    button: plate('#0A5073', 4),
+    card: plate('#E0CFB8', 4),
+    button: plate('#7A1414', 4),
   },
 };
 

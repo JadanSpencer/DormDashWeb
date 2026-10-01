@@ -11,7 +11,7 @@ const TABS = {
 };
 
 const PALETTE = {
-  glass: 'rgba(22, 52, 60, 0.72)',
+  glass: 'rgba(43, 21, 25, 0.72)',
   solid: D.color.card,
   edge: D.color.lineStrong,
   highlight: 'rgba(250, 245, 236, 0.12)',

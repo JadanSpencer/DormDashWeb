@@ -171,7 +171,7 @@ const PaymentPanel: React.FC<{ order: Order }> = ({ order }) => {
           >
             {busy === 'tokens'
               ? <ActivityIndicator color={T.color.card} />
-              : <Text style={[pay_.btnText, !enoughTokens && pay_.btnTextOff]}>Pay {fmt(total)} with tokens</Text>}
+              : <Text style={[pay_.btnText, pay_.btnTokensText, !enoughTokens && pay_.btnTextOff]}>Pay {fmt(total)} with tokens</Text>}
           </Pressable>
           <Text style={pay_.fine}>{tokenNote}</Text>
           <Pressable
@@ -201,10 +201,11 @@ const pay_ = StyleSheet.create({
   btn: {
     marginTop: 6, backgroundColor: T.color.cerulean, borderRadius: 999, height: 52,
     alignItems: 'center', justifyContent: 'center',
-    ...T.plate.cerulean, shadowColor: '#063E5B',
+    ...T.plate.cerulean, shadowColor: '#4A0A10',
   },
   btnText: { color: T.color.card, fontSize: 15, fontWeight: '900' },
-  btnTokens: { backgroundColor: T.color.teal, ...T.plate.teal, shadowColor: '#03352D' },
+  btnTokens: { backgroundColor: T.color.mustard, ...T.plate.mustard, shadowColor: '#8A6214' },
+  btnTokensText: { color: T.color.ink },
   btnOff: { backgroundColor: T.color.creamDeep, shadowOpacity: 0 },
   btnTextOff: { color: T.color.inkFaint },
   fine: { fontSize: 12, color: T.color.inkFaint, textAlign: 'center' },
@@ -618,7 +619,7 @@ const styles = StyleSheet.create({
     backgroundColor: T.color.ceruleanTint,
     justifyContent: 'center', alignItems: 'center',
     paddingHorizontal: 6,
-    borderWidth: 1, borderColor: 'rgba(14, 143, 181, 0.2)',
+    borderWidth: 1, borderColor: 'rgba(169, 31, 29, 0.2)',
   },
   qtyBadgeText: { color: T.color.cerulean, fontSize: 12, fontWeight: '900' },
   itemName: { flex: 1, ...T.type.body, fontSize: 14, color: T.color.ink, fontWeight: '600' },

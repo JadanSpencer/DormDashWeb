@@ -31,7 +31,7 @@ import { getMessaging, getToken, isSupported } from 'firebase/messaging';
 import { onAuthStateChanged } from 'firebase/auth';
 import { app, auth, db } from './firebase';
 
-export const CERULEAN = '#0E8FB5';
+export const CERULEAN = '#A91F1D';
 export const WEB_TOKEN_PREFIX = 'web:';
 
 const VAPID_KEY = process.env.EXPO_PUBLIC_FIREBASE_VAPID_KEY;

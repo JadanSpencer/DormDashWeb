@@ -140,7 +140,7 @@ export default function AdminDashboard() {
           <View style={styles.statCard}>
             <Text style={styles.statValue}>{stats.totalUsers}</Text>
             <Text style={styles.cardLabel}>Total users</Text>
-            <Text style={styles.statDetail}>{stats.totalStudents} students · {stats.totalDashers} dashers</Text>
+            <Text style={styles.statDetail}>{stats.totalStudents} students · {stats.totalDashers} runners</Text>
           </View>
           <View style={styles.statCard}>
             <Text style={styles.statValue}>{stats.activeOrders}</Text>

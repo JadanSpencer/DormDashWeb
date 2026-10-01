@@ -223,7 +223,8 @@ const StoreFormModal: React.FC<{
             <Switch
               value={form.isOpen}
               onValueChange={v => setField('isOpen', v)}
-              trackColor={{ false: S.color.lineOnCard, true: 'rgba(15, 168, 147, 0.35)' }}
+              trackColor={{ false: S.color.lineOnCard, true: 'rgba(240, 194, 79, 0.35)' }}
+              {...({ activeThumbColor: S.color.teal } as object)}
               thumbColor={form.isOpen ? S.color.teal : S.color.inkFaint}
             />
           </View>

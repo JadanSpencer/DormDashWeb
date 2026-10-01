@@ -241,7 +241,7 @@ export function BrandIntro({ canStart, onDone }: Props) {
   );
 }
 
-const JC_TEAL = '#0F8F84';
+const JC_TEAL = '#A91F1D';
 const JC_GOLD = '#C9A227';
 
 const styles = StyleSheet.create({
@@ -262,7 +262,7 @@ const styles = StyleSheet.create({
     backgroundColor: T.color.card,
     justifyContent: 'center', alignItems: 'center',
     marginBottom: T.space.lg,
-    shadowColor: '#12333B',
+    shadowColor: '#2B1514',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.06,
     shadowRadius: 2,
@@ -283,7 +283,7 @@ const styles = StyleSheet.create({
     backgroundColor: T.color.card,
     justifyContent: 'center', alignItems: 'center',
     marginBottom: T.space.xl,
-    shadowColor: '#12333B',
+    shadowColor: '#2B1514',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.06,
     shadowRadius: 2,

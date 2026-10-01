@@ -11,8 +11,8 @@ import React, { useRef, useState, useImperativeHandle, forwardRef, useCallback }
 import { View, Text, StyleSheet, Animated, Pressable, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-const CERULEAN = '#1F4E79'; // indigo (T.color.cerulean)
-const CERULEAN_DEEP = '#193F63';
+const CERULEAN = '#A91F1D'; // crimson (T.color.cerulean)
+const CERULEAN_DEEP = '#7A1414';
 const AUTO_DISMISS_MS = 4200;
 
 export type BannerPayload = {

@@ -275,7 +275,8 @@ export default function DasherHome() {
               <Switch
                 value={isOnline}
                 onValueChange={handleToggleOnline}
-                trackColor={{ false: D.color.line, true: 'rgba(47, 196, 174, 0.4)' }}
+                trackColor={{ false: D.color.line, true: 'rgba(240, 194, 79, 0.4)' }}
+                {...({ activeThumbColor: D.color.teal } as object)}
                 thumbColor={isOnline ? D.color.teal : D.color.creamFaint}
               />
             </View>
@@ -499,7 +500,7 @@ const styles = StyleSheet.create({
     borderWidth: 1.5, borderColor: D.color.line,
     overflow: 'hidden',
   },
-  onlineCardActive: { borderColor: 'rgba(47, 196, 174, 0.45)' },
+  onlineCardActive: { borderColor: 'rgba(240, 194, 79, 0.45)' },
   onlineTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   onlineDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: D.color.teal },
   onlineDotOff: { backgroundColor: D.color.creamFaint, opacity: 1 },
@@ -538,7 +539,7 @@ const styles = StyleSheet.create({
     marginBottom: D.space.md,
     borderRadius: D.radius.xl,
     padding: D.space.lg,
-    borderWidth: 1.5, borderColor: 'rgba(51, 173, 209, 0.4)',
+    borderWidth: 1.5, borderColor: 'rgba(242, 149, 139, 0.4)',
     gap: D.space.md,
     ...D.shadow.card,
   },
@@ -596,7 +597,7 @@ const styles = StyleSheet.create({
     borderRadius: D.radius.md,
     padding: D.space.md,
     gap: 4,
-    borderWidth: 1, borderColor: 'rgba(51, 173, 209, 0.3)',
+    borderWidth: 1, borderColor: 'rgba(242, 149, 139, 0.3)',
   },
   noGpsLabel: { ...D.type.label, fontSize: 10, color: D.color.creamSoft },
   noGpsAddress: { ...D.type.body, fontSize: 15, fontWeight: '800', color: D.color.cerulean },

@@ -70,7 +70,7 @@ const styles = StyleSheet.create({
   },
   ring: {
     ...StyleSheet.absoluteFillObject,
-    borderWidth: 1.5, borderStyle: 'dashed', borderColor: 'rgba(22, 56, 69, 0.55)',
+    borderWidth: 1.5, borderStyle: 'dashed', borderColor: 'rgba(43, 21, 20, 0.55)',
   },
   word: { fontFamily: FONT.heading, color: T.color.ink, textAlign: 'center' },
   mark: { fontWeight: '900', color: T.color.ink, textAlign: 'center' },

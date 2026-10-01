@@ -78,7 +78,7 @@ export function AmountPrompt({ visible, title, hint, unitLabel, onCancel, onSubm
 }
 
 const styles = StyleSheet.create({
-  backdrop: { flex: 1, backgroundColor: 'rgba(18,51,59,0.55)', alignItems: 'center', justifyContent: 'center', padding: 20 },
+  backdrop: { flex: 1, backgroundColor: 'rgba(43, 21, 20,0.55)', alignItems: 'center', justifyContent: 'center', padding: 20 },
   card: { width: '100%', maxWidth: 420, backgroundColor: S.color.card, borderRadius: 16, padding: 18, gap: 10 },
   title: { fontSize: 18, fontWeight: '900', color: S.color.ink },
   hint: { fontSize: 13, color: S.color.inkSoft, lineHeight: 18 },

@@ -10,7 +10,7 @@
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#0A1F3D"
+      "backgroundColor": "#5C0D16"
     },
     "ios": {
       "supportsTablet": false,
@@ -23,7 +23,7 @@
       "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#0A1F3D"
+        "backgroundColor": "#9B1B22"
       },
       "package": "com.dormdash.app",
       "versionCode": 2,
@@ -40,8 +40,8 @@
       "name": "Runner",
       "shortName": "Runner",
       "description": "Order food and essentials on campus. Students run it to your door.",
-      "themeColor": "#1F4E79",
-      "backgroundColor": "#FAF5EC",
+      "themeColor": "#9B1B22",
+      "backgroundColor": "#F4EEE3",
       "lang": "en"
     },
     "plugins": [
@@ -64,7 +64,7 @@
         "expo-notifications",
         {
           "icon": "./assets/notification-icon.png",
-          "color": "#1F4E79",
+          "color": "#A91F1D",
           "defaultChannel": "default"
         }
       ],

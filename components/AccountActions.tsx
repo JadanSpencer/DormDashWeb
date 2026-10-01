@@ -27,11 +27,11 @@ type Action = 'deactivate' | 'delete';
 
 const LIGHT = {
   sheet: '#FFFDF9',
-  text: '#12333B',
-  soft: '#4E6B72',
-  faint: '#8AA0A5',
+  text: '#2B1514',
+  soft: '#6B4B45',
+  faint: '#9E847D',
   field: '#FAF5EC',
-  line: 'rgba(18, 51, 59, 0.12)',
+  line: 'rgba(43, 21, 20, 0.12)',
   danger: '#C94F4F',
   dangerTint: '#F9E9E9',
   warning: '#D9963A',
@@ -39,11 +39,11 @@ const LIGHT = {
 };
 
 const DARK = {
-  sheet: '#16343C',
+  sheet: '#2B1519',
   text: '#FAF5EC',
-  soft: '#B9C9C6',
-  faint: '#7E9793',
-  field: '#0E282F',
+  soft: '#DCC5BE',
+  faint: '#B89E97',
+  field: '#1C0E10',
   line: 'rgba(250, 245, 236, 0.12)',
   danger: '#E36B6B',
   dangerTint: 'rgba(227, 107, 107, 0.14)',
@@ -305,7 +305,7 @@ const styles = StyleSheet.create({
   rowSub: { fontSize: 12, fontWeight: '500', marginTop: 3, lineHeight: 17 },
 
   overlay: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 24 },
-  backdrop: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(18, 51, 59, 0.55)' },
+  backdrop: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(43, 21, 20, 0.55)' },
   sheet: {
     width: '100%', maxHeight: '82%',
     borderRadius: 28, padding: 24,

@@ -27,9 +27,9 @@ export type BackdropTone = 'cream' | 'dark' | 'mid';
 // Per palette: the canvas colour (seigaiha fans are filled with it so each
 // row hides the one behind, like the printed pattern) and the ink colour.
 const TONES: Record<BackdropTone, { canvas: string; ink: string; pattern: number }> = {
-  cream: { canvas: T.color.cream, ink: T.color.cerulean, pattern: 0.13 }, // indigo on washi
-  dark:  { canvas: D.color.bg,    ink: D.color.cerulean, pattern: 0.12 }, // dasher
-  mid:   { canvas: S.color.bg,    ink: S.color.cream,    pattern: 0.08 }, // admin
+  cream: { canvas: T.color.cream, ink: T.color.cerulean, pattern: 0.13 }, // crimson on ivory
+  dark:  { canvas: D.color.bg,    ink: D.color.teal,     pattern: 0.12 }, // runner: gold waves on wine
+  mid:   { canvas: S.color.bg,    ink: S.color.tealBright, pattern: 0.09 }, // admin: gold waves on burgundy
 };
 
 // Drawing space; scaled to cover any screen (preserveAspectRatio slice).

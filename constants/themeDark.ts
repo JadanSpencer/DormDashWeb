@@ -1,7 +1,7 @@
 // constants/themeDark.ts
-// DormDash design system — "Route" identity, INVERTED for dashers.
-// Same family as constants/theme.ts but flipped: deep teal-ink canvas,
-// cream type, brighter cerulean/teal accents tuned for dark surfaces.
+// Runner design system, INVERTED for runners: a deep wine canvas, cream
+// type, gold for payouts and "online" (token name teal, 10:1 on cards) and
+// a rose red for actions (token name cerulean, 7.7:1; dark text on it 8.4:1).
 // Dasher screens import D; student screens keep importing T from theme.ts.
 
 import { FONT } from './theme';
@@ -9,28 +9,28 @@ import { FONT } from './theme';
 export const D = {
   color: {
     // Canvas (the flip: ink becomes the surface)
-    bg: '#0E282F',            // app background — deep teal-ink
-    card: '#16343C',          // elevated cards
-    cardHigh: '#1D404A',      // pressed / higher elevation
+    bg: '#1C0E10',            // app background — deep teal-ink
+    card: '#2B1519',          // elevated cards
+    cardHigh: '#371C21',      // pressed / higher elevation
 
     // Type (the flip: cream becomes the text)
-    cream: '#FAF5EC',         // primary text
-    creamSoft: '#B9C9C6',     // secondary text
-    creamFaint: '#90A8A4',   // AA on cards (was #7E9793)    // placeholders, captions
+    cream: '#FAF1E6',         // primary text
+    creamSoft: '#DCC5BE',     // secondary text
+    creamFaint: '#B89E97',   // AA on cards (was #7E9793)    // placeholders, captions
 
     // Action — brightened for contrast on dark
-    cerulean: '#8DB8E3',      // light indigo: 7.4:1 on bg, dark text on it 7.4:1
-    ceruleanDeep: '#5B8FC6',
-    ceruleanTint: 'rgba(141, 184, 227, 0.14)',
+    cerulean: '#F2958B',      // light indigo: 7.4:1 on bg, dark text on it 7.4:1
+    ceruleanDeep: '#D9665B',
+    ceruleanTint: 'rgba(242, 149, 139, 0.14)',
 
     // Support
-    teal: '#2FC4AE',
-    tealDeep: '#0FA893',
-    tealTint: 'rgba(47, 196, 174, 0.14)',
+    teal: '#F0C24F',
+    tealDeep: '#C9982A',
+    tealTint: 'rgba(240, 194, 79, 0.14)',
 
     // Lines & feedback
-    line: 'rgba(250, 245, 236, 0.10)',
-    lineStrong: 'rgba(250, 245, 236, 0.22)',
+    line: 'rgba(250, 241, 230, 0.10)',
+    lineStrong: 'rgba(250, 241, 230, 0.22)',
     danger: '#E36B6B',
     dangerTint: 'rgba(227, 107, 107, 0.14)',
     warning: '#E5B04C',
@@ -57,7 +57,7 @@ title:   { fontFamily: FONT.heading, fontSize: 26, letterSpacing: -0.2 },
       elevation: 1,
     },
     button: {
-      shadowColor: '#8DB8E3',
+      shadowColor: '#F2958B',
       shadowOffset: { width: 0, height: 1 },
       shadowOpacity: 0.06,
       shadowRadius: 2,

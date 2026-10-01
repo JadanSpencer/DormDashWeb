@@ -631,3 +631,22 @@ Replaces the flat J$400 fee and fixed 70/30 split. Full write-up, fee table and 
   - WiPay merchant display name, if set.
   - ntfy topic names: unchanged, no action needed.
 
+### Red and gold (2026-10-01, branch `red-gold`)
+The whole brand moved from blue-teal to **red and gold**. Token names are kept, so screens didn't change: `sea` = crimson header (#9B1B22 → wine #5C0D16), `cerulean` = red actions (#A91F1D), `teal` = deep gold text (#845F0E), `mustard` = bright gold (#F2BE45).
+- **Students:**
+  - Crimson-to-wine header with **gold contour lines**, ivory page and cards, red buttons.
+  - Main actions in bright gold with ink text: Place order, cart, Pay with tokens, install "Done".
+  - Gold active tab and chips.
+- **Runners:** a deep wine canvas with **gold waves**, gold payouts and online state, and rose-red actions.
+- **Admins:** a burgundy canvas with gold waves and ivory cards.
+- **Every text pair is checked to WCAG AA.** The ratios sit beside the tokens in `constants/theme.ts`.
+- **Icon:**
+  - Crimson-to-wine tile with a fine gold keyline.
+  - Solid gold R and speed stripes, with a dark-red print-plate edge under them.
+  - Full-bleed icons drop the keyline, since Android crops to a circle.
+- **Browser:**
+  - Theme colour crimson, splash wine, notification accents red.
+  - On wide screens the area around the app column is deep wine.
+  - Service worker `dd-v11`.
+- **Web switches:** react-native-web ignores `thumbColor` when on, so switches also pass `activeThumbColor`.
+

@@ -622,10 +622,10 @@ const gate = StyleSheet.create({
   copyText: { fontSize: 15, fontWeight: '800', color: T.color.cerulean },
   older: { fontSize: 13, lineHeight: 19, color: T.color.inkSoft },
   primary: {
-    marginTop: T.space.sm, backgroundColor: T.color.teal, borderRadius: T.radius.pill, height: 58,
-    alignItems: 'center', justifyContent: 'center', ...T.plate.teal, shadowColor: '#03352D',
+    marginTop: T.space.sm, backgroundColor: T.color.mustard, borderRadius: T.radius.pill, height: 58,
+    alignItems: 'center', justifyContent: 'center', ...T.plate.mustard, shadowColor: '#8A6214',
   },
-  primaryText: { ...T.type.button, fontSize: 17, color: T.color.card },
+  primaryText: { ...T.type.button, fontSize: 17, fontWeight: '900', color: T.color.ink },
   skip: { height: 44, alignItems: 'center', justifyContent: 'center' },
   skipText: { fontSize: 14, fontWeight: '700', color: T.color.inkSoft, textDecorationLine: 'underline' },
 });

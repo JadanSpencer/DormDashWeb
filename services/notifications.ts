@@ -16,7 +16,7 @@ import { Platform } from 'react-native';
 import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import { db } from './firebase';
 
-export const CERULEAN = '#0E8FB5';
+export const CERULEAN = '#A91F1D';
 
 // While the app is in the foreground we handle presentation ourselves.
 // shouldShowBanner:false stops the OS banner from covering our UI; the
@@ -56,7 +56,7 @@ export async function registerForPushNotifications(uid: string): Promise<string 
         name: 'default',
         importance: Notifications.AndroidImportance.HIGH,
         vibrationPattern: [0, 250, 250, 250],
-        lightColor: '#0E8FB5',
+        lightColor: '#A91F1D',
       });
     }
 

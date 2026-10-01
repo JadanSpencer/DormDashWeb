@@ -133,7 +133,8 @@ const ItemFormModal: React.FC<{
             <Switch
               value={form.isAvailable}
               onValueChange={v => set('isAvailable', v)}
-              trackColor={{ false: S.color.lineOnBg, true: 'rgba(15, 168, 147, 0.35)' }}
+              trackColor={{ false: S.color.lineOnBg, true: 'rgba(240, 194, 79, 0.35)' }}
+              {...({ activeThumbColor: S.color.tealBright } as object)}
               thumbColor={form.isAvailable ? S.color.tealBright : S.color.creamFaint}
             />
           </View>
@@ -362,7 +363,8 @@ export default function StoreMenuItems() {
                     <Switch
                       value={item.isAvailable}
                       onValueChange={() => handleToggleAvailable(item)}
-                      trackColor={{ false: S.color.lineOnCard, true: 'rgba(15, 168, 147, 0.35)' }}
+                      trackColor={{ false: S.color.lineOnCard, true: 'rgba(240, 194, 79, 0.35)' }}
+                      {...({ activeThumbColor: S.color.teal } as object)}
                       thumbColor={item.isAvailable ? S.color.teal : S.color.inkFaint}
                     />
                     <View style={styles.btnRow}>

@@ -189,7 +189,7 @@ const styles = StyleSheet.create({
   logo: { width: TILE - 14, height: TILE - 14 },
 
   scrim: { ...StyleSheet.absoluteFillObject },
-  scrimTint: { backgroundColor: 'rgba(22, 56, 69, 0.32)' },
+  scrimTint: { backgroundColor: 'rgba(43, 21, 20, 0.32)' },
   panel: {
     position: 'absolute',
     backgroundColor: T.color.card,

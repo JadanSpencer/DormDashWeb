@@ -7,8 +7,8 @@
   "scope": "/",
   "display": "standalone",
   "orientation": "portrait",
-  "background_color": "#FAF5EC",
-  "theme_color": "#1F4E79",
+  "background_color": "#F4EEE3",
+  "theme_color": "#9B1B22",
   "lang": "en-JM",
   "categories": [
     "food",

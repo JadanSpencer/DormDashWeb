@@ -331,7 +331,7 @@ const styles = StyleSheet.create({
     marginBottom: D.space.lg,
     borderRadius: D.radius.lg,
     padding: D.space.md,
-    borderWidth: 1.5, borderColor: 'rgba(47, 196, 174, 0.35)',
+    borderWidth: 1.5, borderColor: 'rgba(240, 194, 79, 0.35)',
   },
   monthLabel: { ...D.type.body, fontSize: 15, fontWeight: '800', color: D.color.cream },
   monthSub: { ...D.type.body, fontSize: 12, color: D.color.creamSoft, marginTop: 2 },

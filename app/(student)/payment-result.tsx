@@ -161,7 +161,7 @@ const styles = StyleSheet.create({
   primary: {
     backgroundColor: T.color.cerulean, borderRadius: 999, height: 56,
     alignItems: 'center', justifyContent: 'center',
-    ...T.plate.cerulean, shadowColor: '#063E5B',
+    ...T.plate.cerulean, shadowColor: '#4A0A10',
   },
   primaryText: { ...T.type.button, color: T.color.card },
   secondary: { height: 48, alignItems: 'center', justifyContent: 'center' },

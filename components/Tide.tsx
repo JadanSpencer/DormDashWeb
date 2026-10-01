@@ -92,7 +92,7 @@ export function TideBand({ children, style }: { children?: React.ReactNode; styl
               {/* The loops cover the band like the page's (slice), faint. */}
               <G transform={`translate(${loopX} ${loopY}) scale(${loopScale})`}>
                 {FLOW_LOOPS.map((d, i) => (
-                  <Path key={i} d={d} fill="none" stroke={T.color.card} strokeOpacity={0.09}
+                  <Path key={i} d={d} fill="none" stroke={T.color.mustard} strokeOpacity={0.16}
                     strokeWidth={2 / loopScale} />
                 ))}
               </G>

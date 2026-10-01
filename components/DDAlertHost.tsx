@@ -100,7 +100,7 @@ function AlertCard({ item }: { item: DDAlertItem }) {
 const styles = StyleSheet.create({
   backdrop: {
     flex: 1, alignItems: 'center', justifyContent: 'center',
-    padding: T.space.lg, backgroundColor: 'rgba(18, 51, 59, 0.38)',
+    padding: T.space.lg, backgroundColor: 'rgba(43, 21, 20, 0.38)',
   },
   card: {
     width: '100%', maxWidth: 360, backgroundColor: T.color.card,

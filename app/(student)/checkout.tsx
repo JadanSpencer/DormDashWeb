@@ -389,13 +389,13 @@ const styles = StyleSheet.create({
   warningText: { color: T.color.danger, fontSize: 12, fontWeight: '700', textAlign: 'center' },
   cta: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    backgroundColor: T.color.teal,
+    backgroundColor: T.color.mustard,
     borderRadius: T.radius.pill,
     height: 58, paddingHorizontal: T.space.lg,
-    ...T.plate.teal, shadowColor: '#03352D', shadowOffset: { width: 0, height: 5 },
+    ...T.plate.mustard, shadowColor: '#8A6214', shadowOffset: { width: 0, height: 5 },
   },
   ctaBusy: { opacity: 0.85 },
-  ctaText: { color: T.color.card, fontSize: 15, fontWeight: '800', letterSpacing: 0.3 },
+  ctaText: { color: T.color.ink, fontSize: 15, fontWeight: '900', letterSpacing: 0.3 },
   ctaTotalPlate: { backgroundColor: T.color.card, borderRadius: T.radius.pill, paddingHorizontal: 12, paddingVertical: 5 },
-  ctaTotalText: { color: T.color.teal, fontSize: 15, fontWeight: '900' },
+  ctaTotalText: { color: T.color.cerulean, fontSize: 15, fontWeight: '900' },
 });
