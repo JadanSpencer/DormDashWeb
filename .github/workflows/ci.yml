@@ -26,7 +26,7 @@ jobs:
       EXPO_PUBLIC_FIREBASE_APP_ID: ci
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with: { node-version: 22, cache: npm }
       - run: npm ci
       - run: npx expo export --platform web
@@ -40,7 +40,7 @@ jobs:
     defaults: { run: { working-directory: functions } }
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with: { node-version: 22, cache: npm, cache-dependency-path: functions/package-lock.json }
       - run: npm ci
       - run: npx tsc --noEmit
@@ -62,7 +62,7 @@ jobs:
     defaults: { run: { working-directory: firestore-tests } }
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with: { node-version: 22, cache: npm, cache-dependency-path: firestore-tests/package-lock.json }
       - uses: actions/setup-java@v4   # the Firestore emulator runs on Java
         with: { distribution: temurin, java-version: '21' }
@@ -81,7 +81,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
