@@ -1,6 +1,6 @@
 // services/payments.ts
 // App side of payments. The app never moves money itself: it asks Cloud
-// Functions (functions/src/payments.ts) to start a WiPay card payment or to
+// Functions (functions/src/payments.ts) to start a Fygaro card payment or to
 // adjust balances, and reads balances from Firestore.
 
 import { AppState, Platform, Linking } from 'react-native';
@@ -25,7 +25,7 @@ function errorText(e: any, fallback: string) {
   return typeof e?.message === 'string' && e.message && !/internal/i.test(e.message) ? e.message : fallback;
 }
 
-// Leaves for WiPay's secure card page. Refuses anything that isn't an
+// Leaves for Fygaro's secure card page. Refuses anything that isn't an
 // https link: navigating to a missing URL would just reload the app, which
 // looks exactly like a button that did nothing.
 async function openCheckout(url: unknown) {
@@ -42,7 +42,7 @@ const CHECKOUT_FALLBACK_MS = 15 * 1000;
  * Call after payOrderByCard / buyTokens succeed, with the function that
  * re-enables the screen's payment buttons.
  *
- * Phones keep the page in memory while the student is on WiPay and restore
+ * Phones keep the page in memory while the student is on Fygaro and restore
  * it exactly as it was (spinner showing, buttons disabled) when they come
  * back, so every payment button stayed dead until a full reload. This
  * re-enables them when the page is restored or the app comes back to the
@@ -65,10 +65,10 @@ export function whenBackFromCheckout(reset: () => void): () => void {
   return () => { done = true; cleanup(); };
 }
 
-/** Pay for an accepted card order. Leaves the app for WiPay's page. */
+/** Pay for an accepted card order. Leaves the app for Fygaro's page. */
 export async function payOrderByCard(orderId: string): Promise<void> {
   try {
-    const res: any = await httpsCallable(functions, 'createPayment')({ purpose: 'order', orderId });
+    const res: any = await httpsCallable(functions, 'createFygaroCheckout')({ purpose: 'order', orderId });
     await openCheckout(res.data.url);
   } catch (e: any) {
     throw new Error(errorText(e, 'The payment could not be started. Try again.'));
@@ -85,10 +85,10 @@ export async function payOrderWithTokens(orderId: string): Promise<void> {
   }
 }
 
-/** Buy a pack of tokens by card. Leaves the app for WiPay's page. */
+/** Buy a pack of tokens by card. Leaves the app for Fygaro's page. */
 export async function buyTokens(tokens: number): Promise<void> {
   try {
-    const res: any = await httpsCallable(functions, 'createPayment')({ purpose: 'tokens', tokens });
+    const res: any = await httpsCallable(functions, 'createFygaroCheckout')({ purpose: 'tokens', tokens });
     await openCheckout(res.data.url);
   } catch (e: any) {
     throw new Error(errorText(e, 'The payment could not be started. Try again.'));
@@ -96,9 +96,10 @@ export async function buyTokens(tokens: number): Promise<void> {
 }
 
 /**
- * Admin: resolve a card payment WiPay never confirmed (the student didn't
- * come back from WiPay's page). Check WiPay's dashboard first: our payment
- * reference is WiPay's order_id. paid=true needs the WiPay transaction ID.
+ * Admin: resolve a card payment Fygaro's webhook never confirmed (an outage,
+ * a misconfigured webhook URL, etc. — should be rare). Check Fygaro's
+ * dashboard first: our payment reference is Fygaro's custom_reference.
+ * paid=true needs the Fygaro transaction ID.
  */
 export async function adminResolvePayment(paymentId: string, paid: boolean, transactionId: string, note: string) {
   try {

@@ -77,7 +77,7 @@ export const orderPayoutJmd = (o: { dasherPayoutJmd?: number; deliveryFee?: numb
   typeof o.dasherPayoutJmd === 'number' ? o.dasherPayoutJmd : splitDeliveryFee(Number(o.deliveryFee) || 0).dasherPayoutJmd;
 
 // At most this many card payments can be started per student per window
-// (createPayment). Stops a script from flooding WiPay and payments/*.
+// (createFygaroCheckout). Stops a script from flooding Fygaro and payments/*.
 export const MAX_PAYMENT_STARTS = 5;
 export const PAYMENT_START_WINDOW_MS = 10 * 60 * 1000;
 export const minutes = (ms: number) => Math.round(ms / 60000);
@@ -133,7 +133,12 @@ export const STATUS_STEPS: OrderStatus[] = ['pending', 'accepted', 'picking_up',
 
 export type PaymentMethod = 'card' | 'tokens';
 export type PaymentStatus =
-  | 'unpaid' | 'reserved' | 'awaiting_payment' | 'paid' | 'released' | 'refunded_tokens';
+  | 'unpaid' | 'reserved' | 'awaiting_payment' | 'paid' | 'released' | 'refunded_tokens'
+  // Fygaro's programmatic refund API actually returned the money to the
+  // student's card (see requestFygaroRefund in payments.ts). Distinct from
+  // 'refunded_tokens', which is the fallback when that call fails or isn't
+  // available on the account — never both for the same order.
+  | 'refunded_card';
 
 /** Why an order was cancelled (orders/{id}.cancelReason). No reason = the student cancelled. */
 export type CancelReason =

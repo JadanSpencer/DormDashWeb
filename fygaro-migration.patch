@@ -1,0 +1,1425 @@
+diff --git a/app/(student)/payment-result.tsx b/app/(student)/payment-result.tsx
+index 5f63550..477cf8e 100644
+--- a/app/(student)/payment-result.tsx
++++ b/app/(student)/payment-result.tsx
+@@ -1,8 +1,9 @@
+ // app/(student)/payment-result.tsx  (URL: /payment-result)
+-// Where WiPay sends the student back after a card payment. The server
+-// (functions/src/payments.ts → wipayReturn) has already verified and applied
+-// the payment before redirecting here; this screen shows the result, reading
+-// the payment record itself from Firestore rather than trusting the URL.
++// Where Fygaro sends the student back after a card payment. The server
++// (functions/src/payments.ts → fygaroWebhook) applies the payment on its own
++// schedule, independent of this redirect; this screen shows the result,
++// reading the payment record itself from Firestore rather than trusting the
++// URL — fygaroReturn (the redirect handler) never applies anything itself.
+ 
+ import React, { useEffect, useMemo, useRef } from 'react';
+ import { View, Text, StyleSheet, Pressable, Animated, Easing, ActivityIndicator, Dimensions } from 'react-native';
+@@ -75,10 +76,11 @@ export default function PaymentResult() {
+   const ok = pay?.status === 'paid' || pay?.status === 'credited';
+   const isTokens = pay?.purpose === 'tokens';
+   const credited = pay?.status === 'credited';
+-  // The server applies the payment before sending the student here, so a
+-  // "pending" record with a success URL just means Firestore hasn't caught up.
+-  // "verified" = applying it is being retried (every few minutes);
+-  // "review" = DormDash is confirming it with WiPay (see PaymentsToCheck).
++  // The webhook usually applies the payment within seconds, independent of
++  // this redirect, so a "pending" record with a success URL just means it
++  // hasn't arrived yet. "verified" = applying it is being retried (every
++  // few minutes); "review" = Runner is confirming it by hand (see
++  // PaymentsToCheck) — should be rare now that there's a webhook at all.
+   const stillChecking =
+     (pay?.status === 'pending' && (urlStatus === 'success' || urlStatus === 'credited' || urlStatus === 'processing')) ||
+     pay?.status === 'verified';
+@@ -100,7 +102,7 @@ export default function PaymentResult() {
+     text = 'This usually takes a few seconds. You can leave this page: your balance or order updates on its own.';
+   } else if (inReview) {
+     title = 'We\'re confirming your payment';
+-    text = `WiPay reported your payment in an unusual way, so Runner is checking it by hand. You won't be charged twice. Reference: ${pid ?? 'unknown'}.`;
++    text = `Your payment needs a quick manual check, so Runner is confirming it by hand. You won't be charged twice. Reference: ${pid ?? 'unknown'}.`;
+   } else if (urlStatus === 'error' || !pay) {
+     title = 'We couldn\'t confirm this payment';
+     text = `If money was taken from your card, contact Runner support with this reference: ${pid ?? 'unknown'}.`;
+diff --git a/app/legal/privacy.tsx b/app/legal/privacy.tsx
+index 53a453d..1c97796 100644
+--- a/app/legal/privacy.tsx
++++ b/app/legal/privacy.tsx
+@@ -30,7 +30,7 @@ const sections: Section[] = [
+         ['Notifications', 'A notification token for your device, so we can send order updates. It is removed when you sign out.'],
+         ['Technical data', 'Our hosting and database provider (Google) keeps short-lived security and error logs, which can include your IP address and device type. We do not use these to track you.'],
+       ] },
+-      { p: 'Payments: card payments are handled by WiPay on its own secure page, so we never receive your card number. From WiPay we keep the transaction reference, amount, date, whether it succeeded and the last 4 digits of the card. We also keep your Runner token balance and a history of every change to it, and the times of your card payment attempts in the last 10 minutes (to stop misuse).' },
++      { p: 'Payments: card payments are handled by Fygaro on its own secure page, so we never receive your card number. From Fygaro we keep the transaction reference, amount, date, whether it succeeded and the last 4 digits of the card. We also keep your Runner token balance and a history of every change to it, and the times of your card payment attempts in the last 10 minutes (to stop misuse).' },
+       { p: 'We do not collect full payment card details, contacts, photos, microphone or camera data.' },
+     ],
+   },
+@@ -61,7 +61,7 @@ const sections: Section[] = [
+       { table: [
+         ['Google Firebase (Google LLC)', 'Sign-in, database, server functions, website hosting and push notifications. Stores all of the data described above. Servers may be outside Jamaica, including in the United States.'],
+         ['Sign in with Google (Google LLC)', 'Optional. If you choose "Continue with Google", you sign in on Google\'s page and Google shares your name and email address with Runner. Google\'s privacy policy applies to your Google account.'],
+-        ['WiPay', 'Card payments. When you pay by card, you enter your card details on WiPay\'s page and WiPay receives your name, email, the amount and your card details. WiPay\'s own privacy policy applies to that.'],
++        ['Fygaro', 'Card payments. When you pay by card, you enter your card and contact details directly on Fygaro\'s page, which Fygaro receives along with the amount. Fygaro\'s own privacy policy applies to that.'],
+         ['Google Maps (Google LLC)', 'Shows delivery maps. When a map is displayed, Google receives the coordinates being shown and may set its own cookies. Google\'s privacy policy applies to that content.'],
+         ['Expo (650 Industries, Inc.)', 'Delivers push notifications to the Runner app for iPhone and Android. Receives your device token and the text of the notification.'],
+         ['ntfy (ntfy.sh)', 'Sends order alerts to the stores we work with. When a runner accepts your paid order, the store receives the order code, the items and the runner\'s first name. Your name, room and phone number are never sent.'],
+diff --git a/app/legal/terms.tsx b/app/legal/terms.tsx
+index b15cff0..8fe67ff 100644
+--- a/app/legal/terms.tsx
++++ b/app/legal/terms.tsx
+@@ -41,7 +41,7 @@ const sections: Section[] = [
+     title: 'Payment',
+     blocks: [
+       { p: LEGAL.paymentMethod },
+-      { p: `${LEGAL.appName} never sees or stores your card number. WiPay may add a card processing fee, which is shown on its payment page before you pay.` },
++      { p: `${LEGAL.appName} never sees or stores your card number. Fygaro may add a card processing fee, which is shown on its payment page before you pay.` },
+       { list: [
+         `Runner tokens are prepaid credit for ${LEGAL.appName} orders. 1 token = J$${LEGAL.tokenValueJmd}. You can buy them by card in the app, or pay cash to a ${LEGAL.appName} admin, who adds them to your account.`,
+         'Tokens can only be used on Runner. They have no cash value and cannot be exchanged for cash, except where the law requires it.',
+diff --git a/components/BrandIntro.tsx b/components/BrandIntro.tsx
+index 8e5c3de..84e56bb 100644
+--- a/components/BrandIntro.tsx
++++ b/components/BrandIntro.tsx
+@@ -56,7 +56,7 @@ const SEEN_KEY = 'dd_seen_intro';
+ /** Web: open straight away, without the intro (seen before, or a payment result). */
+ export function shouldSkipIntro(): boolean {
+   if (!IS_WEB || typeof window === 'undefined') return false;
+-  // Coming back from the WiPay card page: show the payment result at once.
++  // Coming back from the Fygaro card page: show the payment result at once.
+   if (window.location.pathname.startsWith('/payment-result')) return true;
+   try { return window.localStorage.getItem(SEEN_KEY) === '1'; } catch { return false; }
+ }
+diff --git a/components/PaymentsToCheck.tsx b/components/PaymentsToCheck.tsx
+index 2230fa5..14a6671 100644
+--- a/components/PaymentsToCheck.tsx
++++ b/components/PaymentsToCheck.tsx
+@@ -1,14 +1,15 @@
+ // components/PaymentsToCheck.tsx
+-// Admin dashboard: card payments WiPay never confirmed to us.
++// Admin dashboard: card payments Fygaro's webhook never confirmed to us.
+ //
+-// WiPay only reports a result by redirecting the student's browser back to
+-// DormDash (its API has no webhook or status lookup). If the student closed
+-// the tab or lost signal on WiPay's page, their card may have been charged
+-// while the payment here still says "pending". Each row shows the payment
+-// reference, which is the order_id in WiPay's merchant dashboard: look it
+-// up there, then mark it Paid (with WiPay's transaction ID) or Not paid.
+-// Resolving runs the same exactly-once money logic as a normal return
+-// (functions/src/payments.ts adminResolvePayment) and records who did it.
++// This should be rare — Fygaro notifies us by webhook, independent of
++// whether the student's browser makes it back. This list only fills up if
++// that webhook never arrives (an outage on either side, a misconfigured
++// webhook URL) or a signature failed verification. Each row shows the
++// payment reference, which is the custom_reference in Fygaro's merchant
++// dashboard: look it up there, then mark it Paid (with Fygaro's transaction
++// ID) or Not paid. Resolving runs the same exactly-once money logic as a
++// normal webhook (functions/src/payments.ts adminResolvePayment) and
++// records who did it.
+ 
+ import React, { useState } from 'react';
+ import { ActivityIndicator, Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+@@ -39,10 +40,10 @@ export function PaymentsToCheck() {
+             </View>
+             {r.status === 'review' && (
+               <Text style={styles.review}>
+-                WiPay returned a different transaction ID ({r.returnTransactionId}). Confirm it in WiPay first.
++                Needs a manual check ({r.returnTransactionId}). Confirm it in Fygaro's dashboard first.
+               </Text>
+             )}
+-            <Text style={styles.ref} selectable>WiPay order ID: {r.id}</Text>
++            <Text style={styles.ref} selectable>Fygaro reference: {r.id}</Text>
+             <View style={styles.actions}>
+               <Pressable onPress={() => setTarget({ row: r, paid: false })} style={styles.secondary} accessibilityRole="button">
+                 <Text style={styles.secondaryText}>Not paid</Text>
+@@ -76,8 +77,8 @@ function ResolvePrompt({ target, onClose }: {
+ 
+   const submit = async () => {
+     if (!target) return;
+-    if (target.paid && !txId.trim()) { setError('Enter the WiPay transaction ID.'); return; }
+-    if (!note.trim()) { setError('Add a short note, e.g. "Checked WiPay dashboard".'); return; }
++    if (target.paid && !txId.trim()) { setError('Enter the Fygaro transaction ID.'); return; }
++    if (!note.trim()) { setError('Add a short note, e.g. "Checked Fygaro dashboard".'); return; }
+     setBusy(true); setError('');
+     try {
+       await adminResolvePayment(target.row.id, target.paid, txId.trim(), note.trim());
+@@ -97,13 +98,13 @@ function ResolvePrompt({ target, onClose }: {
+           <Text style={styles.modalTitle}>{paid ? 'Mark as paid' : 'Mark as not paid'}</Text>
+           <Text style={styles.hint}>
+             {paid
+-              ? `Only if WiPay's dashboard shows a successful payment for order ID ${target?.row.id}. The student gets ${target?.row.purpose === 'tokens' ? 'their tokens' : 'their order paid (or tokens, if it was already cancelled)'} straight away.`
+-              : `Use this when WiPay's dashboard has no successful payment for order ID ${target?.row.id}. Nothing is charged or credited.`}
++              ? `Only if Fygaro's dashboard shows a successful payment for reference ${target?.row.id}. The student gets ${target?.row.purpose === 'tokens' ? 'their tokens' : 'their order paid (or tokens, if it was already cancelled)'} straight away.`
++              : `Use this when Fygaro's dashboard has no successful payment for reference ${target?.row.id}. Nothing is charged or credited.`}
+           </Text>
+           {paid && (
+             <TextInput
+               style={styles.input} value={txId} onChangeText={setTxId}
+-              placeholder="WiPay transaction ID" placeholderTextColor={S.color.inkFaint}
++              placeholder="Fygaro transaction ID" placeholderTextColor={S.color.inkFaint}
+               autoCapitalize="characters" maxLength={100}
+             />
+           )}
+diff --git a/components/WalletCard.tsx b/components/WalletCard.tsx
+index 90d3db6..f980970 100644
+--- a/components/WalletCard.tsx
++++ b/components/WalletCard.tsx
+@@ -1,5 +1,5 @@
+ // components/WalletCard.tsx
+-// Student Profile: DormDash token balance, buy tokens by card (WiPay), how to
++// Student Profile: Runner token balance, buy tokens by card (Fygaro), how to
+ // get tokens with cash, recent token activity, and the J$ / Tokens switch.
+ // Styled as the app's money section: gold coins (components/Coin), a
+ // banknote-style balance band, coin-stack packs and a ledger.
+@@ -34,7 +34,7 @@ export function WalletCard({ uid }: { uid: string }) {
+     if (busyPack) return;
+     setBusyPack(tokens);
+     try {
+-      await buyTokens(tokens); // leaves the app for WiPay's secure page
++      await buyTokens(tokens); // leaves the app for Fygaro's secure page
+       // Re-enable the packs when the student comes back (see whenBackFromCheckout).
+       whenBackFromCheckout(() => setBusyPack(null));
+     } catch (e: any) {
+@@ -99,7 +99,7 @@ export function WalletCard({ uid }: { uid: string }) {
+           ))}
+         </View>
+         <Text style={styles.fine}>
+-          Paid on WiPay's secure page (card fee added by WiPay). Paying cash? A Runner admin can add tokens for you.
++          Paid on Fygaro's secure page (card fee may be added by Fygaro). Paying cash? A Runner admin can add tokens for you.
+         </Text>
+ 
+         {tx.length > 0 && (
+diff --git a/constants/legal.ts b/constants/legal.ts
+index 02fc0b6..10de747 100644
+--- a/constants/legal.ts
++++ b/constants/legal.ts
+@@ -18,6 +18,6 @@ export const LEGAL = {
+   // How fast personal data is removed after an account is deleted.
+   deletionDays: 30,
+   // How students pay. Payments: functions/src/payments.ts.
+-  paymentMethod: `You pay only after a runner accepts your order. You then choose to pay with your Runner tokens or by card, and have ${PAY_WINDOW_MIN} minutes to pay, or the order is cancelled. Card payments are made on the secure payment page of our payment provider, WiPay.`,
++  paymentMethod: `You pay only after a runner accepts your order. You then choose to pay with your Runner tokens or by card, and have ${PAY_WINDOW_MIN} minutes to pay, or the order is cancelled. Card payments are made on the secure payment page of our payment provider, Fygaro.`,
+   tokenValueJmd: TOKEN_JMD,
+ };
+diff --git a/firebase.json b/firebase.json
+index 2dc74ee..0a590e2 100644
+--- a/firebase.json
++++ b/firebase.json
+@@ -25,9 +25,16 @@
+     ],
+     "rewrites": [
+       {
+-        "source": "/api/wipay-return",
++        "source": "/api/fygaro-return",
+         "function": {
+-          "functionId": "wipayReturn",
++          "functionId": "fygaroReturn",
++          "region": "us-central1"
++        }
++      },
++      {
++        "source": "/api/fygaro-webhook",
++        "function": {
++          "functionId": "fygaroWebhook",
+           "region": "us-central1"
+         }
+       },
+diff --git a/functions/src/appCheck.ts b/functions/src/appCheck.ts
+index a6de506..8fde09c 100644
+--- a/functions/src/appCheck.ts
++++ b/functions/src/appCheck.ts
+@@ -10,6 +10,8 @@
+ //   2. Enforce: once the console shows ~100% verified requests, set
+ //      APP_CHECK_ENFORCE=true in functions/.env and redeploy functions.
+ //      Callables then reject requests without a valid token.
+-// wipayReturn is not a callable (WiPay redirects the browser to it), so it
+-// is protected by its payment signature instead.
++// fygaroReturn and fygaroWebhook are not callables (Fygaro redirects the
++// browser / posts to them directly), so they're protected their own way:
++// fygaroReturn never moves money, and fygaroWebhook checks Fygaro's own
++// HMAC signature instead.
+ export const APP_CHECK = { enforceAppCheck: process.env.APP_CHECK_ENFORCE === 'true' };
+diff --git a/functions/src/index.ts b/functions/src/index.ts
+index 2086458..8a81716 100644
+--- a/functions/src/index.ts
++++ b/functions/src/index.ts
+@@ -39,7 +39,7 @@ import {
+   OFFER_WAVE_SIZE, OFFER_WAVE_MS, OFFER_OPEN_WAVE, orderPayoutJmd,
+   ACTIVE_STATUSES, IN_DELIVERY_STATUSES, CancelReason,
+ } from './shared';
+-export { createPayment, wipayReturn, adminAdjustTokens, adminAdjustFloat, payOrderWithTokens, adminResolvePayment } from './payments';
++export { createFygaroCheckout, fygaroReturn, fygaroWebhook, adminAdjustTokens, adminAdjustFloat, payOrderWithTokens, adminResolvePayment } from './payments';
+ import { alertStore } from './storeAlerts';
+ import { APP_CHECK } from './appCheck';
+ import { Push, sendPushes, sendPushNotification, getUserToken, jmd } from './push';
+@@ -977,7 +977,7 @@ export const deleteMyAccount = onCall({ ...APP_CHECK }, async (request) => {
+       'Your Runner float isn\'t settled yet. Contact support to settle it, then delete your account.'
+     );
+   }
+-  const recent = Date.now() - 60 * 60 * 1000; // an abandoned WiPay page older than this can't still charge
++  const recent = Date.now() - 60 * 60 * 1000; // an abandoned Fygaro checkout older than this can't still charge
+   const unsettled = paySnaps.some((snap, i) => snap.docs.some(d =>
+     i > 0 || Number(d.get('createdAt')) > recent));
+   if (unsettled) {
+@@ -1319,8 +1319,10 @@ async function retireIdleDashers(now = Date.now()): Promise<{ nudged: number; of
+ }
+ 
+ // Card payments that need a person: held for review, or still pending long
+-// after the student left for WiPay (see "Card payments to check" on the
+-// admin dashboard). The "Card payments need checking" warning is what the
++// after checkout started (see "Card payments to check" on the admin
++// dashboard). Should be rare now that Fygaro's webhook applies most
++// payments within seconds; this is the safety net for when it doesn't
++// arrive. The "Card payments need checking" warning is what the
+ // monitoring alert emails on (scripts/setup-alerts.mjs).
+ const PAYMENT_CHECK_AFTER_MS = 30 * 60 * 1000;
+ async function reportPaymentsToCheck(now = Date.now()): Promise<number> {
+@@ -1339,7 +1341,7 @@ export const cancelStalePendingOrders = onSchedule('every 5 minutes', async () =
+   // an order that was never checked is published rather than auto-cancelled.
+   await repairHalfFinishedWork();
+   await cancelOverdueOrders();
+-  // Card payments whose WiPay return was verified but not applied yet.
++  // Card payments whose webhook was verified but not applied yet.
+   await retryVerifiedPayments();
+   // Online dashers who haven't opened DormDash for hours.
+   await retireIdleDashers();
+diff --git a/functions/src/payments.ts b/functions/src/payments.ts
+index a440537..dbe197f 100644
+--- a/functions/src/payments.ts
++++ b/functions/src/payments.ts
+@@ -1,5 +1,5 @@
+ // functions/src/payments.ts
+-// DormDash payments: DormDash tokens (a prepaid balance) and WiPay card
++// Runner payments: Runner tokens (a prepaid balance) and Fygaro card
+ // payments. Everything that moves money runs here, on the server, inside
+ // Firestore transactions. The app can only READ balances; it can never write
+ // them (see firestore.rules).
+@@ -10,27 +10,46 @@
+ // • Nobody pays until a dasher accepts. Orders go out unpaid; when a dasher
+ //   accepts, the student has PAY_WINDOW_MS to pay, and chooses how:
+ //     tokens → payOrderWithTokens (taken from their balance at once)
+-//     card   → createPayment, through WiPay
++//     card   → createFygaroCheckout, through Fygaro
+ //   The dasher can't start the delivery until it's paid. Unpaid → cancelled
+-//   automatically.
++//   automatically. This is a business rule (don't take money for an order
++//   nobody may ever fulfil), independent of what the gateway can or can't do.
+ //   (Older app versions could choose tokens at checkout: those are RESERVED
+ //   when placed, CHARGED on accept, RELEASED if cancelled first. Still
+ //   supported below.)
+-//   (WiPay can't hold a card payment and take it later, and has no refund
+-//   API, which is why card payment happens at acceptance.)
+-// • A card payment is only trusted when WiPay's signature checks out:
+-//   md5(transaction_id + original total + API key) must match, the
+-//   transaction id must be the one WiPay gave us when the payment was
+-//   created, and each payment can only be applied once.
+-// • Money that arrives for an order that was cancelled in the meantime, or
+-//   a paid order that support cancels, goes back to the student as tokens.
+-//   No money is ever silently lost.
++// • A card payment is only trusted when Fygaro's own HMAC-SHA256 webhook
++//   signature checks out (see fygaroWebhook). The browser-redirect "return"
++//   step (fygaroReturn) is for navigation only — it never moves money, so a
++//   forged or replayed return link can't do anything.
++// • Cancelling a paid card order tries a REAL refund through Fygaro's API
++//   first (requestFygaroRefund). If that fails — the account doesn't have
++//   refund access enabled, a network error, anything — it falls back to the
++//   same thing WiPay forced us to do always: credit the student with
++//   tokens instead, and flag it in payments/{id} for an admin to check
++//   Fygaro's dashboard. So this accommodates both cases: the account having
++//   real refund access, and it not having it, without a code change either way.
+ // • Floats: when an order is paid, its food cost (total minus delivery fee)
+ //   is taken from the store's float if the store has one, otherwise from
+ //   the delivering dasher's float. Admins top floats up.
+ //
+ // Ledgers (append-only, server-written): walletTx (student tokens) and
+ // floatTx (store and dasher floats). Every balance change has a ledger line.
++//
++// ─── One-time setup this file depends on (do this in the Fygaro dashboard,
++//     not in code) ──────────────────────────────────────────────────────────
++// 1. Create a Fygaro Link ("payment button") for Runner orders/top-ups.
++//    Set its Return URL to:  {APP_URL}/api/fygaro-return
++//    Set its Webhook URL to: {APP_URL}/api/fygaro-webhook
++//    Copy the Link's base URL into FYGARO_LINK_URL (below).
++// 2. Settings → API Credentials → Generate New. Copy the Key ID into
++//    FYGARO_KEY_ID, and set the secret with:
++//      firebase functions:secrets:set FYGARO_API_SECRET
++//    Fygaro does not let you recover this secret later — if you lose it,
++//    generate a new one and update the secret.
++// 3. Ask Fygaro support to confirm (see earlier chat): is the refund API
++//    active on this account without a separate unlock, and are partial
++//    refunds enabled on this plan. Neither answer changes this file —
++//    requestFygaroRefund already degrades gracefully if refunds 403/404.
+ 
+ import * as admin from 'firebase-admin';
+ // FieldValue/FieldPath come from the modular import: the namespace versions
+@@ -49,15 +68,20 @@ if (!admin.apps.length) admin.initializeApp();
+ const db = admin.firestore();
+ 
+ const APP_URL = 'https://dormdash-71035.web.app';
+-const RETURN_URL = `${APP_URL}/api/wipay-return`;
+ 
+-// Set once, see PAYMENTS_SETUP.md:
+-//   firebase functions:secrets:set WIPAY_API_KEY
+-//   functions/.env → WIPAY_ACCOUNT_NUMBER=… and WIPAY_ENV=sandbox|live
+-const WIPAY_API_KEY = defineSecret('WIPAY_API_KEY');
+-const WIPAY_ACCOUNT_NUMBER = defineString('WIPAY_ACCOUNT_NUMBER', { default: '1234567890' });
+-const WIPAY_ENV = defineString('WIPAY_ENV', { default: 'sandbox' });
+-const WIPAY_REQUEST_URL = 'https://jm.wipayfinancial.com/plugins/payments/request';
++// Set once, see the setup notes above.
++//   firebase functions:secrets:set FYGARO_API_SECRET
++const FYGARO_API_SECRET = defineSecret('FYGARO_API_SECRET');
++// The Key ID shown next to the secret in Settings → API Credentials.
++const FYGARO_KEY_ID = defineString('FYGARO_KEY_ID');
++// The base checkout URL of the Fygaro Link created for Runner (no default —
++// this is account-specific and must be set before any payment can start).
++const FYGARO_LINK_URL = defineString('FYGARO_LINK_URL');
++const FYGARO_REFUND_URL = 'https://api.fygaro.com/api/v1/external/payment/refund/';
++// How long a checkout JWT is valid for before Fygaro's page will refuse it.
++const CHECKOUT_JWT_TTL_MS = 15 * 60 * 1000;
++// Fygaro's own replay-protection window for the inbound webhook signature.
++const WEBHOOK_REPLAY_WINDOW_S = 300;
+ 
+ type Tx = admin.firestore.Transaction;
+ 
+@@ -75,6 +99,23 @@ async function requireAdmin(uid: string | undefined) {
+   }
+ }
+ 
++// ─── Fygaro JWTs (HS256, hand-rolled) ──────────────────────────────────────
++// Used for BOTH the outbound checkout link (amount, currency,
++// custom_reference) and the outbound refund call (transactionId, amount).
++// No jsonwebtoken dependency: this is exactly what that library does for
++// HS256, and the codebase already hand-rolls the WiPay hash the same way.
++function base64url(input: Buffer | string): string {
++  return Buffer.from(input).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
++}
++
++function signFygaroJwt(payload: Record<string, unknown>, secret: string, keyId: string): string {
++  const header = { alg: 'HS256', typ: 'JWT', kid: keyId };
++  const encHeader = base64url(JSON.stringify(header));
++  const encPayload = base64url(JSON.stringify(payload));
++  const signature = crypto.createHmac('sha256', secret).update(`${encHeader}.${encPayload}`).digest();
++  return `${encHeader}.${encPayload}.${base64url(signature)}`;
++}
++
+ // ─── Floats ────────────────────────────────────────────────────────────────
+ // A store's float lives in storeFloats/{storeId}, which only admins can read.
+ // It used to be a floatJmd field on the store doc itself, which every
+@@ -192,48 +233,132 @@ export async function chargeTokensOnAccept(orderRef: admin.firestore.DocumentRef
+   });
+ }
+ 
++// ─── Fygaro: real refund (used by settleCancelledOrder below) ─────────────
++/**
++ * Tries a real refund through Fygaro's programmatic refund API. Returns
++ * {ok:true} if Fygaro accepted it, {ok:false, reason} for ANY failure
++ * (network error, non-2xx response, refunds not enabled on the account,
++ * amount already fully refunded, etc.) — the caller always has a fallback
++ * for the false case, so this never throws.
++ */
++export async function requestFygaroRefund(
++  transactionId: string, amountJmd?: number,
++): Promise<{ ok: true } | { ok: false; reason: string }> {
++  if (!transactionId) return { ok: false, reason: 'no_transaction_id' };
++  const now = Math.floor(Date.now() / 1000);
++  const payload: Record<string, unknown> = { transactionId, iat: now, exp: now + 300 };
++  if (typeof amountJmd === 'number' && amountJmd > 0) payload.amount = amountJmd.toFixed(2);
++  const token = signFygaroJwt(payload, FYGARO_API_SECRET.value(), FYGARO_KEY_ID.value());
++
++  try {
++    const res = await fetch(FYGARO_REFUND_URL, {
++      method: 'POST',
++      headers: { 'Content-Type': 'application/json' },
++      body: JSON.stringify({ token }),
++    });
++    if (!res.ok) {
++      const bodyText = await res.text().catch(() => '');
++      logger.warn('Fygaro refund rejected', { transactionId, status: res.status, body: bodyText.slice(0, 500) });
++      return { ok: false, reason: `fygaro_${res.status}` };
++    }
++    logger.info('Fygaro refund accepted', { transactionId, amountJmd });
++    return { ok: true };
++  } catch (e: any) {
++    logger.error('Fygaro refund request failed', { transactionId, message: e?.message });
++    return { ok: false, reason: 'network_error' };
++  }
++}
++
+ /**
+  * Order cancelled: give back whatever the student put in.
+  *   reserved tokens → released
+- *   paid (tokens or card) → refunded as tokens, and the float is restored
++ *   paid with tokens → refunded as tokens, float restored
++ *   paid with card → tries a REAL refund via Fygaro first; only falls back
++ *     to crediting tokens (and flagging payments/{id} for an admin) if that
++ *     call fails. Either way the float is restored.
+  * Idempotent: paymentStatus moves to a final state exactly once.
+  */
+ export async function settleCancelledOrder(orderRef: admin.firestore.DocumentReference): Promise<void> {
+-  await db.runTransaction(async tx => {
+-    const order = (await tx.get(orderRef)).data();
+-    if (!order || order.status !== 'cancelled') return;
+-    const amount = Number(order.totalAmount) || 0;
+-    const wRef = walletRef(order.studentId);
++  // The real refund call can't happen inside a Firestore transaction (it's
++  // a network call), so: read what we need first, attempt the refund
++  // outside any transaction, then commit the result in one transaction.
++  const order = (await orderRef.get()).data();
++  if (!order || order.status !== 'cancelled' || order.paymentStatus !== 'paid') {
++    // Not a paid order (or already settled) — the simple reserved/paid
++    // branches below don't need a network call first.
++    await db.runTransaction(async tx => {
++      const fresh = (await tx.get(orderRef)).data();
++      if (!fresh || fresh.status !== 'cancelled') return;
++      const amount = Number(fresh.totalAmount) || 0;
++      const wRef = walletRef(fresh.studentId);
++      if (fresh.paymentStatus === 'reserved') {
++        const w = (await tx.get(wRef)).data() ?? {};
++        tx.set(wRef, { reservedJmd: Math.max(0, (Number(w.reservedJmd) || 0) - amount), updatedAt: Date.now() }, { merge: true });
++        tx.set(db.collection('walletTx').doc(`${orderRef.id}_release`), {
++          uid: fresh.studentId, type: 'order_release', amountJmd: amount, orderId: orderRef.id, createdAt: Date.now(),
++        });
++        tx.update(orderRef, { paymentStatus: 'released' });
++      }
++    });
++    return;
++  }
+ 
+-    if (order.paymentStatus === 'reserved') {
+-      const w = (await tx.get(wRef)).data() ?? {};
+-      tx.set(wRef, { reservedJmd: Math.max(0, (Number(w.reservedJmd) || 0) - amount), updatedAt: Date.now() }, { merge: true });
+-      tx.set(db.collection('walletTx').doc(`${orderRef.id}_release`), {
+-        uid: order.studentId, type: 'order_release', amountJmd: amount, orderId: orderRef.id, createdAt: Date.now(),
+-      });
+-      tx.update(orderRef, { paymentStatus: 'released' });
+-      return;
++  const amount = Number(order.totalAmount) || 0;
++  let refundedOnCard = false;
++  let refundFailReason = '';
++  if (order.paymentMethod === 'card' && order.transactionId) {
++    const result = await requestFygaroRefund(String(order.transactionId), amount);
++    if (result.ok === false) {
++      refundFailReason = result.reason;
++    } else {
++      refundedOnCard = true;
+     }
++  }
+ 
+-    if (order.paymentStatus === 'paid') {
+-      const target = await readFloatTarget(tx, order);
+-      tx.set(wRef, { balanceJmd: FieldValue.increment(amount), updatedAt: Date.now() }, { merge: true });
+-      tx.set(db.collection('walletTx').doc(`${orderRef.id}_refund`), {
+-        uid: order.studentId, type: 'order_refund', amountJmd: amount, orderId: orderRef.id,
+-        note: 'Paid order cancelled: refunded as tokens', createdAt: Date.now(),
++  await db.runTransaction(async tx => {
++    const fresh = (await tx.get(orderRef)).data();
++    if (!fresh || fresh.status !== 'cancelled' || fresh.paymentStatus !== 'paid') return; // already settled
++    const wRef = walletRef(fresh.studentId);
++    const target = await readFloatTarget(tx, fresh);
++    writeFloat(tx, target, orderRef.id, foodCost(fresh), 1, 'Paid order cancelled');
++
++    if (refundedOnCard) {
++      tx.update(orderRef, { paymentStatus: 'refunded_card' });
++      tx.set(db.collection('walletTx').doc(`${orderRef.id}_refund_card`), {
++        uid: fresh.studentId, type: 'order_refund_card', amountJmd: 0, orderId: orderRef.id,
++        note: 'Paid order cancelled: refunded to the original card via Fygaro', createdAt: Date.now(),
+       });
+-      tx.update(orderRef, { paymentStatus: 'refunded_tokens' });
+-      writeFloat(tx, target, orderRef.id, foodCost(order), 1, 'Paid order cancelled');
++      return;
+     }
++
++    // Fallback: card refund wasn't available/succeeded, or it was a tokens
++    // order all along — credit tokens, same as the old WiPay-only design.
++    tx.set(wRef, { balanceJmd: FieldValue.increment(amount), updatedAt: Date.now() }, { merge: true });
++    tx.set(db.collection('walletTx').doc(`${orderRef.id}_refund`), {
++      uid: fresh.studentId, type: 'order_refund', amountJmd: amount, orderId: orderRef.id,
++      note: 'Paid order cancelled: refunded as tokens', createdAt: Date.now(),
++    });
++    tx.update(orderRef, {
++      paymentStatus: 'refunded_tokens',
++      ...(fresh.paymentMethod === 'card' ? {
++        refundAttemptFailed: true,
++        refundAttemptReason: refundFailReason,
++        // If an admin later also refunds this in the Fygaro dashboard, the
++        // student would be paid twice (tokens here + cash there) — this
++        // note exists so whoever checks it catches that.
++        refundAttemptNote: 'Automatic Fygaro refund failed; student was credited tokens instead. ' +
++          'If you also refund this in the Fygaro dashboard, deduct the tokens first.',
++      } : {}),
++    });
+   });
+ }
+ 
+ // ─── Pay an accepted order with tokens ────────────────────────────────────
+ // Once a dasher accepts, the student chooses: tokens (here) or card
+-// (createPayment). Everything is checked and moved in ONE transaction, so a
+-// double tap, or tokens and card at the same time, can never charge twice:
+-// whichever lands first marks the order paid; a card payment that lands
+-// afterwards is credited back as tokens by wipayReturn.
++// (createFygaroCheckout). Everything is checked and moved in ONE
++// transaction, so a double tap, or tokens and card at the same time, can
++// never charge twice: whichever lands first marks the order paid; a card
++// payment that lands afterwards is credited back as tokens by the webhook.
+ // invoker 'public' is set explicitly: this function's first deploy timed out,
+ // and a callable only gets its "anyone signed in may call it" permission on
+ // a successful first deploy. Saying it here makes every deploy re-apply it.
+@@ -318,11 +443,13 @@ async function countPaymentStart(uid: string): Promise<void> {
+   }
+ }
+ 
+-// ─── WiPay: start a payment ────────────────────────────────────────────────
++// ─── Fygaro: start a payment ───────────────────────────────────────────────
+ // purpose 'order': pay for an accepted card order (student only, own order).
+ // purpose 'tokens': buy one of the TOKEN_PACKS.
+-export const createPayment = onCall({
+-  ...APP_CHECK, secrets: [WIPAY_API_KEY], cpu: 1, memory: '512MiB', concurrency: 40, maxInstances: 20,
++// Unlike WiPay, there's no "request" network call to start a payment: the
++// signed JWT itself IS the checkout request. We just build the link.
++export const createFygaroCheckout = onCall({
++  ...APP_CHECK, secrets: [FYGARO_API_SECRET], cpu: 1, memory: '512MiB', concurrency: 40, maxInstances: 20,
+ }, async (request) => {
+   const uid = request.auth?.uid;
+   if (!uid) throw new HttpsError('unauthenticated', 'Sign in first.');
+@@ -356,142 +483,157 @@ export const createPayment = onCall({
+   await countPaymentStart(uid);
+ 
+   const payRef = db.collection('payments').doc();
+-  const totalSent = amountJmd.toFixed(2); // exactly what the hash is checked against later
++  const totalSent = amountJmd.toFixed(2); // what we check the webhook's amount against later
+   await payRef.set({
+     uid, purpose, orderId, tokens, amountJmd, totalSent,
+-    status: 'pending', environment: WIPAY_ENV.value(), createdAt: Date.now(),
++    status: 'pending', gateway: 'fygaro', createdAt: Date.now(),
+   });
+ 
+-  const body = new URLSearchParams({
+-    account_number: WIPAY_ACCOUNT_NUMBER.value(),
+-    country_code: 'JM',
++  const now = Math.floor(Date.now() / 1000);
++  const jwt = signFygaroJwt({
++    amount: totalSent,
+     currency: 'JMD',
+-    environment: WIPAY_ENV.value(),
+-    fee_structure: 'customer_pay',
+-    method: 'credit_card',
+-    order_id: payRef.id,
+-    origin: 'Runner',
+-    response_url: RETURN_URL,
+-    total: totalSent,
+-    ...(me.email ? { email: String(me.email) } : {}),
+-    ...(me.name ? { name: String(me.name) } : {}),
+-  });
+-
+-  let result: any;
+-  try {
+-    const res = await fetch(WIPAY_REQUEST_URL, {
+-      method: 'POST',
+-      headers: { 'Accept': 'application/json', 'Content-Type': 'application/x-www-form-urlencoded' },
+-      body: body.toString(),
+-    });
+-    result = await res.json();
+-  } catch (e: any) {
+-    logger.error('WiPay request failed', { paymentId: payRef.id, message: e?.message });
+-    await payRef.update({ status: 'failed', failReason: 'wipay_unreachable' });
+-    throw new HttpsError('unavailable', 'The card payment page is not reachable right now. Try again in a minute.');
+-  }
+-
+-  if (!result?.url || !result?.transaction_id) {
+-    logger.error('WiPay rejected payment request', { paymentId: payRef.id, message: result?.message });
+-    await payRef.update({ status: 'failed', failReason: String(result?.message ?? 'no_url') });
+-    throw new HttpsError('failed-precondition', 'The payment could not be started. Try again.');
++    custom_reference: payRef.id,
++    nbf: now - 30, // small clock-skew allowance
++    exp: now + Math.floor(CHECKOUT_JWT_TTL_MS / 1000),
++  }, FYGARO_API_SECRET.value(), FYGARO_KEY_ID.value());
++
++  const linkBase = FYGARO_LINK_URL.value();
++  if (!linkBase) {
++    logger.error('FYGARO_LINK_URL is not set — create the Fygaro Link in the dashboard first');
++    await payRef.update({ status: 'failed', failReason: 'link_url_not_configured' });
++    throw new HttpsError('unavailable', 'Card payments aren\'t set up yet. Try again later.');
+   }
++  const url = `${linkBase}${linkBase.includes('?') ? '&' : '?'}jwt=${jwt}`;
+ 
+-  await payRef.update({ wipayTransactionId: String(result.transaction_id) });
+-  logger.info('Payment started', { paymentId: payRef.id, purpose, amountJmd, uid });
+-  return { url: String(result.url), paymentId: payRef.id };
++  logger.info('Fygaro checkout created', { paymentId: payRef.id, purpose, amountJmd, uid });
++  return { url, paymentId: payRef.id };
+ });
+ 
+-// ─── WiPay: the student comes back ────────────────────────────────────────
+-// WiPay redirects the student's browser here with the result in the query
+-// string. Served at /api/wipay-return through a Hosting rewrite
+-// (firebase.json). We verify, apply the payment exactly once, then send the
+-// student on to the result screen in the app.
+-export const wipayReturn = onRequest({ secrets: [WIPAY_API_KEY], invoker: 'public' }, async (req, res) => {
++// ─── Fygaro: the student comes back ────────────────────────────────────────
++// Fygaro redirects the student's browser here with ?reference=<fygaro id>
++// &custom_reference=<our payment id> after checkout. This endpoint is for
++// NAVIGATION ONLY — it never applies a payment itself, because these query
++// params aren't signed. The webhook (below) is the only thing that moves
++// money; this just decides which screen to send the browser to, reading
++// whatever state the webhook (or a fast admin resolution) has already set.
++// Served at /api/fygaro-return through a Hosting rewrite (firebase.json).
++export const fygaroReturn = onRequest({ invoker: 'public' }, async (req, res) => {
+   const q = req.query as Record<string, string | undefined>;
+-  const paymentId = String(q.order_id ?? '');
++  const paymentId = String(q.custom_reference ?? '');
+   const go = (status: string, extra: Record<string, string> = {}) => {
+     const params = new URLSearchParams({ status, pid: paymentId, ...extra });
+     res.redirect(302, `${APP_URL}/payment-result?${params.toString()}`);
+   };
+ 
+   if (!/^[A-Za-z0-9]{10,40}$/.test(paymentId)) { go('error'); return; }
+-  const payRef = db.collection('payments').doc(paymentId);
+-  const pay = (await payRef.get()).data();
++  const pay = (await db.collection('payments').doc(paymentId).get()).data();
+   if (!pay) { go('error'); return; }
+-
+   const kind = pay.purpose === 'tokens' ? 'tokens' : 'order';
+-  const txId = String(q.transaction_id ?? '');
++  const extra = pay.orderId ? { order: String(pay.orderId) } : {};
++
++  if (pay.status === 'paid' || pay.status === 'credited') { go('success', { kind, ...extra }); return; }
++  if (pay.status === 'failed') { go('failed', { kind, ...extra }); return; }
++  // 'pending' (webhook hasn't arrived yet) or 'verified' (webhook arrived,
++  // applying it is in flight or about to retry) — either way, the student
++  // sees a "confirming" screen; the webhook (or retryVerifiedPayments) will
++  // finish the job within seconds to minutes even if they close this tab.
++  go('processing', { kind, ...extra });
++});
+ 
+-  if (q.status !== 'success') {
+-    // A failed/declined attempt. Never downgrade a payment already applied.
+-    await db.runTransaction(async tx => {
+-      const fresh = (await tx.get(payRef)).data();
+-      if (fresh?.status === 'pending') tx.update(payRef, { status: 'failed', failReason: String(q.message ?? q.status ?? 'failed').slice(0, 300) });
+-    });
+-    go('failed', { kind, ...(pay.orderId ? { order: pay.orderId } : {}) });
++// ─── Fygaro: webhook (the only thing that moves money) ─────────────────────
++// Verifies the Fygaro-Signature header: "t=<unix seconds>,v1=<hex hmac>"
++// where the hmac is HMAC-SHA256(secret, `${t}.${rawBody}`). Rejects replays
++// older than WEBHOOK_REPLAY_WINDOW_S. See PAYMENTS_SETUP.md for the full
++// verification writeup.
++export const fygaroWebhook = onRequest({ secrets: [FYGARO_API_SECRET], invoker: 'public' }, async (req, res) => {
++  const sigHeader = String(req.headers['fygaro-signature'] ?? '');
++  const rawBody: Buffer = (req as any).rawBody ?? Buffer.from(JSON.stringify(req.body ?? {}));
++
++  // Header shape: "t=<unix seconds>,v1=<hex hmac>[,v1=<hex hmac>...]"
++  // (more than one v1 lets Fygaro rotate signing secrets without a gap).
++  const tMatch = sigHeader.match(/(?:^|,)\s*t=(\d+)/);
++  const timestamp = tMatch ? Number(tMatch[1]) : NaN;
++  const hashes = [...sigHeader.matchAll(/(?:^|,)\s*v1=([a-f0-9]+)/g)].map(m => m[1]);
++
++  if (!timestamp || hashes.length === 0) {
++    logger.error('Fygaro webhook missing signature header');
++    res.status(400).send('missing signature');
++    return;
++  }
++  if (Math.abs(Math.floor(Date.now() / 1000) - timestamp) > WEBHOOK_REPLAY_WINDOW_S) {
++    logger.error('Fygaro webhook signature too old', { timestamp });
++    res.status(400).send('stale signature');
++    return;
++  }
++  const expected = crypto.createHmac('sha256', FYGARO_API_SECRET.value())
++    .update(`${timestamp}.${rawBody.toString('utf8')}`).digest('hex');
++  const expectedBuf = Buffer.from(expected, 'hex');
++  const signatureOk = hashes.some(h => {
++    const hBuf = Buffer.from(h, 'hex');
++    return hBuf.length === expectedBuf.length && crypto.timingSafeEqual(hBuf, expectedBuf);
++  });
++  if (!signatureOk) {
++    logger.error('Fygaro webhook FAILED verification — not applying', { timestamp });
++    res.status(400).send('bad signature');
+     return;
+   }
+ 
+-  // Verify the signature: md5(transaction_id + ORIGINAL total + API key).
+-  const expected = crypto.createHash('md5').update(txId + pay.totalSent + WIPAY_API_KEY.value()).digest('hex');
+-  const hashOk = typeof q.hash === 'string' && q.hash.toLowerCase() === expected;
+-  const txOk = !pay.wipayTransactionId || pay.wipayTransactionId === txId;
+-  if (!hashOk) {
+-    // Not signed by WiPay with our key: forged or tampered. Change nothing.
+-    logger.error('WiPay return FAILED verification', { paymentId, hashOk, txOk });
+-    go('error', { kind });
++  let body: any;
++  try { body = JSON.parse(rawBody.toString('utf8')); } catch { body = req.body ?? {}; }
++  const paymentId = String(body.customReference ?? '');
++  const transactionId = String(body.transactionId ?? body.reference ?? '');
++  const cardLast4 = String(body.card?.last4 ?? '').slice(-4);
++  if (!/^[A-Za-z0-9]{10,40}$/.test(paymentId)) {
++    // Signed by Fygaro, but we don't recognise the reference — nothing to
++    // do, and nothing to retry either. 200 so Fygaro stops redelivering it.
++    logger.warn('Fygaro webhook: unknown custom_reference', { paymentId, transactionId });
++    res.status(200).send('ok');
+     return;
+   }
+ 
+-  // Record the verified result BEFORE applying it. If applying fails, the
+-  // record survives and retryVerifiedPayments (every 5 minutes) applies it,
+-  // so a student whose card was charged is never left without credit.
+-  // A transaction id that differs from the one WiPay gave when the payment
+-  // started (e.g. a retry on WiPay's page) still has a valid signature, but
+-  // is held for an admin to confirm ('review') rather than applied blindly.
++  const payRef = db.collection('payments').doc(paymentId);
+   const state = await db.runTransaction(async tx => {
+     const fresh = (await tx.get(payRef)).data();
+     if (!fresh) return 'missing';
+-    if (['paid', 'credited', 'verified'].includes(fresh.status)) return fresh.status;
++    if (['paid', 'credited', 'verified'].includes(fresh.status)) return fresh.status; // already handled
+     tx.update(payRef, {
+-      status: txOk ? 'verified' : 'review',
+-      returnTransactionId: txId,
+-      returnTotal: String(q.total ?? ''),
+-      returnCard: String(q.card ?? '').slice(-4),
++      status: 'verified',
++      returnTransactionId: transactionId,
++      returnTotal: String(body.amount ?? ''),
++      returnCard: cardLast4,
+       returnVerifiedAt: Date.now(),
+-      ...(txOk ? {} : { reviewReason: 'transaction_id_changed' }),
+     });
+-    return txOk ? 'verified' : 'review';
++    return 'verified';
+   });
+ 
+-  if (state === 'review') {
+-    logger.warn('WiPay return held for review (transaction id changed)', { paymentId, txId });
+-    go('processing', { kind, ...(pay.orderId ? { order: pay.orderId } : {}) });
++  if (state === 'missing') {
++    logger.warn('Fygaro webhook: payment doc missing', { paymentId });
++    res.status(200).send('ok');
+     return;
+   }
+-  let outcome = state === 'credited' ? 'credited' : 'success';
++
++  let outcome: string = state;
+   if (state === 'verified') {
+     try {
+-      outcome = (await applyVerifiedPayment(paymentId)) === 'credited' ? 'credited' : 'success';
++      outcome = (await applyVerifiedPayment(paymentId)) ?? 'verified';
+     } catch (e: any) {
+       // Saved as verified: retryVerifiedPayments applies it shortly.
+-      logger.error('Applying a verified payment failed; will retry', { paymentId, message: e?.message });
+-      outcome = 'processing';
++      logger.error('Applying a verified Fygaro payment failed; will retry', { paymentId, message: e?.message });
+     }
+   }
+-
+-  logger.info('Payment verified', { paymentId, purpose: pay.purpose, outcome });
+-  go(outcome, { kind, ...(pay.orderId ? { order: pay.orderId } : {}) });
++  logger.info('Fygaro webhook applied', { paymentId, transactionId, outcome });
++  res.status(200).send('ok');
+ });
+ 
+ // ─── Applying a verified payment (exactly once) ────────────────────────────
+ /**
+  * Moves a 'verified' payment to 'paid' (tokens bought, or order paid) or
+- * 'credited' (the order moved on while they paid: the money becomes tokens).
+- * Safe to call any number of times: only a 'verified' payment is applied,
+- * inside one transaction. Returns the resulting status, or null if there
+- * was nothing to apply.
++ * 'credited' (the order moved on while they paid: the money becomes tokens,
++ * same fallback as a failed refund — the card was already charged, so this
++ * is not itself a refund attempt). Safe to call any number of times: only a
++ * 'verified' payment is applied, inside one transaction. Returns the
++ * resulting status, or null if there was nothing to apply.
+  */
+ export async function applyVerifiedPayment(paymentId: string): Promise<'paid' | 'credited' | null> {
+   const payRef = db.collection('payments').doc(paymentId);
+@@ -521,13 +663,18 @@ export async function applyVerifiedPayment(paymentId: string): Promise<'paid' |
+     const stillPayable = order && order.status === 'accepted' && order.paymentStatus === 'awaiting_payment';
+     if (stillPayable) {
+       const target = await readFloatTarget(tx, order!);
+-      tx.update(orderRef, { paymentStatus: 'paid', paidAt: Date.now(), paymentId });
++      // transactionId is kept on the order itself (not just payments/{id})
++      // so settleCancelledOrder can hand it straight to requestFygaroRefund.
++      tx.update(orderRef, { paymentStatus: 'paid', paidAt: Date.now(), paymentId, transactionId: paidFields.transactionId });
+       tx.update(payRef, { status: 'paid', ...paidFields });
+       writeFloat(tx, target, orderRef.id, foodCost(order!), -1, 'Card order paid');
+       return 'paid' as const;
+     }
+     // Order was cancelled (or otherwise moved on) while they were paying.
+-    // Keep their money: credit it as tokens.
++    // Keep their money: credit it as tokens. (Not a refund attempt — the
++    // card payment and the order's cancellation happened independently; the
++    // student still gets their money back, just as tokens instead of a
++    // card reversal, exactly as the old WiPay path always did.)
+     tx.set(walletRef(fresh.uid), { balanceJmd: FieldValue.increment(fresh.amountJmd), updatedAt: Date.now() }, { merge: true });
+     tx.set(db.collection('walletTx').doc(`${paymentId}_late`), {
+       uid: fresh.uid, type: 'late_payment_credit', amountJmd: fresh.amountJmd, paymentId, orderId: fresh.orderId,
+@@ -553,13 +700,13 @@ export async function retryVerifiedPayments(): Promise<number> {
+   return applied;
+ }
+ 
+-// ─── Admin: resolve a card payment WiPay never confirmed to us ─────────────
+-// WiPay reports results only by redirecting the student's browser (its API
+-// has no webhook or status lookup). If the student closed the tab, the
+-// payment stays 'pending' here even if the card was charged. WiPay's
+-// merchant dashboard lists every transaction with our payment id as its
+-// order_id, so an admin checks there and resolves it:
+-//   paid: true  → applied exactly like a normal return (tokens or order)
++// ─── Admin: resolve a card payment Fygaro never confirmed to us ────────────
++// Should be rare now that webhooks exist (unlike WiPay, which had no
++// webhook at all and relied on this as the primary safety net) — kept as
++// the fallback for a webhook that never arrives (an outage on either side,
++// a misconfigured webhook URL, etc.). An admin checks the Fygaro dashboard
++// and resolves it here:
++//   paid: true  → applied exactly like a normal webhook (tokens or order)
+ //   paid: false → marked failed
+ // Every resolution records who did it and why.
+ export const adminResolvePayment = onCall({ ...APP_CHECK }, async (request) => {
+@@ -567,10 +714,10 @@ export const adminResolvePayment = onCall({ ...APP_CHECK }, async (request) => {
+   const paymentId = String(request.data?.paymentId ?? '');
+   const paid = request.data?.paid === true;
+   const note = String(request.data?.note ?? '').trim().slice(0, 200);
+-  const wipayTx = String(request.data?.transactionId ?? '').trim().slice(0, 100);
++  const fygaroTx = String(request.data?.transactionId ?? '').trim().slice(0, 100);
+   if (!/^[A-Za-z0-9]{10,40}$/.test(paymentId)) throw new HttpsError('invalid-argument', 'Payment not found.');
+-  if (!note) throw new HttpsError('invalid-argument', 'Add a short note (e.g. "Checked WiPay dashboard").');
+-  if (paid && !wipayTx) throw new HttpsError('invalid-argument', 'Enter the WiPay transaction ID from the WiPay dashboard.');
++  if (!note) throw new HttpsError('invalid-argument', 'Add a short note (e.g. "Checked Fygaro dashboard").');
++  if (paid && !fygaroTx) throw new HttpsError('invalid-argument', 'Enter the Fygaro transaction ID from the Fygaro dashboard.');
+ 
+   const payRef = db.collection('payments').doc(paymentId);
+   const by = request.auth!.uid;
+@@ -584,7 +731,7 @@ export const adminResolvePayment = onCall({ ...APP_CHECK }, async (request) => {
+     if (paid) {
+       tx.update(payRef, {
+         status: 'verified', ...resolution,
+-        returnTransactionId: wipayTx, returnTotal: String(fresh.totalSent ?? ''),
++        returnTransactionId: fygaroTx, returnTotal: String(fresh.totalSent ?? ''),
+         returnCard: String(fresh.returnCard ?? ''), returnVerifiedAt: Date.now(),
+       });
+       return 'verified';
+diff --git a/functions/src/shared.ts b/functions/src/shared.ts
+index ceccbb9..6d1d9e0 100644
+--- a/functions/src/shared.ts
++++ b/functions/src/shared.ts
+@@ -77,7 +77,7 @@ export const orderPayoutJmd = (o: { dasherPayoutJmd?: number; deliveryFee?: numb
+   typeof o.dasherPayoutJmd === 'number' ? o.dasherPayoutJmd : splitDeliveryFee(Number(o.deliveryFee) || 0).dasherPayoutJmd;
+ 
+ // At most this many card payments can be started per student per window
+-// (createPayment). Stops a script from flooding WiPay and payments/*.
++// (createFygaroCheckout). Stops a script from flooding Fygaro and payments/*.
+ export const MAX_PAYMENT_STARTS = 5;
+ export const PAYMENT_START_WINDOW_MS = 10 * 60 * 1000;
+ export const minutes = (ms: number) => Math.round(ms / 60000);
+@@ -133,7 +133,12 @@ export const STATUS_STEPS: OrderStatus[] = ['pending', 'accepted', 'picking_up',
+ 
+ export type PaymentMethod = 'card' | 'tokens';
+ export type PaymentStatus =
+-  | 'unpaid' | 'reserved' | 'awaiting_payment' | 'paid' | 'released' | 'refunded_tokens';
++  | 'unpaid' | 'reserved' | 'awaiting_payment' | 'paid' | 'released' | 'refunded_tokens'
++  // Fygaro's programmatic refund API actually returned the money to the
++  // student's card (see requestFygaroRefund in payments.ts). Distinct from
++  // 'refunded_tokens', which is the fallback when that call fails or isn't
++  // available on the account — never both for the same order.
++  | 'refunded_card';
+ 
+ /** Why an order was cancelled (orders/{id}.cancelReason). No reason = the student cancelled. */
+ export type CancelReason =
+diff --git a/functions/test/payments.test.js b/functions/test/payments.test.js
+index e708be4..6e6c293 100644
+--- a/functions/test/payments.test.js
++++ b/functions/test/payments.test.js
+@@ -66,19 +66,54 @@ const adminMock = { apps: [], initializeApp() { this.apps.push({}); }, firestore
+ require.cache[require.resolve('firebase-admin', { paths: [FN] })] = { exports: adminMock, loaded: true, id: 'firebase-admin' };
+ require.cache[require.resolve('firebase-admin/firestore', { paths: [FN] })] = { exports: { FieldValue: firestoreFn.FieldValue }, loaded: true, id: 'firebase-admin/firestore' };
+ 
+-process.env.WIPAY_API_KEY = '123';
+-process.env.WIPAY_ACCOUNT_NUMBER = '1234567890';
+-process.env.WIPAY_ENV = 'sandbox';
++const FYGARO_SECRET = 'test-secret-123';
++const FYGARO_KEY_ID = 'key-abc';
++process.env.FYGARO_API_SECRET = FYGARO_SECRET;
++process.env.FYGARO_KEY_ID = FYGARO_KEY_ID;
++process.env.FYGARO_LINK_URL = 'https://buy.fygaro.com/en/button/test';
+ const P = require(path.join(FN, 'lib/payments.js'));
+ 
+ const get = p => store.get(p);
+ const seed = (p, d) => store.set(p, { ...d });
+-const md5 = s => crypto.createHash('md5').update(s).digest('hex');
+-// Each test starts with no recent payment starts (createPayment's rate limit).
++// Each test starts with no recent payment starts (createFygaroCheckout's rate limit).
+ let passed = 0; const t = async (name, fn) => { store.delete('paymentStarts/stu'); await fn(); passed++; console.log('✓', name); };
+-function fakeRes() { const r = { location: null, redirect(code, url) { r.code = code; r.location = url; } }; return r; }
++
++// Combined fake res: supports both the redirect style (fygaroReturn) and the
++// status/send style (fygaroWebhook).
++function fakeRes() {
++  const r = {
++    location: null, statusCode: null, body: null,
++    redirect(code, url) { r.statusCode = code; r.location = url; },
++    status(code) { r.statusCode = code; return { send: (body) => { r.body = body; } }; },
++  };
++  return r;
++}
+ const qs = u => Object.fromEntries(new URL(u).searchParams);
+ 
++// Decodes a Fygaro checkout JWT (header.payload.sig, all base64url) without
++// verifying — tests check the payload we built, and separately check the
++// signature verifies against the right secret.
++function decodeJwt(token) {
++  const [h, p, s] = token.split('.');
++  const pad = b => b.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - b.length % 4) % 4);
++  return {
++    header: JSON.parse(Buffer.from(pad(h), 'base64').toString('utf8')),
++    payload: JSON.parse(Buffer.from(pad(p), 'base64').toString('utf8')),
++    signatureOk: Buffer.from(pad(s), 'base64').equals(
++      crypto.createHmac('sha256', FYGARO_SECRET).update(`${h}.${p}`).digest(),
++    ),
++  };
++}
++
++// Builds a signed Fygaro-Signature header + the matching raw body, exactly
++// the shape fygaroWebhook (functions/src/payments.ts) verifies.
++function fygaroWebhookRequest(bodyObj, { secret = FYGARO_SECRET, tsOffsetS = 0 } = {}) {
++  const rawBody = Buffer.from(JSON.stringify(bodyObj));
++  const t = Math.floor(Date.now() / 1000) + tsOffsetS;
++  const sig = crypto.createHmac('sha256', secret).update(`${t}.${rawBody.toString('utf8')}`).digest('hex');
++  return { headers: { 'fygaro-signature': `t=${t},v1=${sig}` }, rawBody, body: bodyObj };
++}
++
+ (async () => {
+   seed('users/stu', { role: 'student', isActive: true, name: 'Stu', email: 's@x.com' });
+   seed('users/boss', { role: 'admin', isActive: true });
+@@ -149,79 +184,107 @@ const qs = u => Object.fromEntries(new URL(u).searchParams);
+     assert.equal(get('orders/o4').paymentStatus, 'released');
+   });
+ 
+-  // ── WiPay ──
+-  global.fetch = async (url, opts) => ({ json: async () => ({ url: 'https://wipay/pay/abc', transaction_id: 'SB-TX1' }) });
+-
+-  await t('createPayment: only after a dasher accepts; not for others\' orders', async () => {
++  // ── Fygaro: starting a checkout (no network call — the JWT IS the request) ──
++  await t('createFygaroCheckout: only after a dasher accepts; not for others\' orders', async () => {
+     order('c1', { paymentMethod: 'card', paymentStatus: 'unpaid' });
+-    await assert.rejects(P.createPayment.run({ auth: { uid: 'stu' }, data: { purpose: 'order', orderId: 'c1' } }), /once a runner accepts/);
++    await assert.rejects(P.createFygaroCheckout.run({ auth: { uid: 'stu' }, data: { purpose: 'order', orderId: 'c1' } }), /once a runner accepts/);
+     seed('users/stu2', { role: 'student', isActive: true });
+     seed('orders/c1', { ...get('orders/c1'), status: 'accepted', paymentStatus: 'awaiting_payment', storeId: 'nf' });
+-    await assert.rejects(P.createPayment.run({ auth: { uid: 'stu2' }, data: { purpose: 'order', orderId: 'c1' } }), /not found/);
++    await assert.rejects(P.createFygaroCheckout.run({ auth: { uid: 'stu2' }, data: { purpose: 'order', orderId: 'c1' } }), /not found/);
+   });
+ 
+   let pid;
+-  await t('createPayment: sends exact total, stores WiPay transaction id', async () => {
+-    let sent;
+-    global.fetch = async (url, opts) => { sent = Object.fromEntries(new URLSearchParams(opts.body)); return { json: async () => ({ url: 'https://wipay/pay/abc', transaction_id: 'SB-TX1' }) }; };
+-    const r = await P.createPayment.run({ auth: { uid: 'stu' }, data: { purpose: 'order', orderId: 'c1' } });
++  await t('createFygaroCheckout: builds a correctly signed link for the exact total', async () => {
++    const r = await P.createFygaroCheckout.run({ auth: { uid: 'stu' }, data: { purpose: 'order', orderId: 'c1' } });
+     pid = r.paymentId;
+-    assert.equal(sent.total, '1200.00'); assert.equal(sent.fee_structure, 'customer_pay'); assert.equal(sent.order_id, pid);
+-    assert.equal(sent.response_url, 'https://dormdash-71035.web.app/api/wipay-return');
+-    assert.equal(get(`payments/${pid}`).wipayTransactionId, 'SB-TX1');
++    assert.ok(r.url.startsWith('https://buy.fygaro.com/en/button/test?jwt='));
++    const jwt = new URL(r.url).searchParams.get('jwt');
++    const { header, payload, signatureOk } = decodeJwt(jwt);
++    assert.equal(header.alg, 'HS256'); assert.equal(header.kid, FYGARO_KEY_ID);
++    assert.equal(payload.amount, '1200.00'); assert.equal(payload.currency, 'JMD');
++    assert.equal(payload.custom_reference, pid);
++    assert.ok(signatureOk, 'checkout JWT must verify against our own secret');
++    assert.equal(get(`payments/${pid}`).totalSent, '1200.00'); assert.equal(get(`payments/${pid}`).gateway, 'fygaro');
+   });
+ 
+-  await t('forged return (wrong hash) is rejected and changes nothing', async () => {
++  await t('forged webhook signature is rejected and changes nothing', async () => {
+     const res = fakeRes();
+-    await P.wipayReturn({ query: { order_id: pid, status: 'success', transaction_id: 'SB-TX1', total: '1250.40', hash: md5('SB-TX1' + '1200.00' + 'WRONGKEY') } }, res);
+-    assert.equal(qs(res.location).status, 'error'); assert.equal(get(`payments/${pid}`).status, 'pending'); assert.equal(get('orders/c1').paymentStatus, 'awaiting_payment');
++    const req = fygaroWebhookRequest(
++      { transactionId: 'FX-TX1', customReference: pid, amount: '1200.00' },
++      { secret: 'WRONG-SECRET' },
++    );
++    await P.fygaroWebhook(req, res);
++    assert.equal(res.statusCode, 400);
++    assert.equal(get(`payments/${pid}`).status, 'pending'); assert.equal(get('orders/c1').paymentStatus, 'awaiting_payment');
+   });
+ 
+-  await t('declined card marks payment failed, order still payable', async () => {
++  await t('stale webhook signature (older than 5 minutes) is rejected', async () => {
+     const res = fakeRes();
+-    await P.wipayReturn({ query: { order_id: pid, status: 'failed', message: 'declined' } }, res);
+-    assert.equal(qs(res.location).status, 'failed'); assert.equal(get(`payments/${pid}`).status, 'failed'); assert.equal(get('orders/c1').paymentStatus, 'awaiting_payment');
++    const req = fygaroWebhookRequest(
++      { transactionId: 'FX-TX1', customReference: pid, amount: '1200.00' },
++      { tsOffsetS: -301 },
++    );
++    await P.fygaroWebhook(req, res);
++    assert.equal(res.statusCode, 400);
++    assert.equal(get(`payments/${pid}`).status, 'pending');
+   });
+ 
+-  await t('genuine success: order paid, dasher float used (store has none); replay does nothing', async () => {
+-    const q = { order_id: pid, status: 'success', transaction_id: 'SB-TX1', total: '1261.00', card: 'XXXXXXXXXXXX1111', hash: md5('SB-TX1' + '1200.00' + '123') };
+-    let res = fakeRes(); await P.wipayReturn({ query: q }, res);
+-    assert.equal(qs(res.location).status, 'success');
++  await t('genuine webhook success: order paid, dasher float used (store has none); replay does nothing', async () => {
++    const body = { transactionId: 'FX-TX1', customReference: pid, amount: '1200.00', card: { last4: '1111' } };
++    let res = fakeRes(); await P.fygaroWebhook(fygaroWebhookRequest(body), res);
++    assert.equal(res.statusCode, 200);
+     assert.equal(get('orders/c1').paymentStatus, 'paid'); assert.equal(get(`payments/${pid}`).status, 'paid'); assert.equal(get(`payments/${pid}`).card, '1111');
+     assert.equal(get('dashers/dash').floatJmd, 5000 - 1000);
+-    res = fakeRes(); await P.wipayReturn({ query: q }, res);
+-    assert.equal(get('dashers/dash').floatJmd, 4000); assert.equal(qs(res.location).status, 'success');
++    // The order itself keeps the transaction id, for settleCancelledOrder's refund attempt later.
++    assert.equal(get('orders/c1').transactionId, 'FX-TX1');
++    res = fakeRes(); await P.fygaroWebhook(fygaroWebhookRequest(body), res);
++    assert.equal(get('dashers/dash').floatJmd, 4000); assert.equal(res.statusCode, 200);
++  });
++
++  await t('fygaroReturn (navigation only) reflects whatever the webhook already decided', async () => {
++    const res = fakeRes();
++    await P.fygaroReturn({ query: { custom_reference: pid, reference: 'FX-TX1' } }, res);
++    assert.equal(qs(res.location).status, 'success'); assert.equal(qs(res.location).order, 'c1');
+   });
+ 
+-  await t('cannot start a second payment for a paid order', async () => {
+-    await assert.rejects(P.createPayment.run({ auth: { uid: 'stu' }, data: { purpose: 'order', orderId: 'c1' } }), /already paid/);
++  await t('cannot start a second checkout for a paid order', async () => {
++    await assert.rejects(P.createFygaroCheckout.run({ auth: { uid: 'stu' }, data: { purpose: 'order', orderId: 'c1' } }), /already paid/);
+   });
+ 
+   await t('payment that lands after the order was cancelled becomes tokens', async () => {
+     order('c2', { paymentMethod: 'card', status: 'accepted', paymentStatus: 'awaiting_payment', totalAmount: 700 });
+-    global.fetch = async () => ({ json: async () => ({ url: 'u', transaction_id: 'SB-TX2' }) });
+-    const r = await P.createPayment.run({ auth: { uid: 'stu' }, data: { purpose: 'order', orderId: 'c2' } });
++    const r = await P.createFygaroCheckout.run({ auth: { uid: 'stu' }, data: { purpose: 'order', orderId: 'c2' } });
+     seed('orders/c2', { ...get('orders/c2'), status: 'cancelled', cancelReason: 'payment_timeout' });
+     const before = get('wallets/stu').balanceJmd;
+     const res = fakeRes();
+-    await P.wipayReturn({ query: { order_id: r.paymentId, status: 'success', transaction_id: 'SB-TX2', hash: md5('SB-TX2' + '700.00' + '123') } }, res);
+-    assert.equal(qs(res.location).status, 'credited'); assert.equal(get('wallets/stu').balanceJmd, before + 700);
++    await P.fygaroWebhook(fygaroWebhookRequest({ transactionId: 'FX-TX2', customReference: r.paymentId, amount: '700.00' }), res);
++    assert.equal(res.statusCode, 200);
++    assert.equal(get(`payments/${r.paymentId}`).status, 'credited'); assert.equal(get('wallets/stu').balanceJmd, before + 700);
+     assert.equal(get('orders/c2').paymentStatus, 'awaiting_payment');
++    const retRes = fakeRes();
++    await P.fygaroReturn({ query: { custom_reference: r.paymentId } }, retRes);
++    assert.equal(qs(retRes.location).status, 'success'); // 'credited' counts as ok for navigation
+   });
+ 
+   await t('buy 10 tokens: only listed packs; balance +J$1000 once', async () => {
+-    await assert.rejects(P.createPayment.run({ auth: { uid: 'stu' }, data: { purpose: 'tokens', tokens: 7 } }), /packs/);
+-    global.fetch = async () => ({ json: async () => ({ url: 'u', transaction_id: 'SB-TX3' }) });
+-    const r = await P.createPayment.run({ auth: { uid: 'stu' }, data: { purpose: 'tokens', tokens: 10 } });
++    await assert.rejects(P.createFygaroCheckout.run({ auth: { uid: 'stu' }, data: { purpose: 'tokens', tokens: 7 } }), /packs/);
++    const r = await P.createFygaroCheckout.run({ auth: { uid: 'stu' }, data: { purpose: 'tokens', tokens: 10 } });
+     const before = get('wallets/stu').balanceJmd;
+-    const q = { order_id: r.paymentId, status: 'success', transaction_id: 'SB-TX3', hash: md5('SB-TX3' + '1000.00' + '123') };
+-    await P.wipayReturn({ query: q }, fakeRes()); await P.wipayReturn({ query: q }, fakeRes());
++    const body = { transactionId: 'FX-TX3', customReference: r.paymentId, amount: '1000.00' };
++    await P.fygaroWebhook(fygaroWebhookRequest(body), fakeRes());
++    await P.fygaroWebhook(fygaroWebhookRequest(body), fakeRes());
+     assert.equal(get('wallets/stu').balanceJmd, before + 1000);
+   });
+ 
+-  await t('dashers and admins cannot pay; garbage payment ids rejected', async () => {
+-    await assert.rejects(P.createPayment.run({ auth: { uid: 'dash' }, data: { purpose: 'tokens', tokens: 5 } }), /student/);
+-    const res = fakeRes(); await P.wipayReturn({ query: { order_id: '../x', status: 'success' } }, res);
++  await t('dashers and admins cannot pay; webhook with no matching payment is a 200 no-op', async () => {
++    await assert.rejects(P.createFygaroCheckout.run({ auth: { uid: 'dash' }, data: { purpose: 'tokens', tokens: 5 } }), /student/);
++    const res = fakeRes();
++    await P.fygaroWebhook(fygaroWebhookRequest({ transactionId: 'FX-X', customReference: '../x', amount: '1.00' }), res);
++    assert.equal(res.statusCode, 200); // signed but unrecognised — nothing to retry, so 200
++  });
++  await t('fygaroReturn with a garbage reference redirects to error', async () => {
++    const res = fakeRes();
++    await P.fygaroReturn({ query: { custom_reference: '../x' } }, res);
+     assert.equal(qs(res.location).status, 'error');
+   });
+ 
+@@ -250,18 +313,17 @@ const qs = u => Object.fromEntries(new URL(u).searchParams);
+     assert.equal(get('orders/k1').paymentStatus, 'paid'); assert.equal(get('orders/k1').paymentMethod, 'tokens');
+     assert.equal(get('walletTx/k1_pay_tokens').amountJmd, -1500); assert.equal(get('walletTx/k1_pay_tokens').type, 'order_payment');
+     assert.equal(get('storeFloats/sf').floatJmd, floatBefore - 1300);
+-    await assert.rejects(P.createPayment.run({ auth: { uid: 'stu' }, data: { purpose: 'order', orderId: 'k1' } }), /already paid/);
++    await assert.rejects(P.createFygaroCheckout.run({ auth: { uid: 'stu' }, data: { purpose: 'order', orderId: 'k1' } }), /already paid/);
+   });
+ 
+-  await t('card payment started, then paid with tokens: the card money comes back as tokens', async () => {
++  await t('card checkout started, then paid with tokens: the card money comes back as tokens', async () => {
+     order('k2', { paymentMethod: 'card', status: 'accepted', paymentStatus: 'awaiting_payment', payDeadline: Date.now() + 600000, totalAmount: 900 });
+-    global.fetch = async () => ({ json: async () => ({ url: 'u', transaction_id: 'SB-TX9' }) });
+-    const r = await P.createPayment.run({ auth: { uid: 'stu' }, data: { purpose: 'order', orderId: 'k2' } });
++    const r = await P.createFygaroCheckout.run({ auth: { uid: 'stu' }, data: { purpose: 'order', orderId: 'k2' } });
+     await P.payOrderWithTokens.run({ auth: { uid: 'stu' }, data: { orderId: 'k2' } });
+     const mid = get('wallets/stu').balanceJmd;
+     const res = fakeRes();
+-    await P.wipayReturn({ query: { order_id: r.paymentId, status: 'success', transaction_id: 'SB-TX9', hash: md5('SB-TX9' + '900.00' + '123') } }, res);
+-    assert.equal(qs(res.location).status, 'credited'); assert.equal(get('wallets/stu').balanceJmd, mid + 900);
++    await P.fygaroWebhook(fygaroWebhookRequest({ transactionId: 'FX-TX9', customReference: r.paymentId, amount: '900.00' }), res);
++    assert.equal(get(`payments/${r.paymentId}`).status, 'credited'); assert.equal(get('wallets/stu').balanceJmd, mid + 900);
+     assert.equal(get('orders/k2').paymentStatus, 'paid');
+   });
+ 
+@@ -296,9 +358,8 @@ const qs = u => Object.fromEntries(new URL(u).searchParams);
+     assert.equal(await P.migrateLegacyStoreFloats(), 0);
+   });
+ 
+-  await t('createPayment: at most 5 starts per student per 10 minutes', async () => {
+-    global.fetch = async () => ({ json: async () => ({ url: 'https://wipay/pay/rl', transaction_id: 'SB-RL' }) });
+-    const start = uid => P.createPayment.run({ auth: { uid }, data: { purpose: 'tokens', tokens: 5 } });
++  await t('createFygaroCheckout: at most 5 starts per student per 10 minutes', async () => {
++    const start = uid => P.createFygaroCheckout.run({ auth: { uid }, data: { purpose: 'tokens', tokens: 5 } });
+     const before = [...store.keys()].filter(k => k.startsWith('payments/')).length;
+     for (let i = 0; i < 5; i++) await start('stu');
+     await assert.rejects(start('stu'), /Too many payment attempts\. Try again in 10 minutes/);
+@@ -309,83 +370,116 @@ const qs = u => Object.fromEntries(new URL(u).searchParams);
+     store.delete('paymentStarts/stu');
+   });
+ 
+-  // ── Returns that must never be lost (WiPay has no webhook or status API) ──
+-  const startTokensPayment = async (tokens, wipayTx) => {
+-    global.fetch = async () => ({ json: async () => ({ url: 'https://wipay/pay/x', transaction_id: wipayTx }) });
+-    return (await P.createPayment.run({ auth: { uid: 'stu' }, data: { purpose: 'tokens', tokens } })).paymentId;
+-  };
+-  const successReturn = (paymentId, tx, total) => ({ query: {
+-    order_id: paymentId, status: 'success', transaction_id: tx, total, card: 'XXXXXXXXXXXX1111',
+-    hash: md5(tx + total + '123'),
+-  } });
++  // ── Webhook deliveries that must never be lost ──
++  const startTokensCheckout = async (tokens) =>
++    (await P.createFygaroCheckout.run({ auth: { uid: 'stu' }, data: { purpose: 'tokens', tokens } })).paymentId;
+ 
+-  await t('return verified but applying fails: saved as verified, retry sweep applies it exactly once', async () => {
+-    const p1 = await startTokensPayment(5, 'SB-R1');
++  await t('webhook verified but applying fails: saved as verified, retry sweep applies it exactly once', async () => {
++    const p1 = await startTokensCheckout(5);
+     const before = get('wallets/stu').balanceJmd;
+-    // Recording the return is transaction 1; make transaction 2 (applying it) fail.
++    // Recording the webhook is transaction 1; make transaction 2 (applying it) fail.
+     const origRun = db.runTransaction; let calls = 0;
+     db.runTransaction = async fn => { calls++; if (calls === 2) throw new Error('SIMULATED apply failure'); return origRun.call(db, fn); };
+     const res = fakeRes();
+-    await P.wipayReturn(successReturn(p1, 'SB-R1', '500.00'), res);
++    const req = fygaroWebhookRequest({ transactionId: 'FX-R1', customReference: p1, amount: '500.00', card: { last4: '1111' } });
++    await P.fygaroWebhook(req, res);
+     db.runTransaction = origRun;
+-    assert.equal(qs(res.location).status, 'processing');
++    assert.equal(res.statusCode, 200); // webhook always 200s once the signature is good — Fygaro shouldn't redeliver
+     assert.equal(get(`payments/${p1}`).status, 'verified', 'saved before applying');
+     assert.equal(get('wallets/stu').balanceJmd, before, 'not credited yet');
+     assert.equal(await P.retryVerifiedPayments(), 1);
+     assert.equal(await P.retryVerifiedPayments(), 0, 'second sweep does nothing');
+     assert.equal(get(`payments/${p1}`).status, 'paid');
+     assert.equal(get('wallets/stu').balanceJmd, before + 500);
+-    // The student's browser replays the same return: nothing more happens.
+-    const again = fakeRes(); await P.wipayReturn(successReturn(p1, 'SB-R1', '500.00'), again);
++    // Fygaro redelivers the same webhook (it does this until it sees 200 from a
++    // fresh request, or just as a retry policy): nothing more happens.
++    const again = fakeRes(); await P.fygaroWebhook(fygaroWebhookRequest({ transactionId: 'FX-R1', customReference: p1, amount: '500.00' }), again);
+     assert.equal(get('wallets/stu').balanceJmd, before + 500);
+   });
+ 
+-  await t('changed transaction id with a valid signature is held for review, not applied', async () => {
+-    const p2 = await startTokensPayment(10, 'SB-R2');
+-    const before = get('wallets/stu').balanceJmd;
+-    const res = fakeRes();
+-    await P.wipayReturn(successReturn(p2, 'SB-R2-RETRY', '1000.00'), res);
+-    assert.equal(qs(res.location).status, 'processing');
+-    assert.equal(get(`payments/${p2}`).status, 'review');
+-    assert.equal(get('wallets/stu').balanceJmd, before, 'no money moved');
+-    assert.equal(await P.retryVerifiedPayments(), 0, 'the sweep never applies review items');
+-    // A later declined redirect can't downgrade it.
+-    await P.wipayReturn({ query: { order_id: p2, status: 'failed' } }, fakeRes());
+-    assert.equal(get(`payments/${p2}`).status, 'review');
+-    // Admin checks the WiPay dashboard and confirms it.
+-    await assert.rejects(P.adminResolvePayment.run({ auth: { uid: 'stu' }, data: { paymentId: p2, paid: true, transactionId: 'SB-R2-RETRY', note: 'x' } }), /Admins only/);
+-    await assert.rejects(P.adminResolvePayment.run({ auth: { uid: 'boss' }, data: { paymentId: p2, paid: true, transactionId: 'SB-R2-RETRY', note: '' } }), /note/);
+-    await assert.rejects(P.adminResolvePayment.run({ auth: { uid: 'boss' }, data: { paymentId: p2, paid: true, note: 'checked' } }), /transaction ID/);
+-    const r = await P.adminResolvePayment.run({ auth: { uid: 'boss' }, data: { paymentId: p2, paid: true, transactionId: 'SB-R2-RETRY', note: 'Seen in WiPay dashboard' } });
+-    assert.equal(r.status, 'paid');
+-    assert.equal(get('wallets/stu').balanceJmd, before + 1000);
+-    assert.equal(get(`payments/${p2}`).resolvedBy, 'boss');
+-    await assert.rejects(P.adminResolvePayment.run({ auth: { uid: 'boss' }, data: { paymentId: p2, paid: true, transactionId: 'SB-R2-RETRY', note: 'again' } }), /already paid/);
+-    assert.equal(get('wallets/stu').balanceJmd, before + 1000, 'never twice');
+-  });
+-
+-  await t('student never came back from WiPay: admin resolves paid order payment, or marks not paid', async () => {
++  await t('admin resolves a payment whose webhook never arrived: paid order payment, or marks not paid', async () => {
+     // Order still waiting for payment: resolving pays the order.
+     order('lost1', { paymentMethod: 'card', status: 'accepted', paymentStatus: 'awaiting_payment', payDeadline: Date.now() + 600000, totalAmount: 800 });
+-    global.fetch = async () => ({ json: async () => ({ url: 'https://wipay/pay/y', transaction_id: 'SB-L1' }) });
+-    const p3 = (await P.createPayment.run({ auth: { uid: 'stu' }, data: { purpose: 'order', orderId: 'lost1' } })).paymentId;
++    const p3 = (await P.createFygaroCheckout.run({ auth: { uid: 'stu' }, data: { purpose: 'order', orderId: 'lost1' } })).paymentId;
+     assert.equal(get(`payments/${p3}`).status, 'pending');
+-    const r = await P.adminResolvePayment.run({ auth: { uid: 'boss' }, data: { paymentId: p3, paid: true, transactionId: 'SB-L1', note: 'WiPay shows success' } });
++    await assert.rejects(P.adminResolvePayment.run({ auth: { uid: 'stu' }, data: { paymentId: p3, paid: true, transactionId: 'FX-L1', note: 'x' } }), /Admins only/);
++    await assert.rejects(P.adminResolvePayment.run({ auth: { uid: 'boss' }, data: { paymentId: p3, paid: true, transactionId: 'FX-L1', note: '' } }), /note/);
++    await assert.rejects(P.adminResolvePayment.run({ auth: { uid: 'boss' }, data: { paymentId: p3, paid: true, note: 'checked' } }), /transaction ID/);
++    const r = await P.adminResolvePayment.run({ auth: { uid: 'boss' }, data: { paymentId: p3, paid: true, transactionId: 'FX-L1', note: 'Fygaro dashboard shows success' } });
+     assert.equal(r.status, 'paid'); assert.equal(get('orders/lost1').paymentStatus, 'paid');
++    assert.equal(get(`payments/${p3}`).resolvedBy, 'boss');
++    await assert.rejects(P.adminResolvePayment.run({ auth: { uid: 'boss' }, data: { paymentId: p3, paid: true, transactionId: 'FX-L1', note: 'again' } }), /already paid/);
++
+     // Order already cancelled for non-payment: the money becomes tokens.
+     order('lost2', { paymentMethod: 'card', status: 'accepted', paymentStatus: 'awaiting_payment', payDeadline: Date.now() + 600000, totalAmount: 900 });
+-    global.fetch = async () => ({ json: async () => ({ url: 'https://wipay/pay/z', transaction_id: 'SB-L2' }) });
+-    const p4 = (await P.createPayment.run({ auth: { uid: 'stu' }, data: { purpose: 'order', orderId: 'lost2' } })).paymentId;
++    const p4 = (await P.createFygaroCheckout.run({ auth: { uid: 'stu' }, data: { purpose: 'order', orderId: 'lost2' } })).paymentId;
+     seed('orders/lost2', { ...get('orders/lost2'), status: 'cancelled', cancelReason: 'payment_timeout' });
+     const bal = get('wallets/stu').balanceJmd;
+-    const r2 = await P.adminResolvePayment.run({ auth: { uid: 'boss' }, data: { paymentId: p4, paid: true, transactionId: 'SB-L2', note: 'Paid after deadline' } });
++    const r2 = await P.adminResolvePayment.run({ auth: { uid: 'boss' }, data: { paymentId: p4, paid: true, transactionId: 'FX-L2', note: 'Paid after deadline' } });
+     assert.equal(r2.status, 'credited'); assert.equal(get('wallets/stu').balanceJmd, bal + 900);
++
+     // Not paid: marked failed, nothing moves.
+-    const p5 = await startTokensPayment(5, 'SB-L3');
++    const p5 = await startTokensCheckout(5);
+     const bal2 = get('wallets/stu').balanceJmd;
+-    const r3 = await P.adminResolvePayment.run({ auth: { uid: 'boss' }, data: { paymentId: p5, paid: false, note: 'Not in WiPay dashboard' } });
++    const r3 = await P.adminResolvePayment.run({ auth: { uid: 'boss' }, data: { paymentId: p5, paid: false, note: 'Not in Fygaro dashboard' } });
+     assert.equal(r3.status, 'failed'); assert.equal(get(`payments/${p5}`).status, 'failed'); assert.equal(get('wallets/stu').balanceJmd, bal2);
+   });
+ 
++  // ── Fygaro refunds: the "accommodate both cases" fallback ──────────────────
++  // settleCancelledOrder tries a real refund through Fygaro first; only
++  // credits tokens (the old WiPay-only behaviour) if that call fails, for
++  // ANY reason — refunds not enabled on the account, a network error,
++  // anything. Both outcomes must be covered, since which one actually
++  // happens in production depends on Fygaro's account settings, not on
++  // this code.
++  const cardOrder = (id, extra) => seed(`orders/${id}`, {
++    studentId: 'stu', storeId: 'sf', dasherId: 'dash', totalAmount: 1000, deliveryFee: 200,
++    paymentMethod: 'card', paymentStatus: 'paid', transactionId: 'FX-REFUND-ME', status: 'cancelled', ...extra,
++  });
++
++  await t('settleCancelledOrder: Fygaro refund succeeds -> refunded_card, NO tokens credited, float restored', async () => {
++    global.fetch = async (url, opts) => {
++      assert.equal(url, 'https://api.fygaro.com/api/v1/external/payment/refund/');
++      const { token } = JSON.parse(opts.body);
++      const { payload, signatureOk } = decodeJwt(token);
++      assert.ok(signatureOk); assert.equal(payload.transactionId, 'FX-REFUND-ME'); assert.equal(payload.amount, '1000.00');
++      return { ok: true, text: async () => '' };
++    };
++    cardOrder('ref1');
++    const bal = get('wallets/stu').balanceJmd ?? 0;
++    const fl = get('storeFloats/sf').floatJmd;
++    await P.settleCancelledOrder(db.collection('orders').doc('ref1'));
++    assert.equal(get('orders/ref1').paymentStatus, 'refunded_card');
++    assert.equal(get('wallets/stu').balanceJmd ?? 0, bal, 'no tokens credited — the card itself was refunded');
++    assert.equal(get('storeFloats/sf').floatJmd, fl + 800);
++    // Idempotent: calling it again changes nothing further.
++    await P.settleCancelledOrder(db.collection('orders').doc('ref1'));
++    assert.equal(get('storeFloats/sf').floatJmd, fl + 800);
++  });
++
++  await t('settleCancelledOrder: Fygaro refund FAILS -> falls back to tokens, flagged for an admin', async () => {
++    global.fetch = async () => ({ ok: false, status: 403, text: async () => 'refunds not enabled on this account' });
++    cardOrder('ref2', { transactionId: 'FX-REFUND-FAIL' });
++    const bal = get('wallets/stu').balanceJmd ?? 0;
++    const fl = get('storeFloats/sf').floatJmd;
++    await P.settleCancelledOrder(db.collection('orders').doc('ref2'));
++    assert.equal(get('orders/ref2').paymentStatus, 'refunded_tokens');
++    assert.equal(get('wallets/stu').balanceJmd, bal + 1000, 'the fallback: tokens credited for the full amount');
++    assert.equal(get('storeFloats/sf').floatJmd, fl + 800);
++    assert.equal(get('orders/ref2').refundAttemptFailed, true);
++    assert.ok(get('orders/ref2').refundAttemptReason.includes('403'));
++    assert.ok(/deduct the tokens first/.test(get('orders/ref2').refundAttemptNote), 'must warn against double-paying');
++  });
++
++  await t('settleCancelledOrder: network error talking to Fygaro also falls back to tokens', async () => {
++    global.fetch = async () => { throw new Error('ECONNRESET'); };
++    cardOrder('ref3', { transactionId: 'FX-REFUND-NET' });
++    const bal = get('wallets/stu').balanceJmd ?? 0;
++    await P.settleCancelledOrder(db.collection('orders').doc('ref3'));
++    assert.equal(get('orders/ref3').paymentStatus, 'refunded_tokens');
++    assert.equal(get('wallets/stu').balanceJmd, bal + 1000);
++    assert.equal(get('orders/ref3').refundAttemptReason, 'network_error');
++  });
++
+   console.log(`\nAll ${passed} payment tests passed.`);
+ })().catch(e => { console.error('FAILED:', e); process.exit(1); });
+diff --git a/services/payments.ts b/services/payments.ts
+index aac6b18..be2d7fd 100644
+--- a/services/payments.ts
++++ b/services/payments.ts
+@@ -1,6 +1,6 @@
+ // services/payments.ts
+ // App side of payments. The app never moves money itself: it asks Cloud
+-// Functions (functions/src/payments.ts) to start a WiPay card payment or to
++// Functions (functions/src/payments.ts) to start a Fygaro card payment or to
+ // adjust balances, and reads balances from Firestore.
+ 
+ import { AppState, Platform, Linking } from 'react-native';
+@@ -25,7 +25,7 @@ function errorText(e: any, fallback: string) {
+   return typeof e?.message === 'string' && e.message && !/internal/i.test(e.message) ? e.message : fallback;
+ }
+ 
+-// Leaves for WiPay's secure card page. Refuses anything that isn't an
++// Leaves for Fygaro's secure card page. Refuses anything that isn't an
+ // https link: navigating to a missing URL would just reload the app, which
+ // looks exactly like a button that did nothing.
+ async function openCheckout(url: unknown) {
+@@ -42,7 +42,7 @@ const CHECKOUT_FALLBACK_MS = 15 * 1000;
+  * Call after payOrderByCard / buyTokens succeed, with the function that
+  * re-enables the screen's payment buttons.
+  *
+- * Phones keep the page in memory while the student is on WiPay and restore
++ * Phones keep the page in memory while the student is on Fygaro and restore
+  * it exactly as it was (spinner showing, buttons disabled) when they come
+  * back, so every payment button stayed dead until a full reload. This
+  * re-enables them when the page is restored or the app comes back to the
+@@ -65,10 +65,10 @@ export function whenBackFromCheckout(reset: () => void): () => void {
+   return () => { done = true; cleanup(); };
+ }
+ 
+-/** Pay for an accepted card order. Leaves the app for WiPay's page. */
++/** Pay for an accepted card order. Leaves the app for Fygaro's page. */
+ export async function payOrderByCard(orderId: string): Promise<void> {
+   try {
+-    const res: any = await httpsCallable(functions, 'createPayment')({ purpose: 'order', orderId });
++    const res: any = await httpsCallable(functions, 'createFygaroCheckout')({ purpose: 'order', orderId });
+     await openCheckout(res.data.url);
+   } catch (e: any) {
+     throw new Error(errorText(e, 'The payment could not be started. Try again.'));
+@@ -85,10 +85,10 @@ export async function payOrderWithTokens(orderId: string): Promise<void> {
+   }
+ }
+ 
+-/** Buy a pack of tokens by card. Leaves the app for WiPay's page. */
++/** Buy a pack of tokens by card. Leaves the app for Fygaro's page. */
+ export async function buyTokens(tokens: number): Promise<void> {
+   try {
+-    const res: any = await httpsCallable(functions, 'createPayment')({ purpose: 'tokens', tokens });
++    const res: any = await httpsCallable(functions, 'createFygaroCheckout')({ purpose: 'tokens', tokens });
+     await openCheckout(res.data.url);
+   } catch (e: any) {
+     throw new Error(errorText(e, 'The payment could not be started. Try again.'));
+@@ -96,9 +96,10 @@ export async function buyTokens(tokens: number): Promise<void> {
+ }
+ 
+ /**
+- * Admin: resolve a card payment WiPay never confirmed (the student didn't
+- * come back from WiPay's page). Check WiPay's dashboard first: our payment
+- * reference is WiPay's order_id. paid=true needs the WiPay transaction ID.
++ * Admin: resolve a card payment Fygaro's webhook never confirmed (an outage,
++ * a misconfigured webhook URL, etc. — should be rare). Check Fygaro's
++ * dashboard first: our payment reference is Fygaro's custom_reference.
++ * paid=true needs the Fygaro transaction ID.
+  */
+ export async function adminResolvePayment(paymentId: string, paid: boolean, transactionId: string, note: string) {
+   try {
+diff --git a/vercel.json b/vercel.json
+index ddd463b..56e97ae 100644
+--- a/vercel.json
++++ b/vercel.json
+@@ -3,8 +3,12 @@
+   "outputDirectory": "dist",
+   "rewrites": [
+     {
+-      "source": "/api/wipay-return",
+-      "destination": "https://dormdash-71035.web.app/api/wipay-return"
++      "source": "/api/fygaro-return",
++      "destination": "https://dormdash-71035.web.app/api/fygaro-return"
++    },
++    {
++      "source": "/api/fygaro-webhook",
++      "destination": "https://dormdash-71035.web.app/api/fygaro-webhook"
+     },
+     {
+       "source": "/__/:path*",

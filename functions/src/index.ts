@@ -39,7 +39,7 @@ import {
   OFFER_WAVE_SIZE, OFFER_WAVE_MS, OFFER_OPEN_WAVE, orderPayoutJmd,
   ACTIVE_STATUSES, IN_DELIVERY_STATUSES, CancelReason,
 } from './shared';
-export { createPayment, wipayReturn, adminAdjustTokens, adminAdjustFloat, payOrderWithTokens, adminResolvePayment } from './payments';
+export { createFygaroCheckout, fygaroReturn, fygaroWebhook, adminAdjustTokens, adminAdjustFloat, payOrderWithTokens, adminResolvePayment } from './payments';
 import { alertStore } from './storeAlerts';
 import { APP_CHECK } from './appCheck';
 import { Push, sendPushes, sendPushNotification, getUserToken, jmd } from './push';
@@ -977,7 +977,7 @@ export const deleteMyAccount = onCall({ ...APP_CHECK }, async (request) => {
       'Your Runner float isn\'t settled yet. Contact support to settle it, then delete your account.'
     );
   }
-  const recent = Date.now() - 60 * 60 * 1000; // an abandoned WiPay page older than this can't still charge
+  const recent = Date.now() - 60 * 60 * 1000; // an abandoned Fygaro checkout older than this can't still charge
   const unsettled = paySnaps.some((snap, i) => snap.docs.some(d =>
     i > 0 || Number(d.get('createdAt')) > recent));
   if (unsettled) {
@@ -1319,8 +1319,10 @@ async function retireIdleDashers(now = Date.now()): Promise<{ nudged: number; of
 }
 
 // Card payments that need a person: held for review, or still pending long
-// after the student left for WiPay (see "Card payments to check" on the
-// admin dashboard). The "Card payments need checking" warning is what the
+// after checkout started (see "Card payments to check" on the admin
+// dashboard). Should be rare now that Fygaro's webhook applies most
+// payments within seconds; this is the safety net for when it doesn't
+// arrive. The "Card payments need checking" warning is what the
 // monitoring alert emails on (scripts/setup-alerts.mjs).
 const PAYMENT_CHECK_AFTER_MS = 30 * 60 * 1000;
 async function reportPaymentsToCheck(now = Date.now()): Promise<number> {
@@ -1339,7 +1341,7 @@ export const cancelStalePendingOrders = onSchedule('every 5 minutes', async () =
   // an order that was never checked is published rather than auto-cancelled.
   await repairHalfFinishedWork();
   await cancelOverdueOrders();
-  // Card payments whose WiPay return was verified but not applied yet.
+  // Card payments whose webhook was verified but not applied yet.
   await retryVerifiedPayments();
   // Online dashers who haven't opened DormDash for hours.
   await retireIdleDashers();

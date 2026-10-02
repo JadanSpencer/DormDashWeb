@@ -1,14 +1,15 @@
 // components/PaymentsToCheck.tsx
-// Admin dashboard: card payments WiPay never confirmed to us.
+// Admin dashboard: card payments Fygaro's webhook never confirmed to us.
 //
-// WiPay only reports a result by redirecting the student's browser back to
-// DormDash (its API has no webhook or status lookup). If the student closed
-// the tab or lost signal on WiPay's page, their card may have been charged
-// while the payment here still says "pending". Each row shows the payment
-// reference, which is the order_id in WiPay's merchant dashboard: look it
-// up there, then mark it Paid (with WiPay's transaction ID) or Not paid.
-// Resolving runs the same exactly-once money logic as a normal return
-// (functions/src/payments.ts adminResolvePayment) and records who did it.
+// This should be rare — Fygaro notifies us by webhook, independent of
+// whether the student's browser makes it back. This list only fills up if
+// that webhook never arrives (an outage on either side, a misconfigured
+// webhook URL) or a signature failed verification. Each row shows the
+// payment reference, which is the custom_reference in Fygaro's merchant
+// dashboard: look it up there, then mark it Paid (with Fygaro's transaction
+// ID) or Not paid. Resolving runs the same exactly-once money logic as a
+// normal webhook (functions/src/payments.ts adminResolvePayment) and
+// records who did it.
 
 import React, { useState } from 'react';
 import { ActivityIndicator, Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
@@ -39,10 +40,10 @@ export function PaymentsToCheck() {
             </View>
             {r.status === 'review' && (
               <Text style={styles.review}>
-                WiPay returned a different transaction ID ({r.returnTransactionId}). Confirm it in WiPay first.
+                Needs a manual check ({r.returnTransactionId}). Confirm it in Fygaro's dashboard first.
               </Text>
             )}
-            <Text style={styles.ref} selectable>WiPay order ID: {r.id}</Text>
+            <Text style={styles.ref} selectable>Fygaro reference: {r.id}</Text>
             <View style={styles.actions}>
               <Pressable onPress={() => setTarget({ row: r, paid: false })} style={styles.secondary} accessibilityRole="button">
                 <Text style={styles.secondaryText}>Not paid</Text>
@@ -76,8 +77,8 @@ function ResolvePrompt({ target, onClose }: {
 
   const submit = async () => {
     if (!target) return;
-    if (target.paid && !txId.trim()) { setError('Enter the WiPay transaction ID.'); return; }
-    if (!note.trim()) { setError('Add a short note, e.g. "Checked WiPay dashboard".'); return; }
+    if (target.paid && !txId.trim()) { setError('Enter the Fygaro transaction ID.'); return; }
+    if (!note.trim()) { setError('Add a short note, e.g. "Checked Fygaro dashboard".'); return; }
     setBusy(true); setError('');
     try {
       await adminResolvePayment(target.row.id, target.paid, txId.trim(), note.trim());
@@ -97,13 +98,13 @@ function ResolvePrompt({ target, onClose }: {
           <Text style={styles.modalTitle}>{paid ? 'Mark as paid' : 'Mark as not paid'}</Text>
           <Text style={styles.hint}>
             {paid
-              ? `Only if WiPay's dashboard shows a successful payment for order ID ${target?.row.id}. The student gets ${target?.row.purpose === 'tokens' ? 'their tokens' : 'their order paid (or tokens, if it was already cancelled)'} straight away.`
-              : `Use this when WiPay's dashboard has no successful payment for order ID ${target?.row.id}. Nothing is charged or credited.`}
+              ? `Only if Fygaro's dashboard shows a successful payment for reference ${target?.row.id}. The student gets ${target?.row.purpose === 'tokens' ? 'their tokens' : 'their order paid (or tokens, if it was already cancelled)'} straight away.`
+              : `Use this when Fygaro's dashboard has no successful payment for reference ${target?.row.id}. Nothing is charged or credited.`}
           </Text>
           {paid && (
             <TextInput
               style={styles.input} value={txId} onChangeText={setTxId}
-              placeholder="WiPay transaction ID" placeholderTextColor={S.color.inkFaint}
+              placeholder="Fygaro transaction ID" placeholderTextColor={S.color.inkFaint}
               autoCapitalize="characters" maxLength={100}
             />
           )}

@@ -1,8 +1,9 @@
 // app/(student)/payment-result.tsx  (URL: /payment-result)
-// Where WiPay sends the student back after a card payment. The server
-// (functions/src/payments.ts → wipayReturn) has already verified and applied
-// the payment before redirecting here; this screen shows the result, reading
-// the payment record itself from Firestore rather than trusting the URL.
+// Where Fygaro sends the student back after a card payment. The server
+// (functions/src/payments.ts → fygaroWebhook) applies the payment on its own
+// schedule, independent of this redirect; this screen shows the result,
+// reading the payment record itself from Firestore rather than trusting the
+// URL — fygaroReturn (the redirect handler) never applies anything itself.
 
 import React, { useEffect, useMemo, useRef } from 'react';
 import { View, Text, StyleSheet, Pressable, Animated, Easing, ActivityIndicator, Dimensions } from 'react-native';
@@ -75,10 +76,11 @@ export default function PaymentResult() {
   const ok = pay?.status === 'paid' || pay?.status === 'credited';
   const isTokens = pay?.purpose === 'tokens';
   const credited = pay?.status === 'credited';
-  // The server applies the payment before sending the student here, so a
-  // "pending" record with a success URL just means Firestore hasn't caught up.
-  // "verified" = applying it is being retried (every few minutes);
-  // "review" = DormDash is confirming it with WiPay (see PaymentsToCheck).
+  // The webhook usually applies the payment within seconds, independent of
+  // this redirect, so a "pending" record with a success URL just means it
+  // hasn't arrived yet. "verified" = applying it is being retried (every
+  // few minutes); "review" = Runner is confirming it by hand (see
+  // PaymentsToCheck) — should be rare now that there's a webhook at all.
   const stillChecking =
     (pay?.status === 'pending' && (urlStatus === 'success' || urlStatus === 'credited' || urlStatus === 'processing')) ||
     pay?.status === 'verified';
@@ -100,7 +102,7 @@ export default function PaymentResult() {
     text = 'This usually takes a few seconds. You can leave this page: your balance or order updates on its own.';
   } else if (inReview) {
     title = 'We\'re confirming your payment';
-    text = `WiPay reported your payment in an unusual way, so Runner is checking it by hand. You won't be charged twice. Reference: ${pid ?? 'unknown'}.`;
+    text = `Your payment needs a quick manual check, so Runner is confirming it by hand. You won't be charged twice. Reference: ${pid ?? 'unknown'}.`;
   } else if (urlStatus === 'error' || !pay) {
     title = 'We couldn\'t confirm this payment';
     text = `If money was taken from your card, contact Runner support with this reference: ${pid ?? 'unknown'}.`;

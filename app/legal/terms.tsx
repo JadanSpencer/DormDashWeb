@@ -41,7 +41,7 @@ const sections: Section[] = [
     title: 'Payment',
     blocks: [
       { p: LEGAL.paymentMethod },
-      { p: `${LEGAL.appName} never sees or stores your card number. WiPay may add a card processing fee, which is shown on its payment page before you pay.` },
+      { p: `${LEGAL.appName} never sees or stores your card number. Fygaro may add a card processing fee, which is shown on its payment page before you pay.` },
       { list: [
         `Runner tokens are prepaid credit for ${LEGAL.appName} orders. 1 token = J$${LEGAL.tokenValueJmd}. You can buy them by card in the app, or pay cash to a ${LEGAL.appName} admin, who adds them to your account.`,
         'Tokens can only be used on Runner. They have no cash value and cannot be exchanged for cash, except where the law requires it.',

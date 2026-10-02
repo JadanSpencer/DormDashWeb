@@ -56,7 +56,7 @@ const SEEN_KEY = 'dd_seen_intro';
 /** Web: open straight away, without the intro (seen before, or a payment result). */
 export function shouldSkipIntro(): boolean {
   if (!IS_WEB || typeof window === 'undefined') return false;
-  // Coming back from the WiPay card page: show the payment result at once.
+  // Coming back from the Fygaro card page: show the payment result at once.
   if (window.location.pathname.startsWith('/payment-result')) return true;
   try { return window.localStorage.getItem(SEEN_KEY) === '1'; } catch { return false; }
 }

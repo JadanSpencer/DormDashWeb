@@ -3,8 +3,12 @@
   "outputDirectory": "dist",
   "rewrites": [
     {
-      "source": "/api/wipay-return",
-      "destination": "https://dormdash-71035.web.app/api/wipay-return"
+      "source": "/api/fygaro-return",
+      "destination": "https://dormdash-71035.web.app/api/fygaro-return"
+    },
+    {
+      "source": "/api/fygaro-webhook",
+      "destination": "https://dormdash-71035.web.app/api/fygaro-webhook"
     },
     {
       "source": "/__/:path*",

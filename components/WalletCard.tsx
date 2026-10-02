@@ -1,5 +1,5 @@
 // components/WalletCard.tsx
-// Student Profile: DormDash token balance, buy tokens by card (WiPay), how to
+// Student Profile: Runner token balance, buy tokens by card (Fygaro), how to
 // get tokens with cash, recent token activity, and the J$ / Tokens switch.
 // Styled as the app's money section: gold coins (components/Coin), a
 // banknote-style balance band, coin-stack packs and a ledger.
@@ -34,7 +34,7 @@ export function WalletCard({ uid }: { uid: string }) {
     if (busyPack) return;
     setBusyPack(tokens);
     try {
-      await buyTokens(tokens); // leaves the app for WiPay's secure page
+      await buyTokens(tokens); // leaves the app for Fygaro's secure page
       // Re-enable the packs when the student comes back (see whenBackFromCheckout).
       whenBackFromCheckout(() => setBusyPack(null));
     } catch (e: any) {
@@ -99,7 +99,7 @@ export function WalletCard({ uid }: { uid: string }) {
           ))}
         </View>
         <Text style={styles.fine}>
-          Paid on WiPay's secure page (card fee added by WiPay). Paying cash? A Runner admin can add tokens for you.
+          Paid on Fygaro's secure page (card fee may be added by Fygaro). Paying cash? A Runner admin can add tokens for you.
         </Text>
 
         {tx.length > 0 && (

@@ -10,6 +10,8 @@
 //   2. Enforce: once the console shows ~100% verified requests, set
 //      APP_CHECK_ENFORCE=true in functions/.env and redeploy functions.
 //      Callables then reject requests without a valid token.
-// wipayReturn is not a callable (WiPay redirects the browser to it), so it
-// is protected by its payment signature instead.
+// fygaroReturn and fygaroWebhook are not callables (Fygaro redirects the
+// browser / posts to them directly), so they're protected their own way:
+// fygaroReturn never moves money, and fygaroWebhook checks Fygaro's own
+// HMAC signature instead.
 export const APP_CHECK = { enforceAppCheck: process.env.APP_CHECK_ENFORCE === 'true' };

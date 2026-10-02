@@ -25,9 +25,16 @@
     ],
     "rewrites": [
       {
-        "source": "/api/wipay-return",
+        "source": "/api/fygaro-return",
         "function": {
-          "functionId": "wipayReturn",
+          "functionId": "fygaroReturn",
+          "region": "us-central1"
+        }
+      },
+      {
+        "source": "/api/fygaro-webhook",
+        "function": {
+          "functionId": "fygaroWebhook",
           "region": "us-central1"
         }
       },

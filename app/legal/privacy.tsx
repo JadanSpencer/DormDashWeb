@@ -30,7 +30,7 @@ const sections: Section[] = [
         ['Notifications', 'A notification token for your device, so we can send order updates. It is removed when you sign out.'],
         ['Technical data', 'Our hosting and database provider (Google) keeps short-lived security and error logs, which can include your IP address and device type. We do not use these to track you.'],
       ] },
-      { p: 'Payments: card payments are handled by WiPay on its own secure page, so we never receive your card number. From WiPay we keep the transaction reference, amount, date, whether it succeeded and the last 4 digits of the card. We also keep your Runner token balance and a history of every change to it, and the times of your card payment attempts in the last 10 minutes (to stop misuse).' },
+      { p: 'Payments: card payments are handled by Fygaro on its own secure page, so we never receive your card number. From Fygaro we keep the transaction reference, amount, date, whether it succeeded and the last 4 digits of the card. We also keep your Runner token balance and a history of every change to it, and the times of your card payment attempts in the last 10 minutes (to stop misuse).' },
       { p: 'We do not collect full payment card details, contacts, photos, microphone or camera data.' },
     ],
   },
@@ -61,7 +61,7 @@ const sections: Section[] = [
       { table: [
         ['Google Firebase (Google LLC)', 'Sign-in, database, server functions, website hosting and push notifications. Stores all of the data described above. Servers may be outside Jamaica, including in the United States.'],
         ['Sign in with Google (Google LLC)', 'Optional. If you choose "Continue with Google", you sign in on Google\'s page and Google shares your name and email address with Runner. Google\'s privacy policy applies to your Google account.'],
-        ['WiPay', 'Card payments. When you pay by card, you enter your card details on WiPay\'s page and WiPay receives your name, email, the amount and your card details. WiPay\'s own privacy policy applies to that.'],
+        ['Fygaro', 'Card payments. When you pay by card, you enter your card and contact details directly on Fygaro\'s page, which Fygaro receives along with the amount. Fygaro\'s own privacy policy applies to that.'],
         ['Google Maps (Google LLC)', 'Shows delivery maps. When a map is displayed, Google receives the coordinates being shown and may set its own cookies. Google\'s privacy policy applies to that content.'],
         ['Expo (650 Industries, Inc.)', 'Delivers push notifications to the Runner app for iPhone and Android. Receives your device token and the text of the notification.'],
         ['ntfy (ntfy.sh)', 'Sends order alerts to the stores we work with. When a runner accepts your paid order, the store receives the order code, the items and the runner\'s first name. Your name, room and phone number are never sent.'],

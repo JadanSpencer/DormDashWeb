@@ -18,6 +18,6 @@ export const LEGAL = {
   // How fast personal data is removed after an account is deleted.
   deletionDays: 30,
   // How students pay. Payments: functions/src/payments.ts.
-  paymentMethod: `You pay only after a runner accepts your order. You then choose to pay with your Runner tokens or by card, and have ${PAY_WINDOW_MIN} minutes to pay, or the order is cancelled. Card payments are made on the secure payment page of our payment provider, WiPay.`,
+  paymentMethod: `You pay only after a runner accepts your order. You then choose to pay with your Runner tokens or by card, and have ${PAY_WINDOW_MIN} minutes to pay, or the order is cancelled. Card payments are made on the secure payment page of our payment provider, Fygaro.`,
   tokenValueJmd: TOKEN_JMD,
 };
