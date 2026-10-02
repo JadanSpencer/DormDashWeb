@@ -66,7 +66,7 @@ jobs:
         with: { node-version: 22, cache: npm, cache-dependency-path: firestore-tests/package-lock.json }
       - uses: actions/setup-java@v4   # the Firestore emulator runs on Java
         with: { distribution: temurin, java-version: '21' }
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: ~/.cache/firebase/emulators
           key: firebase-emulators-${{ hashFiles('firestore-tests/package-lock.json') }}
@@ -90,7 +90,7 @@ jobs:
             firestore-tests/package-lock.json
       - uses: actions/setup-java@v4
         with: { distribution: temurin, java-version: '21' }
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: ~/.cache/firebase/emulators
           key: firebase-emulators-${{ hashFiles('firestore-tests/package-lock.json') }}
