@@ -1,0 +1,296 @@
+diff --git a/app/(student)/card-payment.tsx b/app/(student)/card-payment.tsx
+new file mode 100644
+index 0000000..ab79ea5
+--- /dev/null
++++ b/app/(student)/card-payment.tsx
+@@ -0,0 +1,135 @@
++// app/(student)/card-payment.tsx  (native only — see services/payments.ts openCheckout)
++//
++// Android/iOS: Fygaro's hosted card page, shown inside Runner instead of
++// handing off to the phone's browser. Fygaro itself only offers a hosted
++// checkout page (no embeddable card-field API — checked their docs directly),
++// so this can't be a truly native card form; wrapping it in a WebView is the
++// closest Runner gets to "never leaves the app" without a different gateway.
++//
++// Web keeps the old full-page redirect (window.location.href) — this screen
++// doesn't exist there and openCheckout never routes to it on web.
++//
++// When Fygaro finishes and redirects to {APP_URL}/payment-result?... (via
++// fygaroReturn), that URL is intercepted here before the WebView ever loads
++// it: the query string is lifted straight onto the real native
++// /(student)/payment-result screen, so the result screen behaves exactly as
++// it does on web, reading the payment doc from Firestore rather than
++// trusting these params.
++
++import React, { useRef, useState, useCallback } from 'react';
++import { View, Text, StyleSheet, Pressable, ActivityIndicator, BackHandler } from 'react-native';
++import { WebView, WebViewNavigation } from 'react-native-webview';
++import { useLocalSearchParams, router, useFocusEffect } from 'expo-router';
++import { useSafeAreaInsets } from 'react-native-safe-area-context';
++import { T } from '../../constants/theme';
++import { pressPlate } from '../../components/Tide';
++
++export default function CardPaymentScreen() {
++  const { url } = useLocalSearchParams<{ url?: string }>();
++  const insets = useSafeAreaInsets();
++  const webRef = useRef<WebView>(null);
++  const [loading, setLoading] = useState(true);
++  const [canGoBackInPage, setCanGoBackInPage] = useState(false);
++
++  const close = useCallback(() => {
++    if (router.canGoBack()) router.back();
++    else router.replace('/(student)/(tabs)/home' as any);
++  }, []);
++
++  // Hardware back: step back inside Fygaro's page first, then close.
++  useFocusEffect(useCallback(() => {
++    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
++      if (canGoBackInPage) { webRef.current?.goBack(); return true; }
++      close();
++      return true;
++    });
++    return () => sub.remove();
++  }, [canGoBackInPage, close]));
++
++  // Fygaro redirects here on success/failure (fygaroReturn). Hand the same
++  // query string to the real native result screen instead of letting the
++  // WebView render that page, and stop this navigation.
++  const handleShouldStart = useCallback((request: WebViewNavigation | { url: string }): boolean => {
++    const target = request.url;
++    if (!target.includes('/payment-result')) return true;
++    const qIndex = target.indexOf('?');
++    const query = qIndex >= 0 ? target.slice(qIndex + 1) : '';
++    const params: Record<string, string> = {};
++    new URLSearchParams(query).forEach((v, k) => { params[k] = v; });
++    router.replace({ pathname: '/(student)/payment-result', params } as any);
++    return false;
++  }, []);
++
++  if (typeof url !== 'string' || !/^https:\/\//.test(url)) {
++    return (
++      <View style={[styles.root, { paddingTop: insets.top }]}>
++        <Text style={styles.errorText}>This payment page didn't open properly.</Text>
++        <Pressable onPress={close} style={({ pressed }) => [styles.closeBtnWide, pressPlate(pressed)]}>
++          <Text style={styles.closeText}>Go back</Text>
++        </Pressable>
++      </View>
++    );
++  }
++
++  return (
++    <View style={styles.root}>
++      <View style={[styles.header, { paddingTop: insets.top + T.space.sm }]}>
++        <Pressable onPress={close} accessibilityRole="button" accessibilityLabel="Close" hitSlop={10} style={({ pressed }) => [styles.closeBtn, pressPlate(pressed, 2)]}>
++          <Text style={styles.closeGlyph}>✕</Text>
++        </Pressable>
++        <View style={styles.titleWrap}>
++          <Text style={styles.lock}>🔒</Text>
++          <Text style={styles.title} numberOfLines={1}>Secure checkout</Text>
++        </View>
++        <View style={styles.closeBtn} />
++      </View>
++
++      <WebView
++        ref={webRef}
++        source={{ uri: url }}
++        style={styles.web}
++        onLoadStart={() => setLoading(true)}
++        onLoadEnd={() => setLoading(false)}
++        onNavigationStateChange={(nav: WebViewNavigation) => setCanGoBackInPage(nav.canGoBack)}
++        onShouldStartLoadWithRequest={handleShouldStart}
++        startInLoadingState={false}
++        originWhitelist={['https://*']}
++      />
++
++      {loading && (
++        <View style={styles.loadingOverlay} pointerEvents="none">
++          <ActivityIndicator color={T.color.cerulean} size="large" />
++        </View>
++      )}
++    </View>
++  );
++}
++
++const styles = StyleSheet.create({
++  root: { flex: 1, backgroundColor: T.color.cream },
++  header: {
++    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
++    paddingHorizontal: T.space.md, paddingBottom: T.space.sm,
++    backgroundColor: T.color.cream, borderBottomWidth: 1, borderBottomColor: T.color.line,
++  },
++  closeBtn: {
++    width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center',
++    backgroundColor: T.color.card,
++  },
++  closeGlyph: { fontSize: 16, color: T.color.ink, fontWeight: '700' },
++  titleWrap: { flexDirection: 'row', alignItems: 'center', gap: 6 },
++  lock: { fontSize: 13 },
++  title: { ...T.type.button, fontSize: 15, color: T.color.ink },
++  web: { flex: 1, backgroundColor: T.color.cream },
++  loadingOverlay: {
++    ...StyleSheet.absoluteFillObject,
++    top: 56, alignItems: 'center', justifyContent: 'center',
++    backgroundColor: T.color.cream,
++  },
++  errorText: { ...T.type.body, color: T.color.ink, textAlign: 'center', margin: T.space.lg },
++  closeBtnWide: {
++    marginHorizontal: T.space.lg, height: 52, borderRadius: T.radius.pill,
++    backgroundColor: T.color.cerulean, alignItems: 'center', justifyContent: 'center',
++  },
++  closeText: { ...T.type.button, color: T.color.card },
++});
+diff --git a/app/(student)/order/[id].tsx b/app/(student)/order/[id].tsx
+index e222504..f7638bd 100644
+--- a/app/(student)/order/[id].tsx
++++ b/app/(student)/order/[id].tsx
+@@ -16,14 +16,14 @@
+ //   • Items with hollowed price plates. Total hollowed large.
+ //   • Jcommerce watermark at the bottom of the scroll.
+ 
+-import React, { useEffect, useState, useRef } from 'react';
++import React, { useEffect, useState, useRef, useCallback } from 'react';
+ import {
+   View, Text, StyleSheet, ScrollView,
+   Pressable, ActivityIndicator,
+   Animated, Easing, Alert
+ } from 'react-native';
+ import { useSafeAreaInsets } from 'react-native-safe-area-context';
+-import { useLocalSearchParams, router } from 'expo-router';
++import { useLocalSearchParams, router, useFocusEffect } from 'expo-router';
+ import { useOrder } from '../../../hooks/useOrders';
+ import { Order, OrderStatus, CancelReason } from '../../../types';
+ import { STATUS_STEPS, MAX_ACTIVE_ORDERS, PAY_WINDOW_MIN, PENDING_TIMEOUT_MIN } from '../../../constants';
+@@ -77,6 +77,12 @@ const PaymentPanel: React.FC<{ order: Order }> = ({ order }) => {
+   const { user } = useAuth();
+   const wallet = useWallet(user?.uid);
+   const [busy, setBusy] = useState<null | 'card' | 'tokens'>(null);
++  // Native: coming back from the in-app card-payment WebView (app/(student)/
++  // card-payment.tsx) refocuses this screen without any AppState background/
++  // foreground cycle, so whenBackFromCheckout's listener alone wouldn't
++  // catch it. This is the real reset for that case; whenBackFromCheckout is
++  // the backstop (and still the only path on web).
++  useFocusEffect(useCallback(() => { setBusy(null); }, []));
+   const [now, setNow] = useState(serverNow());
+   const awaiting = order.paymentStatus === 'awaiting_payment';
+   useEffect(() => {
+@@ -94,7 +100,7 @@ const PaymentPanel: React.FC<{ order: Order }> = ({ order }) => {
+     if (busy) return;
+     setBusy('card');
+     try {
+-      await payOrderByCard(order.id); // leaves the app for WiPay's secure page
++      await payOrderByCard(order.id); // native: opens Runner's in-app checkout; web: leaves for Fygaro's secure page
+       // Re-enable the pay buttons when the student comes back (see whenBackFromCheckout).
+       whenBackFromCheckout(() => setBusy(null));
+     } catch (e: any) {
+diff --git a/components/WalletCard.tsx b/components/WalletCard.tsx
+index f980970..ceff67c 100644
+--- a/components/WalletCard.tsx
++++ b/components/WalletCard.tsx
+@@ -5,8 +5,9 @@
+ // banknote-style balance band, coin-stack packs and a ledger.
+ // Read-only view of data that only Cloud Functions can change.
+ 
+-import React, { useState } from 'react';
++import React, { useState, useCallback } from 'react';
+ import { View, Text, StyleSheet, Pressable, ActivityIndicator, Alert } from 'react-native';
++import { useFocusEffect } from 'expo-router';
+ import { FONT, T } from '../constants/theme';
+ import { formatJMD } from '../constants';
+ import { useWallet, useWalletHistory } from '../hooks/useWallet';
+@@ -30,11 +31,17 @@ export function WalletCard({ uid }: { uid: string }) {
+   const [busyPack, setBusyPack] = useState<number | null>(null);
+   const tx = useWalletHistory(uid, 8);
+ 
++  // Native: returning from the in-app card-payment WebView refocuses the
++  // screen this card lives on, with no AppState background/foreground
++  // cycle — this is the real reset for that case; whenBackFromCheckout
++  // below is the backstop (and still the only path on web).
++  useFocusEffect(useCallback(() => { setBusyPack(null); }, []));
++
+   const buy = async (tokens: number) => {
+     if (busyPack) return;
+     setBusyPack(tokens);
+     try {
+-      await buyTokens(tokens); // leaves the app for Fygaro's secure page
++      await buyTokens(tokens); // native: opens Runner's in-app checkout; web: leaves for Fygaro's secure page
+       // Re-enable the packs when the student comes back (see whenBackFromCheckout).
+       whenBackFromCheckout(() => setBusyPack(null));
+     } catch (e: any) {
+diff --git a/package.json b/package.json
+index 28f9f55..142e55c 100644
+--- a/package.json
++++ b/package.json
+@@ -40,7 +40,8 @@
+     "react-native-safe-area-context": "~5.6.0",
+     "react-native-screens": "~4.16.0",
+     "react-native-svg": "15.12.1",
+-    "react-native-web": "^0.21.0"
++    "react-native-web": "^0.21.0",
++    "react-native-webview": "^13.15.0"
+   },
+   "devDependencies": {
+     "@types/react": "~19.1.0",
+diff --git a/services/payments.ts b/services/payments.ts
+index be2d7fd..d40cf68 100644
+--- a/services/payments.ts
++++ b/services/payments.ts
+@@ -3,7 +3,8 @@
+ // Functions (functions/src/payments.ts) to start a Fygaro card payment or to
+ // adjust balances, and reads balances from Firestore.
+ 
+-import { AppState, Platform, Linking } from 'react-native';
++import { AppState, Platform } from 'react-native';
++import { router } from 'expo-router';
+ import { httpsCallable } from 'firebase/functions';
+ import { functions } from './firebase';
+ 
+@@ -25,15 +26,21 @@ function errorText(e: any, fallback: string) {
+   return typeof e?.message === 'string' && e.message && !/internal/i.test(e.message) ? e.message : fallback;
+ }
+ 
+-// Leaves for Fygaro's secure card page. Refuses anything that isn't an
+-// https link: navigating to a missing URL would just reload the app, which
+-// looks exactly like a button that did nothing.
++// Web: a full-page redirect to Fygaro's secure card page (unchanged).
++// Native: Fygaro only offers a hosted checkout page, no embeddable card
++// fields (checked directly with their docs) — so instead of leaving the app
++// for the system browser, this opens it inside Runner's own WebView screen
++// (app/(student)/card-payment.tsx), which intercepts the return redirect and
++// hands off to the native payment-result screen. Refuses anything that
++// isn't an https link: navigating to a missing URL would just reload the
++// app (web) or show a blank WebView (native), which looks exactly like a
++// button that did nothing.
+ async function openCheckout(url: unknown) {
+   if (typeof url !== 'string' || !/^https:\/\//.test(url)) {
+     throw new Error('The card payment page did not open. Try again.');
+   }
+-  if (Platform.OS === 'web') window.location.href = url;
+-  else await Linking.openURL(url);
++  if (Platform.OS === 'web') { window.location.href = url; return; }
++  router.push({ pathname: '/(student)/card-payment', params: { url } } as any);
+ }
+ 
+ const CHECKOUT_FALLBACK_MS = 15 * 1000;
+@@ -42,11 +49,17 @@ const CHECKOUT_FALLBACK_MS = 15 * 1000;
+  * Call after payOrderByCard / buyTokens succeed, with the function that
+  * re-enables the screen's payment buttons.
+  *
+- * Phones keep the page in memory while the student is on Fygaro and restore
+- * it exactly as it was (spinner showing, buttons disabled) when they come
+- * back, so every payment button stayed dead until a full reload. This
+- * re-enables them when the page is restored or the app comes back to the
+- * foreground, and after CHECKOUT_FALLBACK_MS in case the page never opened.
++ * Web: phones keep the page in memory while the student is on Fygaro and
++ * restore it exactly as it was (spinner showing, buttons disabled) when
++ * they come back, so every payment button stayed dead until a full reload.
++ * This re-enables them when the page is restored or the app comes back to
++ * the foreground.
++ *
++ * Native: the card-payment screen is in-app now (no AppState background/
++ * foreground cycle to catch), so the screens that call this also reset
++ * their busy state on refocus (useFocusEffect) — that fires the moment the
++ * student backs out of or finishes the WebView. This listener is then just
++ * the backstop: after CHECKOUT_FALLBACK_MS in case neither path fires.
+  * Returns a cleanup function.
+  */
+ export function whenBackFromCheckout(reset: () => void): () => void {

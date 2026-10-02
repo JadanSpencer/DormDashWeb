@@ -5,8 +5,9 @@
 // banknote-style balance band, coin-stack packs and a ledger.
 // Read-only view of data that only Cloud Functions can change.
 
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import { View, Text, StyleSheet, Pressable, ActivityIndicator, Alert } from 'react-native';
+import { useFocusEffect } from 'expo-router';
 import { FONT, T } from '../constants/theme';
 import { formatJMD } from '../constants';
 import { useWallet, useWalletHistory } from '../hooks/useWallet';
@@ -30,11 +31,17 @@ export function WalletCard({ uid }: { uid: string }) {
   const [busyPack, setBusyPack] = useState<number | null>(null);
   const tx = useWalletHistory(uid, 8);
 
+  // Native: returning from the in-app card-payment WebView refocuses the
+  // screen this card lives on, with no AppState background/foreground
+  // cycle — this is the real reset for that case; whenBackFromCheckout
+  // below is the backstop (and still the only path on web).
+  useFocusEffect(useCallback(() => { setBusyPack(null); }, []));
+
   const buy = async (tokens: number) => {
     if (busyPack) return;
     setBusyPack(tokens);
     try {
-      await buyTokens(tokens); // leaves the app for Fygaro's secure page
+      await buyTokens(tokens); // native: opens Runner's in-app checkout; web: leaves for Fygaro's secure page
       // Re-enable the packs when the student comes back (see whenBackFromCheckout).
       whenBackFromCheckout(() => setBusyPack(null));
     } catch (e: any) {

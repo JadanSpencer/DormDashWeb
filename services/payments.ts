@@ -3,7 +3,8 @@
 // Functions (functions/src/payments.ts) to start a Fygaro card payment or to
 // adjust balances, and reads balances from Firestore.
 
-import { AppState, Platform, Linking } from 'react-native';
+import { AppState, Platform } from 'react-native';
+import { router } from 'expo-router';
 import { httpsCallable } from 'firebase/functions';
 import { functions } from './firebase';
 
@@ -25,15 +26,21 @@ function errorText(e: any, fallback: string) {
   return typeof e?.message === 'string' && e.message && !/internal/i.test(e.message) ? e.message : fallback;
 }
 
-// Leaves for Fygaro's secure card page. Refuses anything that isn't an
-// https link: navigating to a missing URL would just reload the app, which
-// looks exactly like a button that did nothing.
+// Web: a full-page redirect to Fygaro's secure card page (unchanged).
+// Native: Fygaro only offers a hosted checkout page, no embeddable card
+// fields (checked directly with their docs) — so instead of leaving the app
+// for the system browser, this opens it inside Runner's own WebView screen
+// (app/(student)/card-payment.tsx), which intercepts the return redirect and
+// hands off to the native payment-result screen. Refuses anything that
+// isn't an https link: navigating to a missing URL would just reload the
+// app (web) or show a blank WebView (native), which looks exactly like a
+// button that did nothing.
 async function openCheckout(url: unknown) {
   if (typeof url !== 'string' || !/^https:\/\//.test(url)) {
     throw new Error('The card payment page did not open. Try again.');
   }
-  if (Platform.OS === 'web') window.location.href = url;
-  else await Linking.openURL(url);
+  if (Platform.OS === 'web') { window.location.href = url; return; }
+  router.push({ pathname: '/(student)/card-payment', params: { url } } as any);
 }
 
 const CHECKOUT_FALLBACK_MS = 15 * 1000;
@@ -42,11 +49,17 @@ const CHECKOUT_FALLBACK_MS = 15 * 1000;
  * Call after payOrderByCard / buyTokens succeed, with the function that
  * re-enables the screen's payment buttons.
  *
- * Phones keep the page in memory while the student is on Fygaro and restore
- * it exactly as it was (spinner showing, buttons disabled) when they come
- * back, so every payment button stayed dead until a full reload. This
- * re-enables them when the page is restored or the app comes back to the
- * foreground, and after CHECKOUT_FALLBACK_MS in case the page never opened.
+ * Web: phones keep the page in memory while the student is on Fygaro and
+ * restore it exactly as it was (spinner showing, buttons disabled) when
+ * they come back, so every payment button stayed dead until a full reload.
+ * This re-enables them when the page is restored or the app comes back to
+ * the foreground.
+ *
+ * Native: the card-payment screen is in-app now (no AppState background/
+ * foreground cycle to catch), so the screens that call this also reset
+ * their busy state on refocus (useFocusEffect) — that fires the moment the
+ * student backs out of or finishes the WebView. This listener is then just
+ * the backstop: after CHECKOUT_FALLBACK_MS in case neither path fires.
  * Returns a cleanup function.
  */
 export function whenBackFromCheckout(reset: () => void): () => void {

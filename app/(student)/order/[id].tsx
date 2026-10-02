@@ -16,14 +16,14 @@
 //   • Items with hollowed price plates. Total hollowed large.
 //   • Jcommerce watermark at the bottom of the scroll.
 
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import {
   View, Text, StyleSheet, ScrollView,
   Pressable, ActivityIndicator,
   Animated, Easing, Alert
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useLocalSearchParams, router } from 'expo-router';
+import { useLocalSearchParams, router, useFocusEffect } from 'expo-router';
 import { useOrder } from '../../../hooks/useOrders';
 import { Order, OrderStatus, CancelReason } from '../../../types';
 import { STATUS_STEPS, MAX_ACTIVE_ORDERS, PAY_WINDOW_MIN, PENDING_TIMEOUT_MIN } from '../../../constants';
@@ -77,6 +77,12 @@ const PaymentPanel: React.FC<{ order: Order }> = ({ order }) => {
   const { user } = useAuth();
   const wallet = useWallet(user?.uid);
   const [busy, setBusy] = useState<null | 'card' | 'tokens'>(null);
+  // Native: coming back from the in-app card-payment WebView (app/(student)/
+  // card-payment.tsx) refocuses this screen without any AppState background/
+  // foreground cycle, so whenBackFromCheckout's listener alone wouldn't
+  // catch it. This is the real reset for that case; whenBackFromCheckout is
+  // the backstop (and still the only path on web).
+  useFocusEffect(useCallback(() => { setBusy(null); }, []));
   const [now, setNow] = useState(serverNow());
   const awaiting = order.paymentStatus === 'awaiting_payment';
   useEffect(() => {
@@ -94,7 +100,7 @@ const PaymentPanel: React.FC<{ order: Order }> = ({ order }) => {
     if (busy) return;
     setBusy('card');
     try {
-      await payOrderByCard(order.id); // leaves the app for WiPay's secure page
+      await payOrderByCard(order.id); // native: opens Runner's in-app checkout; web: leaves for Fygaro's secure page
       // Re-enable the pay buttons when the student comes back (see whenBackFromCheckout).
       whenBackFromCheckout(() => setBusy(null));
     } catch (e: any) {
