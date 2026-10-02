@@ -1,0 +1,166 @@
+diff --git a/app.json b/app.json
+index 3bfbc46..21bd62b 100644
+--- a/app.json
++++ b/app.json
+@@ -68,7 +68,8 @@
+           "defaultChannel": "default"
+         }
+       ],
+-      "expo-font"
++      "expo-font",
++      "@react-native-google-signin/google-signin"
+     ],
+     "experiments": {
+       "typedRoutes": true
+diff --git a/package.json b/package.json
+index a5a690f..28f9f55 100644
+--- a/package.json
++++ b/package.json
+@@ -20,6 +20,7 @@
+   "dependencies": {
+     "@expo/vector-icons": "^15.1.1",
+     "@react-native-async-storage/async-storage": "2.2.0",
++    "@react-native-google-signin/google-signin": "^16.1.5",
+     "expo": "~54.0.34",
+     "expo-constants": "~18.0.13",
+     "expo-device": "~8.0.10",
+diff --git a/services/auth.ts b/services/auth.ts
+index 9aedbed..16f4c08 100644
+--- a/services/auth.ts
++++ b/services/auth.ts
+@@ -13,6 +13,7 @@ import {
+     signInWithPopup,
+     signInWithRedirect,
+     getRedirectResult,
++    signInWithCredential,
+   } from 'firebase/auth';
+   import { Platform } from 'react-native';
+   import { doc, setDoc, getDoc } from 'firebase/firestore';
+@@ -21,7 +22,20 @@ import {
+   import { clearPushToken } from './notifications';
+   import { goOffline } from './dasher';
+   import { User, UserRole } from '../types';
+-  
++
++  // Loaded only on native: this package's native module isn't present in the
++  // web bundle, and a static `import` of it would break `npm run build:web`
++  // (Metro tries to resolve the native TurboModule at bundle time, not just
++  // at call time). `require` behind this guard is never reached on web.
++  let GoogleSignin: typeof import('@react-native-google-signin/google-signin').GoogleSignin | undefined;
++  let googleStatusCodes: typeof import('@react-native-google-signin/google-signin').statusCodes | undefined;
++  if (Platform.OS !== 'web') {
++    // eslint-disable-next-line @typescript-eslint/no-var-requires
++    const native = require('@react-native-google-signin/google-signin');
++    GoogleSignin = native.GoogleSignin;
++    googleStatusCodes = native.statusCodes;
++  }
++
+   // ─── INPUT SANITIZATION ────────────────────────────────────────────────────
+   // Before ANY data touches Firebase, we clean it.
+   // trim() removes accidental spaces at start/end.
+@@ -209,7 +223,7 @@ export const resetPassword = async (
+     }
+   };
+   
+-  // ─── GOOGLE (web / PWA) ────────────────────────────────────────────────────
++  // ─── GOOGLE (web + Android native) ─────────────────────────────────────────
+   // "Continue with Google" on sign-in and sign-up. A Google account that
+   // already has a DormDash profile is simply signed in. A new one has no
+   // users/{uid} yet: useAuth reports it as `pendingProfile` and the route
+@@ -217,13 +231,38 @@ export const resetPassword = async (
+   // doesn't give us (student or dasher, phone, university, the terms box)
+   // and calls completeGoogleProfile.
+   //
+-  // Phones and the installed app use a full-page redirect (popups open a
+-  // separate window there that can't hand the result back); computers use a
+-  // popup. This works because authDomain is DormDash's own domain, so the
+-  // browser treats the sign-in handler (/__/auth/handler) as first-party.
+-  // Native apps: not offered yet (needs a native Google sign-in module).
++  // Web: a full-page redirect on phones/the installed PWA (popups open a
++  // separate window there that can't hand the result back); a popup on
++  // computers. This works because authDomain is DormDash's own domain, so
++  // the browser treats the sign-in handler (/__/auth/handler) as first-party.
++  //
++  // Android (native app): there's no browser chrome for a popup/redirect, so
++  // this uses the real native Google Sign-In module instead — it returns an
++  // ID token, which is exchanged for a Firebase credential with
++  // signInWithCredential. That module needs an Android OAuth client (tied to
++  // the APK's signing certificate's SHA-1) to exist in the Firebase project;
++  // see PAYMENTS_SETUP.md-style setup notes in the PR that added this.
++  //
++  // iOS: not offered yet. Needs its own native setup (GoogleService-Info.plist
++  // + an iOS OAuth client), and Apple requires offering "Sign in with Apple"
++  // alongside any third-party sign-in on iOS — do both together once there's
++  // an Apple Developer account.
++
++  export const googleSignInAvailable = Platform.OS === 'web' || Platform.OS === 'android';
+ 
+-  export const googleSignInAvailable = Platform.OS === 'web';
++  // The "Web client" OAuth client Firebase already created (see
++  // google-services.json → client[].oauth_client[] with client_type 3). This
++  // is what GoogleSignin needs as webClientId — it is NOT the Android client;
++  // Android identifies itself via the app's package name + SHA-1 instead, no
++  // ID to configure for that part.
++  const GOOGLE_WEB_CLIENT_ID = '177583556348-g4qp70h7g3sv62saeerc9l8qbln7c6dc.apps.googleusercontent.com';
++
++  let googleNativeConfigured = false;
++  function ensureGoogleNativeConfigured() {
++    if (googleNativeConfigured || !GoogleSignin) return;
++    GoogleSignin.configure({ webClientId: GOOGLE_WEB_CLIENT_ID, offlineAccess: false });
++    googleNativeConfigured = true;
++  }
+ 
+   const googleErrorMessage = (code?: string): string | null => {
+     switch (code) {
+@@ -252,9 +291,35 @@ export const resetPassword = async (
+     return standalone || /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+   }
+ 
+-  /** Starts Google sign-in. With a redirect the page leaves and comes back. */
++  /** Android native path: real Google Sign-In, then hand the ID token to Firebase. */
++  async function signInWithGoogleNative(): Promise<{ success: boolean; error?: string }> {
++    if (!GoogleSignin || !googleStatusCodes) return { success: false, error: 'Google sign-in is only on the web app for now.' };
++    ensureGoogleNativeConfigured();
++    try {
++      await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
++      const result = await GoogleSignin.signIn();
++      // v13+ wraps the payload in `data`; fall back for older shapes just in case.
++      const idToken: string | undefined = (result as any)?.data?.idToken ?? (result as any)?.idToken;
++      if (!idToken) return { success: false, error: 'Google didn\'t return a token. Please try again.' };
++      const credential = GoogleAuthProvider.credential(idToken);
++      await signInWithCredential(auth, credential);
++      return { success: true };
++    } catch (e: any) {
++      if (e?.code === googleStatusCodes.SIGN_IN_CANCELLED) return { success: false };
++      if (e?.code === googleStatusCodes.IN_PROGRESS) return { success: false, error: 'Already signing in — one moment.' };
++      if (e?.code === googleStatusCodes.PLAY_SERVICES_NOT_AVAILABLE) {
++        return { success: false, error: 'Google Play Services is required for Google sign-in on this device.' };
++      }
++      const m = googleErrorMessage(e?.code);
++      return m ? { success: false, error: m } : { success: false, error: 'Google sign-in failed. Please try again.' };
++    }
++  }
++
++  /** Starts Google sign-in. On web, a redirect/popup; on Android, the native flow. */
+   export const signInWithGoogle = async (): Promise<{ success: boolean; error?: string }> => {
+     if (!googleSignInAvailable) return { success: false, error: 'Google sign-in is only on the web app for now.' };
++    if (Platform.OS !== 'web') return signInWithGoogleNative();
++
+     const provider = new GoogleAuthProvider();
+     provider.setCustomParameters({ prompt: 'select_account' });
+     try {
+@@ -275,11 +340,12 @@ export const resetPassword = async (
+   };
+ 
+   /**
+-   * After a redirect: the result (or error) of the Google sign-in, if the
++   * After a web redirect: the result (or error) of the Google sign-in, if the
+    * page just came back from one. Call once when the sign-in screen opens.
++   * No-op on native — there's no redirect to come back from.
+    */
+   export const takeGoogleRedirectError = async (): Promise<string | null> => {
+-    if (!googleSignInAvailable) return null;
++    if (Platform.OS !== 'web') return null;
+     try {
+       await getRedirectResult(auth);
+       return null;

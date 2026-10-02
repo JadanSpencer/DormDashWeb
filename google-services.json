@@ -14,6 +14,14 @@
       },
       "oauth_client": [
         {
+          "client_id": "177583556348-mas1h1o0fa84428bq2il6c71rkda4ht3.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.dormdash.app",
+            "certificate_hash": "c31c848a566b531c3d13c6e818329502f02406c5"
+          }
+        },
+        {
           "client_id": "177583556348-g4qp70h7g3sv62saeerc9l8qbln7c6dc.apps.googleusercontent.com",
           "client_type": 3
         }
